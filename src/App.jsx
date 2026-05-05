@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Briefcase, Mail, Bell, Building, Tag, Users } from 'lucide-react';
+import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2 } from 'lucide-react';
+import { supabase } from './supabase.js';
 
 const APP_PASSWORD = 'ASsystem2026';
-const STORAGE_TASKS_KEY = 'as_system_tasks_v3';
 
 // E-maili z dostopom do VSEH nalog (direktor + marketing)
 const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si'];
@@ -25,8 +25,6 @@ const EMPLOYEES = [
 ];
 
 const DEPARTMENTS = [...new Set(EMPLOYEES.map(e => e.department))];
-
-// Predlogi področij za naloge
 const AREA_SUGGESTIONS = ['Prodaja', 'Nabava', 'Marketing', 'Računovodstvo', 'Kadrovska', 'Proizvodnja', 'Skladišče', 'Tehnolog', 'Kakovost', 'Montaža'];
 
 export default function App() {
@@ -37,6 +35,7 @@ export default function App() {
   
   const [currentUser, setCurrentUser] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [showNewTask, setShowNewTask] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [filter, setFilter] = useState('mine');
@@ -47,6 +46,7 @@ export default function App() {
 
   const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
 
+  // === LOAD SESSION ===
   useEffect(() => {
     try {
       const sessionAuth = sessionStorage.getItem('as_auth');
@@ -58,29 +58,68 @@ export default function App() {
           setCurrentUser(user);
         }
       }
-      loadTasks();
     } catch (e) {}
   }, []);
 
-  const loadTasks = () => {
+  // === LOAD TASKS FROM SUPABASE ===
+  useEffect(() => {
+    if (authenticated && currentUser) {
+      loadTasks();
+
+      // Real-time subscription za posodobitve
+      const channel = supabase
+        .channel('tasks-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => loadTasks())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => loadTasks())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'attachments' }, () => loadTasks())
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [authenticated, currentUser]);
+
+  const loadTasks = async () => {
+    setLoading(true);
     try {
-      const data = localStorage.getItem(STORAGE_TASKS_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        parsed.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        setTasks(parsed);
-      }
+      // Naloži naloge
+      const { data: tasksData, error: tasksError } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (tasksError) throw tasksError;
+
+      // Naloži komentarje
+      const { data: commentsData, error: commentsError } = await supabase
+        .from('comments')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (commentsError) throw commentsError;
+
+      // Naloži priponke
+      const { data: attachmentsData, error: attachmentsError } = await supabase
+        .from('attachments')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (attachmentsError) throw attachmentsError;
+
+      // Združi
+      const enrichedTasks = (tasksData || []).map(task => ({
+        ...task,
+        comments: (commentsData || []).filter(c => c.task_id === task.id),
+        attachments: (attachmentsData || []).filter(a => a.task_id === task.id)
+      }));
+
+      setTasks(enrichedTasks);
     } catch (e) {
       console.error('Napaka pri nalaganju nalog:', e);
+      alert('Napaka pri povezavi z bazo. Preverite internetno povezavo.');
     }
-  };
-
-  const saveTasks = (newTasks) => {
-    try {
-      localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(newTasks));
-    } catch (e) {
-      alert('Napaka pri shranjevanju. Lahko ste presegli prostor (5MB). Odstranite priponke.');
-    }
+    setLoading(false);
   };
 
   const handleLogin = () => {
@@ -112,109 +151,213 @@ export default function App() {
     setCurrentUser(null);
     setEmailInput('');
     setPasswordInput('');
+    setTasks([]);
     try {
       sessionStorage.removeItem('as_auth');
       sessionStorage.removeItem('as_user_email');
     } catch (e) {}
   };
 
-  const handleFileUpload = (event, taskId) => {
+  // === FILE UPLOAD ===
+  const handleFileUpload = async (event, taskId) => {
     const files = Array.from(event.target.files);
-    files.forEach(file => {
-      if (file.size > 2 * 1024 * 1024) {
-        alert(`Datoteka "${file.name}" je prevelika. Maksimalno 2MB.`);
-        return;
+    
+    for (const file of files) {
+      if (file.size > 50 * 1024 * 1024) {
+        alert(`Datoteka "${file.name}" je prevelika. Maksimalno 50MB.`);
+        continue;
       }
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const fileData = {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          data: e.target.result,
-          uploadedAt: new Date().toISOString(),
-          uploadedBy: currentUser.name
-        };
-        const updatedTasks = tasks.map(t => 
-          t.id === taskId ? { ...t, attachments: [...(t.attachments || []), fileData] } : t
-        );
-        saveTasks(updatedTasks);
-        setTasks(updatedTasks);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
 
-  const downloadFile = (file) => {
-    const link = document.createElement('a');
-    link.href = file.data;
-    link.download = file.name;
-    link.click();
-  };
+      try {
+        // Upload v storage
+        const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const filePath = `task_${taskId}/${fileName}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('task-attachments')
+          .upload(filePath, file);
 
-  const removeAttachment = (taskId, fileIndex) => {
-    const updatedTasks = tasks.map(t => 
-      t.id === taskId ? { ...t, attachments: t.attachments.filter((_, i) => i !== fileIndex) } : t
-    );
-    saveTasks(updatedTasks);
-    setTasks(updatedTasks);
-  };
+        if (uploadError) throw uploadError;
 
-  const addTask = (taskData) => {
-    const newTask = {
-      id: Date.now().toString(),
-      ...taskData,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      createdBy: currentUser.name,
-      createdByEmail: currentUser.email,
-      attachments: [],
-      comments: []
-    };
-    const updatedTasks = [newTask, ...tasks];
-    saveTasks(updatedTasks);
-    setTasks(updatedTasks);
-    setShowNewTask(false);
-  };
+        // Shrani metadata
+        const { error: metaError } = await supabase
+          .from('attachments')
+          .insert({
+            task_id: taskId,
+            file_name: file.name,
+            file_type: file.type,
+            file_size: file.size,
+            storage_path: filePath,
+            uploaded_by_email: currentUser.email,
+            uploaded_by_name: currentUser.name
+          });
 
-  const updateTask = (taskId, updates) => {
-    const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, ...updates } : t);
-    saveTasks(updatedTasks);
-    setTasks(updatedTasks);
-    setEditingTask(null);
-  };
-
-  const toggleTaskStatus = (taskId) => {
-    const task = tasks.find(t => t.id === taskId);
-    const newStatus = task.status === 'completed' ? 'pending' : 'completed';
-    updateTask(taskId, {
-      status: newStatus,
-      completedAt: newStatus === 'completed' ? new Date().toISOString() : null,
-      completedBy: newStatus === 'completed' ? currentUser.name : null
-    });
-  };
-
-  const deleteTask = (taskId) => {
-    if (confirm('Ali ste prepričani, da želite izbrisati to nalogo?')) {
-      const updatedTasks = tasks.filter(t => t.id !== taskId);
-      saveTasks(updatedTasks);
-      setTasks(updatedTasks);
+        if (metaError) throw metaError;
+        
+        loadTasks();
+      } catch (e) {
+        console.error('Napaka pri nalaganju datoteke:', e);
+        alert(`Napaka pri nalaganju "${file.name}": ${e.message}`);
+      }
     }
   };
 
-  const addComment = (taskId, commentText) => {
+  const downloadFile = async (file) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('task-attachments')
+        .download(file.storage_path);
+      
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.file_name;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Napaka pri prenosu:', e);
+      alert('Napaka pri prenosu datoteke.');
+    }
+  };
+
+  const removeAttachment = async (attachmentId, storagePath) => {
+    try {
+      // Odstrani iz storage
+      await supabase.storage
+        .from('task-attachments')
+        .remove([storagePath]);
+      
+      // Odstrani metadata
+      await supabase
+        .from('attachments')
+        .delete()
+        .eq('id', attachmentId);
+      
+      loadTasks();
+    } catch (e) {
+      console.error('Napaka pri brisanju:', e);
+      alert('Napaka pri brisanju priponke.');
+    }
+  };
+
+  // === TASKS CRUD ===
+  const addTask = async (taskData) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .insert({
+          title: taskData.title,
+          description: taskData.description,
+          assigned_to_emails: taskData.assignedToEmails,
+          company: taskData.company,
+          area: taskData.area,
+          department: taskData.department,
+          priority: taskData.priority,
+          due_date: taskData.dueDate,
+          status: 'pending',
+          created_by_email: currentUser.email,
+          created_by_name: currentUser.name
+        });
+
+      if (error) throw error;
+      
+      setShowNewTask(false);
+      loadTasks();
+    } catch (e) {
+      console.error('Napaka pri dodajanju:', e);
+      alert(`Napaka pri ustvarjanju naloge: ${e.message}`);
+    }
+  };
+
+  const updateTask = async (taskId, updates) => {
+    try {
+      const dbUpdates = {};
+      if (updates.title !== undefined) dbUpdates.title = updates.title;
+      if (updates.description !== undefined) dbUpdates.description = updates.description;
+      if (updates.assignedToEmails !== undefined) dbUpdates.assigned_to_emails = updates.assignedToEmails;
+      if (updates.company !== undefined) dbUpdates.company = updates.company;
+      if (updates.area !== undefined) dbUpdates.area = updates.area;
+      if (updates.department !== undefined) dbUpdates.department = updates.department;
+      if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
+      if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.completedAt !== undefined) dbUpdates.completed_at = updates.completedAt;
+      if (updates.completedByEmail !== undefined) dbUpdates.completed_by_email = updates.completedByEmail;
+      if (updates.completedByName !== undefined) dbUpdates.completed_by_name = updates.completedByName;
+
+      const { error } = await supabase
+        .from('tasks')
+        .update(dbUpdates)
+        .eq('id', taskId);
+
+      if (error) throw error;
+      
+      setEditingTask(null);
+      loadTasks();
+    } catch (e) {
+      console.error('Napaka pri posodabljanju:', e);
+      alert(`Napaka: ${e.message}`);
+    }
+  };
+
+  const toggleTaskStatus = async (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+    await updateTask(taskId, {
+      status: newStatus,
+      completedAt: newStatus === 'completed' ? new Date().toISOString() : null,
+      completedByEmail: newStatus === 'completed' ? currentUser.email : null,
+      completedByName: newStatus === 'completed' ? currentUser.name : null
+    });
+  };
+
+  const deleteTask = async (taskId) => {
+    if (!confirm('Ali ste prepričani, da želite izbrisati to nalogo?')) return;
+    
+    try {
+      // Najprej izbrišemo priponke iz storage
+      const task = tasks.find(t => t.id === taskId);
+      if (task?.attachments?.length > 0) {
+        const paths = task.attachments.map(a => a.storage_path);
+        await supabase.storage.from('task-attachments').remove(paths);
+      }
+      
+      // Brišemo nalogo (komentarji in priponke se zbrišejo avtomatsko zaradi CASCADE)
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', taskId);
+
+      if (error) throw error;
+      
+      loadTasks();
+    } catch (e) {
+      console.error('Napaka pri brisanju:', e);
+      alert(`Napaka: ${e.message}`);
+    }
+  };
+
+  const addComment = async (taskId, commentText) => {
     if (!commentText.trim()) return;
-    const comment = {
-      id: Date.now().toString(),
-      text: commentText,
-      author: currentUser.name,
-      createdAt: new Date().toISOString()
-    };
-    const updatedTasks = tasks.map(t => 
-      t.id === taskId ? { ...t, comments: [...(t.comments || []), comment] } : t
-    );
-    saveTasks(updatedTasks);
-    setTasks(updatedTasks);
+    
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .insert({
+          task_id: taskId,
+          text: commentText,
+          author_email: currentUser.email,
+          author_name: currentUser.name
+        });
+
+      if (error) throw error;
+      loadTasks();
+    } catch (e) {
+      console.error('Napaka pri dodajanju komentarja:', e);
+      alert('Napaka pri dodajanju komentarja.');
+    }
   };
 
   // === EKRAN ZA PRIJAVO ===
@@ -283,30 +426,28 @@ export default function App() {
     );
   }
 
-  // Naloga je "moja", če sem v assignedToEmails ali (za nazaj kompatibilnost) assignedToEmail
+  // === FILTRIRANJE ===
   const isAssignedToMe = (task) => {
-    if (task.assignedToEmails && Array.isArray(task.assignedToEmails)) {
-      return task.assignedToEmails.includes(currentUser.email);
+    if (task.assigned_to_emails && Array.isArray(task.assigned_to_emails)) {
+      return task.assigned_to_emails.includes(currentUser.email);
     }
-    return task.assignedToEmail === currentUser.email;
+    return false;
   };
 
   const filteredTasks = tasks.filter(task => {
-    // Admin (Aleš in Claudia) vidita VSE, drugi samo svoje (dodeljene ali ki so jih ustvarili)
     if (!isAdmin) {
       const isMine = isAssignedToMe(task);
-      const iCreated = task.createdByEmail === currentUser.email;
+      const iCreated = task.created_by_email === currentUser.email;
       if (!isMine && !iCreated) return false;
     }
 
     if (filter === 'pending' && task.status !== 'pending') return false;
     if (filter === 'completed' && task.status !== 'completed') return false;
     if (filter === 'mine' && !isAssignedToMe(task)) return false;
-    if (filter === 'created' && task.createdByEmail !== currentUser.email) return false;
+    if (filter === 'created' && task.created_by_email !== currentUser.email) return false;
     
     if (filterPerson !== 'all') {
-      const assignedEmails = task.assignedToEmails || (task.assignedToEmail ? [task.assignedToEmail] : []);
-      if (!assignedEmails.includes(filterPerson)) return false;
+      if (!task.assigned_to_emails?.includes(filterPerson)) return false;
     }
     if (filterDepartment !== 'all' && task.department !== filterDepartment) return false;
     if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase()) && 
@@ -315,24 +456,23 @@ export default function App() {
     return true;
   });
 
-  // Statistike (admin vidi vse, drugi vidijo svoje)
-  const visibleTasks = isAdmin ? tasks : tasks.filter(t => isAssignedToMe(t) || t.createdByEmail === currentUser.email);
+  const visibleTasks = isAdmin ? tasks : tasks.filter(t => isAssignedToMe(t) || t.created_by_email === currentUser.email);
   
   const stats = {
     mine: tasks.filter(t => isAssignedToMe(t) && t.status === 'pending').length,
-    created: tasks.filter(t => t.createdByEmail === currentUser.email).length,
+    created: tasks.filter(t => t.created_by_email === currentUser.email).length,
     pending: visibleTasks.filter(t => t.status === 'pending').length,
     completed: visibleTasks.filter(t => t.status === 'completed').length,
     overdue: visibleTasks.filter(t => {
       if (t.status === 'completed') return false;
-      if (!t.dueDate) return false;
-      return new Date(t.dueDate) < new Date();
+      if (!t.due_date) return false;
+      return new Date(t.due_date) < new Date();
     }).length,
     mineOverdue: tasks.filter(t => {
       if (!isAssignedToMe(t)) return false;
       if (t.status === 'completed') return false;
-      if (!t.dueDate) return false;
-      return new Date(t.dueDate) < new Date();
+      if (!t.due_date) return false;
+      return new Date(t.due_date) < new Date();
     }).length
   };
 
@@ -370,8 +510,8 @@ export default function App() {
   };
 
   const isOverdue = (task) => {
-    if (task.status === 'completed' || !task.dueDate) return false;
-    return new Date(task.dueDate) < new Date();
+    if (task.status === 'completed' || !task.due_date) return false;
+    return new Date(task.due_date) < new Date();
   };
 
   const priorityColors = {
@@ -389,7 +529,7 @@ export default function App() {
   };
 
   const getAssignedNames = (task) => {
-    const emails = task.assignedToEmails || (task.assignedToEmail ? [task.assignedToEmail] : []);
+    const emails = task.assigned_to_emails || [];
     return emails.map(email => getEmployeeName(email));
   };
 
@@ -408,6 +548,13 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              {loading && (
+                <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-as-gray-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Sinhroniziram...
+                </div>
+              )}
+
               {stats.mineOverdue > 0 && (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 bg-as-red-50 border border-as-red-200 rounded-lg text-xs text-as-red-700 font-semibold">
                   <Bell className="w-3.5 h-3.5" />
@@ -452,7 +599,6 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        {/* Statistike */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <button
             onClick={() => setFilter('mine')}
@@ -488,7 +634,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Filtri */}
         <div className="bg-white border border-as-gray-200 rounded-xl p-4 mb-6 shadow-sm">
           <div className="flex flex-wrap gap-3 items-center">
             <div className="flex-1 min-w-[200px] relative">
@@ -535,9 +680,13 @@ export default function App() {
           </div>
         </div>
 
-        {/* Seznam nalog */}
         <div className="space-y-3">
-          {filteredTasks.length === 0 ? (
+          {loading && tasks.length === 0 ? (
+            <div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-as-gray-400" />
+              <p className="text-as-gray-500">Nalagam naloge...</p>
+            </div>
+          ) : filteredTasks.length === 0 ? (
             <div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center">
               <div className="w-16 h-16 bg-as-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Circle className="w-8 h-8 text-as-gray-300" />
@@ -563,7 +712,7 @@ export default function App() {
                 onDelete={() => deleteTask(task.id)}
                 onFileUpload={(e) => handleFileUpload(e, task.id)}
                 onDownloadFile={downloadFile}
-                onRemoveAttachment={(idx) => removeAttachment(task.id, idx)}
+                onRemoveAttachment={removeAttachment}
                 onAddComment={(text) => addComment(task.id, text)}
                 getFileIcon={getFileIcon}
                 formatFileSize={formatFileSize}
@@ -678,10 +827,10 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
                 {assignedNames.length > 1 ? <Users className="w-3 h-3" /> : <User className="w-3 h-3" />}
                 <span className="font-medium">{assignedNames.join(', ')}</span>
               </span>
-              {task.dueDate && (
+              {task.due_date && (
                 <span className={`flex items-center gap-1 ${isOverdue ? 'text-as-red-600 font-semibold' : ''}`}>
                   <Calendar className="w-3 h-3" />
-                  {formatDate(task.dueDate)}
+                  {formatDate(task.due_date)}
                 </span>
               )}
               {task.attachments?.length > 0 && (
@@ -703,7 +852,7 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
             <button onClick={onToggleExpand} className="p-1.5 hover:bg-as-gray-100 rounded-lg transition text-as-gray-400" title="Razširi">
               <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             </button>
-            {(currentUser.email === task.createdByEmail || isAdmin) && (
+            {(currentUser.email === task.created_by_email || isAdmin) && (
               <>
                 <button onClick={onEdit} className="p-1.5 hover:bg-as-gray-100 rounded-lg transition text-as-gray-400" title="Uredi">
                   <Edit2 className="w-4 h-4" />
@@ -718,7 +867,6 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
 
         {isExpanded && (
           <div className="mt-4 pt-4 border-t border-as-gray-100 ml-9">
-            {/* Priponke */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-semibold text-as-gray-600 flex items-center gap-1.5">
@@ -739,30 +887,29 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
               </div>
               {task.attachments?.length > 0 ? (
                 <div className="space-y-1.5">
-                  {task.attachments.map((file, idx) => (
-                    <div key={idx} className="flex items-center gap-2 p-2 bg-as-gray-50 rounded-lg">
-                      {getFileIcon(file.type)}
+                  {task.attachments.map((file) => (
+                    <div key={file.id} className="flex items-center gap-2 p-2 bg-as-gray-50 rounded-lg">
+                      {getFileIcon(file.file_type)}
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-as-gray-700 truncate">{file.name}</div>
+                        <div className="text-sm font-medium text-as-gray-700 truncate">{file.file_name}</div>
                         <div className="text-xs text-as-gray-400">
-                          {formatFileSize(file.size)} • {file.uploadedBy}
+                          {formatFileSize(file.file_size)} • {file.uploaded_by_name}
                         </div>
                       </div>
                       <button onClick={() => onDownloadFile(file)} className="p-1.5 hover:bg-white rounded text-as-gray-400 hover:text-as-red-600 transition" title="Prenesi">
                         <Download className="w-4 h-4" />
                       </button>
-                      <button onClick={() => onRemoveAttachment(idx)} className="p-1.5 hover:bg-white rounded text-as-gray-400 hover:text-as-red-600 transition" title="Odstrani">
+                      <button onClick={() => onRemoveAttachment(file.id, file.storage_path)} className="p-1.5 hover:bg-white rounded text-as-gray-400 hover:text-as-red-600 transition" title="Odstrani">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-as-gray-400 italic">Ni priponk. Dodajte PDF, Word, Excel ali sliko (max 2MB).</p>
+                <p className="text-xs text-as-gray-400 italic">Ni priponk. Dodajte PDF, Word, Excel ali sliko (max 50MB).</p>
               )}
             </div>
 
-            {/* Komentarji */}
             <div>
               <h4 className="text-sm font-semibold text-as-gray-600 mb-2 flex items-center gap-1.5">
                 <MessageSquare className="w-4 h-4" />
@@ -773,9 +920,9 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
                   {task.comments.map(comment => (
                     <div key={comment.id} className="bg-as-gray-50 rounded-lg p-2.5">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-as-gray-700">{comment.author}</span>
+                        <span className="text-xs font-bold text-as-gray-700">{comment.author_name}</span>
                         <span className="text-xs text-as-gray-400">
-                          {new Date(comment.createdAt).toLocaleString('sl-SI', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          {new Date(comment.created_at).toLocaleString('sl-SI', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       <p className="text-sm text-as-gray-600">{comment.text}</p>
@@ -810,12 +957,11 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
               </div>
             </div>
 
-            {/* Meta podatki */}
             <div className="mt-3 pt-3 border-t border-as-gray-100 text-xs text-as-gray-400 flex items-center justify-between flex-wrap gap-2">
-              <span>Dodelil: <strong>{task.createdBy}</strong> • {new Date(task.createdAt).toLocaleString('sl-SI')}</span>
-              {task.completedAt && (
+              <span>Dodelil: <strong>{task.created_by_name}</strong> • {new Date(task.created_at).toLocaleString('sl-SI')}</span>
+              {task.completed_at && (
                 <span className="text-emerald-600">
-                  Opravil: <strong>{task.completedBy}</strong> • {new Date(task.completedAt).toLocaleString('sl-SI')}
+                  Opravil: <strong>{task.completed_by_name}</strong> • {new Date(task.completed_at).toLocaleString('sl-SI')}
                 </span>
               )}
             </div>
@@ -829,8 +975,7 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
 function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onClose }) {
   const defaultAssignee = employees.find(e => e.email !== currentUser.email) || employees[0];
   
-  // Podpora za starejše naloge (assignedToEmail) in nove (assignedToEmails)
-  const initialAssignedEmails = task?.assignedToEmails 
+  const initialAssignedEmails = task?.assigned_to_emails 
     || (task?.assignedToEmail ? [task.assignedToEmail] : [defaultAssignee.email]);
   
   const [title, setTitle] = useState(task?.title || '');
@@ -839,7 +984,7 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
   const [company, setCompany] = useState(task?.company || '');
   const [area, setArea] = useState(task?.area || '');
   const [priority, setPriority] = useState(task?.priority || 'medium');
-  const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.split('T')[0] : '');
+  const [dueDate, setDueDate] = useState(task?.due_date ? task.due_date.split('T')[0] : '');
 
   const toggleAssignee = (email) => {
     if (assignedToEmails.includes(email)) {
@@ -915,7 +1060,6 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
             />
           </div>
 
-          {/* MULTI-SELECT prejemnikov */}
           <div>
             <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
               <span className="flex items-center gap-1.5">
@@ -956,7 +1100,6 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
             </p>
           </div>
 
-          {/* PODJETJE in PODROČJE */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
