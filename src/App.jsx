@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Briefcase, Mail, Bell } from 'lucide-react';
+import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Briefcase, Mail, Bell, Building, Tag, Users } from 'lucide-react';
 
 const APP_PASSWORD = 'ASsystem2026';
-const STORAGE_TASKS_KEY = 'as_system_tasks_v2';
+const STORAGE_TASKS_KEY = 'as_system_tasks_v3';
+
+// E-maili z dostopom do VSEH nalog (direktor + marketing)
+const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si'];
 
 // Pravi zaposleni AS system d.o.o.
 const EMPLOYEES = [
-  { email: 'ales.seidl@as-system.si', name: 'Aleš Seidl', department: 'Direktor', isAdmin: true },
+  { email: 'ales.seidl@as-system.si', name: 'Aleš Seidl', department: 'Direktor' },
   { email: 'alen.drofenik@as-system.si', name: 'Alen Drofenik', department: 'Nabava' },
   { email: 'tjasa.mihevc@as-system.si', name: 'Tjaša Mihevc', department: 'Komerciala-Prodaja' },
   { email: 'matija.marguc@as-system.si', name: 'Matija Marguč', department: 'Komerciala' },
@@ -23,6 +26,9 @@ const EMPLOYEES = [
 
 const DEPARTMENTS = [...new Set(EMPLOYEES.map(e => e.department))];
 
+// Predlogi področij za naloge
+const AREA_SUGGESTIONS = ['Prodaja', 'Nabava', 'Marketing', 'Računovodstvo', 'Kadrovska', 'Proizvodnja', 'Skladišče', 'Tehnolog', 'Kakovost', 'Montaža'];
+
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [emailInput, setEmailInput] = useState('');
@@ -38,6 +44,8 @@ export default function App() {
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedTask, setExpandedTask] = useState(null);
+
+  const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
 
   useEffect(() => {
     try {
@@ -212,16 +220,16 @@ export default function App() {
   // === EKRAN ZA PRIJAVO ===
   if (!authenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{background: 'linear-gradient(135deg, #1A1A19 0%, #3C3C3B 100%)'}}>
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-as-gray-50 to-as-gray-100">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 border border-as-gray-100">
           <div className="text-center mb-8">
-            <img src="/logo.png" alt="AS system" className="h-20 mx-auto mb-4 object-contain" />
-            <p className="text-as-gray-500 text-sm font-medium">Interni sistem za upravljanje nalog</p>
+            <img src="/logo.jpg" alt="AS system" className="h-24 mx-auto mb-4 object-contain" />
+            <p className="text-as-gray-500 text-sm font-medium mt-4">Interni sistem za upravljanje nalog</p>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-as-gray-600 mb-2 flex items-center gap-2">
+              <label className="text-sm font-semibold text-as-gray-600 mb-2 flex items-center gap-2">
                 <Mail className="w-4 h-4" />
                 E-mail
               </label>
@@ -236,7 +244,7 @@ export default function App() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-as-gray-600 mb-2 flex items-center gap-2">
+              <label className="text-sm font-semibold text-as-gray-600 mb-2 flex items-center gap-2">
                 <Lock className="w-4 h-4" />
                 Geslo
               </label>
@@ -257,8 +265,10 @@ export default function App() {
             </div>
             <button 
               onClick={handleLogin} 
-              className="w-full bg-as-red-500 hover:bg-as-red-600 text-white font-semibold py-3 rounded-lg transition shadow-md"
+              className="w-full text-white font-semibold py-3 rounded-lg transition shadow-md hover:shadow-lg"
               style={{backgroundColor: '#C8102E'}}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#A50D26'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#C8102E'}
             >
               Prijava
             </button>
@@ -273,31 +283,53 @@ export default function App() {
     );
   }
 
-  // === FILTRIRANJE ===
+  // Naloga je "moja", če sem v assignedToEmails ali (za nazaj kompatibilnost) assignedToEmail
+  const isAssignedToMe = (task) => {
+    if (task.assignedToEmails && Array.isArray(task.assignedToEmails)) {
+      return task.assignedToEmails.includes(currentUser.email);
+    }
+    return task.assignedToEmail === currentUser.email;
+  };
+
   const filteredTasks = tasks.filter(task => {
+    // Admin (Aleš in Claudia) vidita VSE, drugi samo svoje (dodeljene ali ki so jih ustvarili)
+    if (!isAdmin) {
+      const isMine = isAssignedToMe(task);
+      const iCreated = task.createdByEmail === currentUser.email;
+      if (!isMine && !iCreated) return false;
+    }
+
     if (filter === 'pending' && task.status !== 'pending') return false;
     if (filter === 'completed' && task.status !== 'completed') return false;
-    if (filter === 'mine' && task.assignedToEmail !== currentUser.email) return false;
+    if (filter === 'mine' && !isAssignedToMe(task)) return false;
     if (filter === 'created' && task.createdByEmail !== currentUser.email) return false;
-    if (filterPerson !== 'all' && task.assignedToEmail !== filterPerson) return false;
+    
+    if (filterPerson !== 'all') {
+      const assignedEmails = task.assignedToEmails || (task.assignedToEmail ? [task.assignedToEmail] : []);
+      if (!assignedEmails.includes(filterPerson)) return false;
+    }
     if (filterDepartment !== 'all' && task.department !== filterDepartment) return false;
     if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase()) && 
-        !task.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        !task.description?.toLowerCase().includes(searchQuery.toLowerCase()) &&
+        !task.company?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
 
+  // Statistike (admin vidi vse, drugi vidijo svoje)
+  const visibleTasks = isAdmin ? tasks : tasks.filter(t => isAssignedToMe(t) || t.createdByEmail === currentUser.email);
+  
   const stats = {
-    mine: tasks.filter(t => t.assignedToEmail === currentUser.email && t.status === 'pending').length,
+    mine: tasks.filter(t => isAssignedToMe(t) && t.status === 'pending').length,
     created: tasks.filter(t => t.createdByEmail === currentUser.email).length,
-    pending: tasks.filter(t => t.status === 'pending').length,
-    completed: tasks.filter(t => t.status === 'completed').length,
-    overdue: tasks.filter(t => {
+    pending: visibleTasks.filter(t => t.status === 'pending').length,
+    completed: visibleTasks.filter(t => t.status === 'completed').length,
+    overdue: visibleTasks.filter(t => {
       if (t.status === 'completed') return false;
       if (!t.dueDate) return false;
       return new Date(t.dueDate) < new Date();
     }).length,
     mineOverdue: tasks.filter(t => {
-      if (t.assignedToEmail !== currentUser.email) return false;
+      if (!isAssignedToMe(t)) return false;
       if (t.status === 'completed') return false;
       if (!t.dueDate) return false;
       return new Date(t.dueDate) < new Date();
@@ -356,14 +388,19 @@ export default function App() {
     return emp ? emp.name : email;
   };
 
+  const getAssignedNames = (task) => {
+    const emails = task.assignedToEmails || (task.assignedToEmail ? [task.assignedToEmail] : []);
+    return emails.map(email => getEmployeeName(email));
+  };
+
   return (
-    <div className="min-h-screen bg-as-gray-50" style={{fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#F5F5F5'}}>
+    <div className="min-h-screen" style={{fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#F5F5F5'}}>
       {/* Header */}
       <header className="bg-white border-b border-as-gray-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="AS system" className="h-12 object-contain" />
+              <img src="/logo.jpg" alt="AS system" className="h-14 object-contain" />
               <div className="hidden md:block border-l border-as-gray-200 pl-3">
                 <p className="text-xs text-as-gray-400 font-medium uppercase tracking-wider">Interno orodje</p>
                 <p className="text-sm text-as-gray-600 font-semibold">Upravljanje nalog</p>
@@ -371,7 +408,6 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Opozorilo o nalogah */}
               {stats.mineOverdue > 0 && (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 bg-as-red-50 border border-as-red-200 rounded-lg text-xs text-as-red-700 font-semibold">
                   <Bell className="w-3.5 h-3.5" />
@@ -379,14 +415,16 @@ export default function App() {
                 </div>
               )}
 
-              {/* Trenutni uporabnik */}
               <div className="flex items-center gap-2 px-3 py-2 bg-as-gray-100 rounded-lg text-sm">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{backgroundColor: '#C8102E'}}>
                   {currentUser.name.split(' ').map(n => n[0]).join('')}
                 </div>
                 <div className="hidden sm:block">
                   <div className="font-semibold text-as-gray-700 leading-tight">{currentUser.name}</div>
-                  <div className="text-xs text-as-gray-400 leading-tight">{currentUser.department}</div>
+                  <div className="text-xs text-as-gray-400 leading-tight">
+                    {currentUser.department}
+                    {isAdmin && <span className="ml-1 text-as-red-600 font-bold">• Admin</span>}
+                  </div>
                 </div>
               </div>
 
@@ -435,7 +473,7 @@ export default function App() {
             className={`bg-white border rounded-xl p-4 text-left transition hover:shadow-md ${filter === 'pending' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
           >
             <div className="text-2xl font-bold text-amber-600">{stats.pending}</div>
-            <div className="text-xs text-as-gray-500 mt-1 font-medium">V teku (vse)</div>
+            <div className="text-xs text-as-gray-500 mt-1 font-medium">V teku {isAdmin && '(vse)'}</div>
           </button>
           <button
             onClick={() => setFilter('completed')}
@@ -468,11 +506,11 @@ export default function App() {
               onChange={(e) => setFilter(e.target.value)}
               className="px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 bg-white font-medium"
             >
-              <option value="mine">⭐ Moje naloge</option>
-              <option value="created">📤 Sem dodelil</option>
-              <option value="all">📋 Vse naloge</option>
-              <option value="pending">⏳ V teku</option>
-              <option value="completed">✓ Opravljene</option>
+              <option value="mine">Moje naloge</option>
+              <option value="created">Sem dodelil</option>
+              <option value="all">Vse naloge</option>
+              <option value="pending">V teku</option>
+              <option value="completed">Opravljene</option>
             </select>
             <select
               value={filterPerson}
@@ -506,7 +544,7 @@ export default function App() {
               </div>
               <p className="text-as-gray-600 font-semibold">Ni nalog za prikaz</p>
               <p className="text-as-gray-400 text-sm mt-1">
-                {filter === 'mine' && 'Trenutno nimate nobenih dodeljenih nalog. 🎉'}
+                {filter === 'mine' && 'Trenutno nimate nobenih dodeljenih nalog.'}
                 {filter === 'created' && 'Niste še dodelili nobene naloge.'}
                 {filter === 'all' && 'Ustvarite prvo nalogo s klikom na gumb zgoraj.'}
                 {filter === 'pending' && 'Vse naloge so opravljene.'}
@@ -534,19 +572,20 @@ export default function App() {
                 priorityColors={priorityColors}
                 priorityLabels={priorityLabels}
                 currentUser={currentUser}
-                getEmployeeName={getEmployeeName}
+                isAdmin={isAdmin}
+                isAssignedToMe={isAssignedToMe(task)}
+                assignedNames={getAssignedNames(task)}
               />
             ))
           )}
         </div>
       </main>
 
-      {/* Modal za nalogo */}
       {(showNewTask || editingTask) && (
         <TaskModal
           task={editingTask}
           employees={EMPLOYEES}
-          departments={DEPARTMENTS}
+          areaSuggestions={AREA_SUGGESTIONS}
           currentUser={currentUser}
           onSave={(data) => {
             if (editingTask) {
@@ -571,13 +610,12 @@ export default function App() {
   );
 }
 
-function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, onDelete, onFileUpload, onDownloadFile, onRemoveAttachment, onAddComment, getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels, currentUser, getEmployeeName }) {
+function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, onDelete, onFileUpload, onDownloadFile, onRemoveAttachment, onAddComment, getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels, currentUser, isAdmin, isAssignedToMe, assignedNames }) {
   const [commentText, setCommentText] = useState('');
   const isCompleted = task.status === 'completed';
-  const isMine = task.assignedToEmail === currentUser.email;
 
   return (
-    <div className={`bg-white border rounded-xl transition shadow-sm hover:shadow-md ${isCompleted ? 'border-as-gray-200 opacity-70' : isOverdue ? 'border-as-red-300 ring-1 ring-as-red-100' : isMine && !isCompleted ? 'border-as-red-200' : 'border-as-gray-200'}`}>
+    <div className={`bg-white border rounded-xl transition shadow-sm hover:shadow-md ${isCompleted ? 'border-as-gray-200 opacity-70' : isOverdue ? 'border-as-red-300 ring-1 ring-as-red-100' : isAssignedToMe && !isCompleted ? 'border-as-red-200' : 'border-as-gray-200'}`}>
       <div className="p-4">
         <div className="flex items-start gap-3">
           <button
@@ -598,7 +636,19 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
                 {task.title}
               </h3>
               <div className="flex items-center gap-1.5 flex-wrap">
-                {isMine && !isCompleted && (
+                {task.company && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-as-gray-100 text-as-gray-700 border border-as-gray-200 flex items-center gap-1 font-semibold">
+                    <Building className="w-3 h-3" />
+                    {task.company}
+                  </span>
+                )}
+                {task.area && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                    <Tag className="w-3 h-3" />
+                    {task.area}
+                  </span>
+                )}
+                {isAssignedToMe && !isCompleted && (
                   <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{backgroundColor: '#C8102E'}}>
                     Zame
                   </span>
@@ -625,15 +675,9 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
 
             <div className="flex items-center gap-3 mt-2 text-xs text-as-gray-400 flex-wrap">
               <span className="flex items-center gap-1">
-                <User className="w-3 h-3" />
-                <span className="font-medium">{getEmployeeName(task.assignedToEmail)}</span>
+                {assignedNames.length > 1 ? <Users className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                <span className="font-medium">{assignedNames.join(', ')}</span>
               </span>
-              {task.department && (
-                <span className="flex items-center gap-1">
-                  <Briefcase className="w-3 h-3" />
-                  {task.department}
-                </span>
-              )}
               {task.dueDate && (
                 <span className={`flex items-center gap-1 ${isOverdue ? 'text-as-red-600 font-semibold' : ''}`}>
                   <Calendar className="w-3 h-3" />
@@ -659,7 +703,7 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
             <button onClick={onToggleExpand} className="p-1.5 hover:bg-as-gray-100 rounded-lg transition text-as-gray-400" title="Razširi">
               <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             </button>
-            {(currentUser.email === task.createdByEmail || currentUser.isAdmin) && (
+            {(currentUser.email === task.createdByEmail || isAdmin) && (
               <>
                 <button onClick={onEdit} className="p-1.5 hover:bg-as-gray-100 rounded-lg transition text-as-gray-400" title="Uredi">
                   <Edit2 className="w-4 h-4" />
@@ -782,38 +826,50 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
   );
 }
 
-function TaskModal({ task, employees, departments, currentUser, onSave, onClose }) {
+function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onClose }) {
   const defaultAssignee = employees.find(e => e.email !== currentUser.email) || employees[0];
+  
+  // Podpora za starejše naloge (assignedToEmail) in nove (assignedToEmails)
+  const initialAssignedEmails = task?.assignedToEmails 
+    || (task?.assignedToEmail ? [task.assignedToEmail] : [defaultAssignee.email]);
   
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
-  const [assignedToEmail, setAssignedToEmail] = useState(task?.assignedToEmail || defaultAssignee.email);
-  const [department, setDepartment] = useState(task?.department || '');
+  const [assignedToEmails, setAssignedToEmails] = useState(initialAssignedEmails);
+  const [company, setCompany] = useState(task?.company || '');
+  const [area, setArea] = useState(task?.area || '');
   const [priority, setPriority] = useState(task?.priority || 'medium');
   const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.split('T')[0] : '');
 
-  // Auto-update oddelka glede na izbranega zaposlenega
-  useEffect(() => {
-    if (assignedToEmail && !department) {
-      const emp = employees.find(e => e.email === assignedToEmail);
-      if (emp) setDepartment(emp.department);
+  const toggleAssignee = (email) => {
+    if (assignedToEmails.includes(email)) {
+      if (assignedToEmails.length > 1) {
+        setAssignedToEmails(assignedToEmails.filter(e => e !== email));
+      }
+    } else {
+      setAssignedToEmails([...assignedToEmails, email]);
     }
-  }, [assignedToEmail]);
+  };
 
   const handleSubmit = () => {
     if (!title.trim()) {
       alert('Prosim vnesite naslov naloge');
       return;
     }
-    if (!assignedToEmail) {
-      alert('Prosim izberite, komu je naloga dodeljena');
+    if (assignedToEmails.length === 0) {
+      alert('Prosim izberite vsaj eno osebo, kateri je naloga dodeljena');
       return;
     }
+    
+    const firstAssignee = employees.find(e => e.email === assignedToEmails[0]);
+    
     onSave({
       title: title.trim(),
       description: description.trim(),
-      assignedToEmail,
-      department: department || employees.find(e => e.email === assignedToEmail)?.department,
+      assignedToEmails,
+      department: firstAssignee?.department,
+      company: company.trim(),
+      area: area.trim(),
       priority,
       dueDate: dueDate ? new Date(dueDate).toISOString() : null
     });
@@ -840,7 +896,7 @@ function TaskModal({ task, employees, departments, currentUser, onSave, onClose 
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Npr. Pripraviti ponudbo za JAGER..."
+              placeholder="Npr. Pripravi ponudbo"
               className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400"
               autoFocus
             />
@@ -859,25 +915,86 @@ function TaskModal({ task, employees, departments, currentUser, onSave, onClose 
             />
           </div>
 
+          {/* MULTI-SELECT prejemnikov */}
           <div>
             <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
-              Dodeljeno (komu) <span className="text-as-red-500">*</span>
+              <span className="flex items-center gap-1.5">
+                <Users className="w-4 h-4" />
+                Dodeljeno (komu) <span className="text-as-red-500">*</span>
+                {assignedToEmails.length > 1 && (
+                  <span className="ml-auto text-xs font-normal text-as-gray-400">
+                    Izbrano: {assignedToEmails.length}
+                  </span>
+                )}
+              </span>
             </label>
-            <select
-              value={assignedToEmail}
-              onChange={(e) => {
-                setAssignedToEmail(e.target.value);
-                const emp = employees.find(emp => emp.email === e.target.value);
-                if (emp) setDepartment(emp.department);
-              }}
-              className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 bg-white"
-            >
-              {employees.map(emp => (
-                <option key={emp.email} value={emp.email}>
-                  {emp.name} — {emp.department}
-                </option>
-              ))}
-            </select>
+            <div className="border border-as-gray-200 rounded-lg max-h-56 overflow-y-auto bg-white">
+              {employees.map(emp => {
+                const isSelected = assignedToEmails.includes(emp.email);
+                return (
+                  <label
+                    key={emp.email}
+                    className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-as-gray-50 border-b border-as-gray-100 last:border-b-0 ${isSelected ? 'bg-as-red-50' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleAssignee(emp.email)}
+                      className="w-4 h-4 rounded border-as-gray-300 cursor-pointer"
+                      style={{accentColor: '#C8102E'}}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-as-gray-700">{emp.name}</div>
+                      <div className="text-xs text-as-gray-400">{emp.department}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-xs text-as-gray-400 mt-1.5">
+              Lahko izberete več oseb hkrati (vsi bodo videli nalogo).
+            </p>
+          </div>
+
+          {/* PODJETJE in PODROČJE */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
+                <span className="flex items-center gap-1.5">
+                  <Building className="w-4 h-4" />
+                  Podjetje (neobvezno)
+                </span>
+              </label>
+              <input
+                type="text"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                placeholder="Npr. JAGER, MUNGO, PROFIX..."
+                className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
+                <span className="flex items-center gap-1.5">
+                  <Tag className="w-4 h-4" />
+                  Področje (neobvezno)
+                </span>
+              </label>
+              <input
+                type="text"
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+                placeholder="Npr. Prodaja, Nabava..."
+                list="area-suggestions"
+                className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400"
+              />
+              <datalist id="area-suggestions">
+                {areaSuggestions.map(a => (
+                  <option key={a} value={a} />
+                ))}
+              </datalist>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -890,9 +1007,9 @@ function TaskModal({ task, employees, departments, currentUser, onSave, onClose 
                 onChange={(e) => setPriority(e.target.value)}
                 className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 bg-white"
               >
-                <option value="high">🔴 Visoka</option>
-                <option value="medium">🟡 Srednja</option>
-                <option value="low">⚪ Nizka</option>
+                <option value="high">Visoka</option>
+                <option value="medium">Srednja</option>
+                <option value="low">Nizka</option>
               </select>
             </div>
 
@@ -908,18 +1025,6 @@ function TaskModal({ task, employees, departments, currentUser, onSave, onClose 
               />
             </div>
           </div>
-
-          {/* Info o oddelku */}
-          {assignedToEmail && (
-            <div className="bg-as-gray-50 rounded-lg p-3 border border-as-gray-100">
-              <p className="text-xs text-as-gray-500">
-                <span className="font-semibold">Oddelek:</span> {employees.find(e => e.email === assignedToEmail)?.department}
-              </p>
-              <p className="text-xs text-as-gray-400 mt-1">
-                <span className="font-semibold">E-mail:</span> {assignedToEmail}
-              </p>
-            </div>
-          )}
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-as-gray-200 px-6 py-4 flex items-center justify-end gap-2">
