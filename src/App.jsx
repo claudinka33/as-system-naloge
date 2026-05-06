@@ -5,21 +5,21 @@ import { supabase } from './supabase.js';
 // E-maili z dostopom do VSEH nalog (direktor + marketing)
 const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si'];
 
-// Pravi zaposleni AS system d.o.o. - vsak ima svoje geslo
+// Pravi zaposleni AS system d.o.o. - vsak ima svoje unikatno geslo
 const EMPLOYEES = [
-  { email: 'ales.seidl@as-system.si', name: 'Aleš Seidl', department: 'Direktor', password: 'Ales2026' },
-  { email: 'alen.drofenik@as-system.si', name: 'Alen Drofenik', department: 'Nabava', password: 'Alen2026' },
-  { email: 'tjasa.mihevc@as-system.si', name: 'Tjaša Mihevc', department: 'Komerciala-Prodaja', password: 'Tjasa2026' },
-  { email: 'matija.marguc@as-system.si', name: 'Matija Marguč', department: 'Komerciala', password: 'Matija2026' },
-  { email: 'sara.jagodic@as-system.si', name: 'Sara Jagodič', department: 'Računovodstvo', password: 'Sara2026' },
-  { email: 'cvetka.seidl@as-system.si', name: 'Cvetka Seidl', department: 'Kadrovska', password: 'Cvetka2026' },
-  { email: 'claudia.seidl@as-system.si', name: 'Claudia Seidl', department: 'Marketing', password: 'Claudia2026' },
-  { email: 'milena.jancic@as-system.si', name: 'Milena Jančič', department: 'Montaža', password: 'Milena2026' },
-  { email: 'gregor.koritnik@as-system.si', name: 'Gregor Koritnik', department: 'Tehnolog', password: 'Gregor2026' },
-  { email: 'boris.cernelc@as-system.si', name: 'Boris Černelč', department: 'Proizvodnja', password: 'Boris2026' },
-  { email: 'kakovost@as-system.si', name: 'Mitja Babič', department: 'Kakovost', password: 'Mitja2026' },
-  { email: 'zan.seidl@as-system.si', name: 'Žan Seidl', department: 'Komercialist', password: 'Zan2026' },
-  { email: 'feliks.zekar@as-system.si', name: 'Feliks Žekar', department: 'Skladišče', password: 'Feliks2026' },
+  { email: 'ales.seidl@as-system.si', username: 'ales.seidl', name: 'Aleš Seidl', department: 'Direktor', password: 'AS-direktor-93' },
+  { email: 'alen.drofenik@as-system.si', username: 'alen.drofenik', name: 'Alen Drofenik', department: 'Nabava', password: 'Drofenik-AS-7' },
+  { email: 'tjasa.mihevc@as-system.si', username: 'tjasa.mihevc', name: 'Tjaša Mihevc', department: 'Komerciala-Prodaja', password: 'Mihevc-prodaja12' },
+  { email: 'matija.marguc@as-system.si', username: 'matija.marguc', name: 'Matija Marguč', department: 'Komerciala', password: 'Margutia-44' },
+  { email: 'sara.jagodic@as-system.si', username: 'sara.jagodic', name: 'Sara Jagodič', department: 'Računovodstvo', password: 'Jagodaaa-22' },
+  { email: 'cvetka.seidl@as-system.si', username: 'cvetka.seidl', name: 'Cvetka Seidl', department: 'Kadrovska', password: 'Cvetka-kadri88' },
+  { email: 'claudia.seidl@as-system.si', username: 'claudia.seidl', name: 'Claudia Seidl', department: 'Marketing', password: 'Klavdija-AS33' },
+  { email: 'milena.jancic@as-system.si', username: 'milena.jancic', name: 'Milena Jančič', department: 'Montaža', password: 'Jancic-montaza5' },
+  { email: 'gregor.koritnik@as-system.si', username: 'gregor.koritnik', name: 'Gregor Koritnik', department: 'Tehnolog', password: 'Koritnik-teh19' },
+  { email: 'boris.cernelc@as-system.si', username: 'boris.cernelc', name: 'Boris Černelč', department: 'Proizvodnja', password: 'Cernelc-proi66' },
+  { email: 'kakovost@as-system.si', username: 'kakovost', name: 'Mitja Babič', department: 'Kakovost', password: 'Babic-kakovo8' },
+  { email: 'zan.seidl@as-system.si', username: 'zan.seidl', name: 'Žan Seidl', department: 'Komercialist', password: 'ZanS-komerc15' },
+  { email: 'feliks.zekar@as-system.si', username: 'feliks.zekar', name: 'Feliks Žekar', department: 'Skladišče', password: 'Zekar-skladi77' },
 ];
 
 const DEPARTMENTS = [...new Set(EMPLOYEES.map(e => e.department))];
@@ -127,16 +127,21 @@ export default function App() {
   };
 
   const handleLogin = () => {
-    const email = emailInput.trim().toLowerCase();
-    const user = EMPLOYEES.find(e => e.email.toLowerCase() === email);
+    const input = emailInput.trim().toLowerCase();
+    
+    // Najdi po uporabniškem imenu ALI po polnem e-mailu
+    const user = EMPLOYEES.find(e => 
+      e.username.toLowerCase() === input || 
+      e.email.toLowerCase() === input
+    );
     
     if (!user) {
-      setAuthError('E-mail ne obstaja v sistemu. Preverite vnos.');
+      setAuthError('Uporabniško ime ne obstaja. Preverite vnos.');
       return;
     }
     
     if (passwordInput !== user.password) {
-      setAuthError('Napačno geslo. Vaše geslo: Ime + 2026 (npr. Claudia2026)');
+      setAuthError('Napačno uporabniško ime ali geslo.');
       setPasswordInput('');
       return;
     }
@@ -465,15 +470,15 @@ export default function App() {
           <div className="space-y-4">
             <div>
               <label className="text-sm font-semibold text-as-gray-600 mb-2 flex items-center gap-2">
-                <Mail className="w-4 h-4" />
-                E-mail
+                <User className="w-4 h-4" />
+                Uporabniško ime
               </label>
               <input
-                type="email"
+                type="text"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && document.getElementById('pwd-input')?.focus()}
-                placeholder="ime.priimek@as-system.si"
+                placeholder="ime.priimek"
                 className="w-full px-4 py-3 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-200 focus:border-as-red-400"
                 autoFocus
               />
@@ -489,12 +494,9 @@ export default function App() {
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                placeholder="Vaše ime + 2026 (npr. Claudia2026)"
+                placeholder="••••••••"
                 className="w-full px-4 py-3 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-200 focus:border-as-red-400"
               />
-              <p className="text-xs text-as-gray-400 mt-1.5">
-                💡 Geslo: vaše ime + 2026 (brez šumnikov). Primer: <strong>Claudia2026</strong>, <strong>Zan2026</strong>
-              </p>
               {authError && (
                 <p className="text-as-red-600 text-sm mt-2 flex items-center gap-1">
                   <AlertCircle className="w-4 h-4" />{authError}
