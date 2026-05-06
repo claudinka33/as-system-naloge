@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
+import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3 } from 'lucide-react';
 import { supabase } from './supabase.js';
+import Reports from './Reports.jsx';
 
 // E-maili z dostopom do VSEH nalog (direktor + marketing)
 const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si'];
@@ -47,6 +48,9 @@ export default function App() {
   const [calendarMode, setCalendarMode] = useState('month'); // 'month' ali 'week'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
+  
+  // Glavni razdelek (Naloge / Poročila)
+  const [mainSection, setMainSection] = useState('tasks'); // 'tasks' ali 'reports'
 
   const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
 
@@ -645,23 +649,45 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Stikalo Seznam / Koledar */}
-              <div className="bg-as-gray-100 rounded-lg p-1 flex">
+              {/* GLAVNO Stikalo Naloge / Poročila */}
+              <div className="bg-as-gray-100 rounded-lg p-1 flex border border-as-gray-200">
                 <button
-                  onClick={() => setViewMode('list')}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${viewMode === 'list' ? 'bg-white text-as-gray-700 shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  onClick={() => setMainSection('tasks')}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'tasks' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  style={mainSection === 'tasks' ? {backgroundColor: '#C8102E'} : {}}
                 >
-                  <List className="w-4 h-4" />
-                  <span className="hidden sm:inline">Seznam</span>
+                  <ClipboardList className="w-4 h-4" />
+                  <span className="hidden sm:inline">Naloge</span>
                 </button>
                 <button
-                  onClick={() => setViewMode('calendar')}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${viewMode === 'calendar' ? 'bg-white text-as-gray-700 shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  onClick={() => setMainSection('reports')}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'reports' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  style={mainSection === 'reports' ? {backgroundColor: '#C8102E'} : {}}
                 >
-                  <CalendarDays className="w-4 h-4" />
-                  <span className="hidden sm:inline">Koledar</span>
+                  <BarChart3 className="w-4 h-4" />
+                  <span className="hidden sm:inline">Poročila</span>
                 </button>
               </div>
+
+              {/* Stikalo Seznam / Koledar - SAMO ZA NALOGE */}
+              {mainSection === 'tasks' && (
+                <div className="bg-as-gray-100 rounded-lg p-1 flex">
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${viewMode === 'list' ? 'bg-white text-as-gray-700 shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  >
+                    <List className="w-4 h-4" />
+                    <span className="hidden sm:inline">Seznam</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('calendar')}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${viewMode === 'calendar' ? 'bg-white text-as-gray-700 shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  >
+                    <CalendarDays className="w-4 h-4" />
+                    <span className="hidden sm:inline">Koledar</span>
+                  </button>
+                </div>
+              )}
 
               {loading && (
                 <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-as-gray-400">
@@ -700,7 +726,7 @@ export default function App() {
 
               <button
                 onClick={() => setShowNewTask(true)}
-                className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-semibold transition shadow-md hover:shadow-lg"
+                className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-semibold transition shadow-md hover:shadow-lg ${mainSection !== 'tasks' ? 'hidden' : ''}`}
                 style={{backgroundColor: '#C8102E'}}
                 onMouseEnter={(e) => e.target.style.backgroundColor = '#A50D26'}
                 onMouseLeave={(e) => e.target.style.backgroundColor = '#C8102E'}
@@ -714,6 +740,11 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        {/* GLAVNI POGOJ: Naloge ALI Poročila */}
+        {mainSection === 'reports' ? (
+          <Reports currentUser={currentUser} employees={EMPLOYEES} />
+        ) : (
+          <>
         {/* Statistike (vedno vidne) */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <button
@@ -871,6 +902,8 @@ export default function App() {
             getEmployeeName={getEmployeeName}
             priorityLabels={priorityLabels}
           />
+        )}
+        </>
         )}
       </main>
 
