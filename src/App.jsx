@@ -2,26 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 import { supabase } from './supabase.js';
 
-const APP_PASSWORD = 'ASsystem2026';
-
 // E-maili z dostopom do VSEH nalog (direktor + marketing)
 const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si'];
 
-// Pravi zaposleni AS system d.o.o.
+// Pravi zaposleni AS system d.o.o. - vsak ima svoje geslo
 const EMPLOYEES = [
-  { email: 'ales.seidl@as-system.si', name: 'Aleš Seidl', department: 'Direktor' },
-  { email: 'alen.drofenik@as-system.si', name: 'Alen Drofenik', department: 'Nabava' },
-  { email: 'tjasa.mihevc@as-system.si', name: 'Tjaša Mihevc', department: 'Komerciala-Prodaja' },
-  { email: 'matija.marguc@as-system.si', name: 'Matija Marguč', department: 'Komerciala' },
-  { email: 'sara.jagodic@as-system.si', name: 'Sara Jagodič', department: 'Računovodstvo' },
-  { email: 'cvetka.seidl@as-system.si', name: 'Cvetka Seidl', department: 'Kadrovska' },
-  { email: 'claudia.seidl@as-system.si', name: 'Claudia Seidl', department: 'Marketing' },
-  { email: 'milena.jancic@as-system.si', name: 'Milena Jančič', department: 'Montaža' },
-  { email: 'gregor.koritnik@as-system.si', name: 'Gregor Koritnik', department: 'Tehnolog' },
-  { email: 'boris.cernelc@as-system.si', name: 'Boris Černelč', department: 'Proizvodnja' },
-  { email: 'kakovost@as-system.si', name: 'Mitja Babič', department: 'Kakovost' },
-  { email: 'zan.seidl@as-system.si', name: 'Žan Seidl', department: 'Komercialist' },
-  { email: 'feliks.zekar@as-system.si', name: 'Feliks Žekar', department: 'Skladišče' },
+  { email: 'ales.seidl@as-system.si', name: 'Aleš Seidl', department: 'Direktor', password: 'Ales2026' },
+  { email: 'alen.drofenik@as-system.si', name: 'Alen Drofenik', department: 'Nabava', password: 'Alen2026' },
+  { email: 'tjasa.mihevc@as-system.si', name: 'Tjaša Mihevc', department: 'Komerciala-Prodaja', password: 'Tjasa2026' },
+  { email: 'matija.marguc@as-system.si', name: 'Matija Marguč', department: 'Komerciala', password: 'Matija2026' },
+  { email: 'sara.jagodic@as-system.si', name: 'Sara Jagodič', department: 'Računovodstvo', password: 'Sara2026' },
+  { email: 'cvetka.seidl@as-system.si', name: 'Cvetka Seidl', department: 'Kadrovska', password: 'Cvetka2026' },
+  { email: 'claudia.seidl@as-system.si', name: 'Claudia Seidl', department: 'Marketing', password: 'Claudia2026' },
+  { email: 'milena.jancic@as-system.si', name: 'Milena Jančič', department: 'Montaža', password: 'Milena2026' },
+  { email: 'gregor.koritnik@as-system.si', name: 'Gregor Koritnik', department: 'Tehnolog', password: 'Gregor2026' },
+  { email: 'boris.cernelc@as-system.si', name: 'Boris Černelč', department: 'Proizvodnja', password: 'Boris2026' },
+  { email: 'kakovost@as-system.si', name: 'Mitja Babič', department: 'Kakovost', password: 'Mitja2026' },
+  { email: 'zan.seidl@as-system.si', name: 'Žan Seidl', department: 'Komercialist', password: 'Zan2026' },
+  { email: 'feliks.zekar@as-system.si', name: 'Feliks Žekar', department: 'Skladišče', password: 'Feliks2026' },
 ];
 
 const DEPARTMENTS = [...new Set(EMPLOYEES.map(e => e.department))];
@@ -137,8 +135,8 @@ export default function App() {
       return;
     }
     
-    if (passwordInput !== APP_PASSWORD) {
-      setAuthError('Napačno geslo.');
+    if (passwordInput !== user.password) {
+      setAuthError('Napačno geslo. Vaše geslo: Ime + 2026 (npr. Claudia2026)');
       setPasswordInput('');
       return;
     }
@@ -251,23 +249,58 @@ export default function App() {
   // === TASKS CRUD ===
   const addTask = async (taskData) => {
     try {
-      const { error } = await supabase
+      const { data: insertedTask, error } = await supabase
         .from('tasks')
         .insert({
           title: taskData.title,
           description: taskData.description,
           assigned_to_emails: taskData.assignedToEmails,
+          responsible_email: taskData.responsibleEmail,
+          responsible_name: taskData.responsibleName,
           company: taskData.company,
           area: taskData.area,
           department: taskData.department,
           priority: taskData.priority,
           due_date: taskData.dueDate,
           status: 'pending',
+          recurring_type: taskData.recurringType || 'none',
           created_by_email: currentUser.email,
           created_by_name: currentUser.name
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+      
+      // Naloži priponke, če so
+      if (taskData.pendingFiles && taskData.pendingFiles.length > 0 && insertedTask) {
+        for (const file of taskData.pendingFiles) {
+          try {
+            const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const filePath = `task_${insertedTask.id}/${fileName}`;
+            
+            const { error: uploadError } = await supabase.storage
+              .from('task-attachments')
+              .upload(filePath, file);
+
+            if (uploadError) throw uploadError;
+
+            await supabase
+              .from('attachments')
+              .insert({
+                task_id: insertedTask.id,
+                file_name: file.name,
+                file_type: file.type,
+                file_size: file.size,
+                storage_path: filePath,
+                uploaded_by_email: currentUser.email,
+                uploaded_by_name: currentUser.name
+              });
+          } catch (fileErr) {
+            console.error('Napaka pri datoteki:', file.name, fileErr);
+          }
+        }
+      }
       
       setShowNewTask(false);
       loadTasks();
@@ -283,11 +316,14 @@ export default function App() {
       if (updates.title !== undefined) dbUpdates.title = updates.title;
       if (updates.description !== undefined) dbUpdates.description = updates.description;
       if (updates.assignedToEmails !== undefined) dbUpdates.assigned_to_emails = updates.assignedToEmails;
+      if (updates.responsibleEmail !== undefined) dbUpdates.responsible_email = updates.responsibleEmail;
+      if (updates.responsibleName !== undefined) dbUpdates.responsible_name = updates.responsibleName;
       if (updates.company !== undefined) dbUpdates.company = updates.company;
       if (updates.area !== undefined) dbUpdates.area = updates.area;
       if (updates.department !== undefined) dbUpdates.department = updates.department;
       if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
       if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
+      if (updates.recurringType !== undefined) dbUpdates.recurring_type = updates.recurringType;
       if (updates.status !== undefined) dbUpdates.status = updates.status;
       if (updates.completedAt !== undefined) dbUpdates.completed_at = updates.completedAt;
       if (updates.completedByEmail !== undefined) dbUpdates.completed_by_email = updates.completedByEmail;
@@ -310,13 +346,63 @@ export default function App() {
 
   const toggleTaskStatus = async (taskId) => {
     const task = tasks.find(t => t.id === taskId);
+    
+    // Preveri ali sme uporabnik zaključiti
+    const canComplete = isAdmin || task.responsible_email === currentUser.email;
+    
+    if (task.status === 'pending' && !canComplete) {
+      const respName = task.responsible_name || 'odgovorna oseba';
+      alert(`To nalogo lahko zaključi samo ${respName} ali admin (Aleš/Claudia).`);
+      return;
+    }
+    
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+    
     await updateTask(taskId, {
       status: newStatus,
       completedAt: newStatus === 'completed' ? new Date().toISOString() : null,
       completedByEmail: newStatus === 'completed' ? currentUser.email : null,
       completedByName: newStatus === 'completed' ? currentUser.name : null
     });
+
+    // Če je ponavljajoča in jo zdaj zaključiš → ustvari novo kopijo
+    if (newStatus === 'completed' && task.recurring_type && task.recurring_type !== 'none') {
+      try {
+        // Izračunaj nov rok
+        let newDueDate = null;
+        if (task.due_date) {
+          newDueDate = new Date(task.due_date);
+          if (task.recurring_type === 'daily') newDueDate.setDate(newDueDate.getDate() + 1);
+          if (task.recurring_type === 'weekly') newDueDate.setDate(newDueDate.getDate() + 7);
+          if (task.recurring_type === 'monthly') newDueDate.setMonth(newDueDate.getMonth() + 1);
+          newDueDate = newDueDate.toISOString();
+        }
+
+        await supabase
+          .from('tasks')
+          .insert({
+            title: task.title,
+            description: task.description,
+            assigned_to_emails: task.assigned_to_emails,
+            responsible_email: task.responsible_email,
+            responsible_name: task.responsible_name,
+            company: task.company,
+            area: task.area,
+            department: task.department,
+            priority: task.priority,
+            due_date: newDueDate,
+            status: 'pending',
+            recurring_type: task.recurring_type,
+            recurring_parent_id: task.recurring_parent_id || task.id,
+            created_by_email: task.created_by_email,
+            created_by_name: task.created_by_name
+          });
+        
+        loadTasks();
+      } catch (e) {
+        console.error('Napaka pri ustvarjanju ponovne naloge:', e);
+      }
+    }
   };
 
   const deleteTask = async (taskId) => {
@@ -403,9 +489,12 @@ export default function App() {
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                placeholder="Vnesite geslo..."
+                placeholder="Vaše ime + 2026 (npr. Claudia2026)"
                 className="w-full px-4 py-3 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-200 focus:border-as-red-400"
               />
+              <p className="text-xs text-as-gray-400 mt-1.5">
+                💡 Geslo: vaše ime + 2026 (brez šumnikov). Primer: <strong>Claudia2026</strong>, <strong>Zan2026</strong>
+              </p>
               {authError && (
                 <p className="text-as-red-600 text-sm mt-2 flex items-center gap-1">
                   <AlertCircle className="w-4 h-4" />{authError}
@@ -876,10 +965,26 @@ function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, on
             )}
 
             <div className="flex items-center gap-3 mt-2 text-xs text-as-gray-400 flex-wrap">
-              <span className="flex items-center gap-1">
-                {assignedNames.length > 1 ? <Users className="w-3 h-3" /> : <User className="w-3 h-3" />}
-                <span className="font-medium">{assignedNames.join(', ')}</span>
-              </span>
+              {task.responsible_name && (
+                <span className="flex items-center gap-1 font-semibold" style={{color: '#C8102E'}}>
+                  <User className="w-3 h-3" />
+                  Odgovoren: {task.responsible_name}
+                </span>
+              )}
+              {assignedNames.length > 1 && (
+                <span className="flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  <span className="font-medium">+ {assignedNames.length - 1} drugi</span>
+                </span>
+              )}
+              {task.recurring_type && task.recurring_type !== 'none' && (
+                <span className="flex items-center gap-1 text-purple-600 font-semibold">
+                  <Calendar className="w-3 h-3" />
+                  {task.recurring_type === 'daily' && 'Dnevno'}
+                  {task.recurring_type === 'weekly' && 'Tedensko'}
+                  {task.recurring_type === 'monthly' && 'Mesečno'}
+                </span>
+              )}
               {task.due_date && (
                 <span className={`flex items-center gap-1 ${isOverdue ? 'text-as-red-600 font-semibold' : ''}`}>
                   <Calendar className="w-3 h-3" />
@@ -1034,19 +1139,62 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
   const [assignedToEmails, setAssignedToEmails] = useState(initialAssignedEmails);
+  const [responsibleEmail, setResponsibleEmail] = useState(task?.responsible_email || initialAssignedEmails[0] || '');
   const [company, setCompany] = useState(task?.company || '');
   const [area, setArea] = useState(task?.area || '');
   const [priority, setPriority] = useState(task?.priority || 'medium');
   const [dueDate, setDueDate] = useState(task?.due_date ? task.due_date.split('T')[0] : '');
+  const [recurringType, setRecurringType] = useState(task?.recurring_type || 'none');
+  const [pendingFiles, setPendingFiles] = useState([]); // priloge ob ustvarjanju (še niso v bazi)
 
   const toggleAssignee = (email) => {
     if (assignedToEmails.includes(email)) {
       if (assignedToEmails.length > 1) {
-        setAssignedToEmails(assignedToEmails.filter(e => e !== email));
+        const newList = assignedToEmails.filter(e => e !== email);
+        setAssignedToEmails(newList);
+        // Če je odgovorna oseba odstranjena, izberi prvo iz seznama
+        if (responsibleEmail === email) {
+          setResponsibleEmail(newList[0]);
+        }
       }
     } else {
       setAssignedToEmails([...assignedToEmails, email]);
     }
+  };
+
+  const selectAll = () => {
+    const allEmails = employees.map(e => e.email);
+    setAssignedToEmails(allEmails);
+  };
+
+  const deselectAll = () => {
+    // Ohrani vsaj enega - trenutnega uporabnika
+    setAssignedToEmails([currentUser.email]);
+    setResponsibleEmail(currentUser.email);
+  };
+
+  const allSelected = assignedToEmails.length === employees.length;
+
+  const handlePendingFilesAdd = (event) => {
+    const files = Array.from(event.target.files);
+    const validFiles = files.filter(file => {
+      if (file.size > 50 * 1024 * 1024) {
+        alert(`Datoteka "${file.name}" je prevelika. Maksimalno 50MB.`);
+        return false;
+      }
+      return true;
+    });
+    setPendingFiles([...pendingFiles, ...validFiles]);
+  };
+
+  const removePendingFile = (idx) => {
+    setPendingFiles(pendingFiles.filter((_, i) => i !== idx));
+  };
+
+  const formatBytes = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
   };
 
   const handleSubmit = () => {
@@ -1058,18 +1206,27 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
       alert('Prosim izberite vsaj eno osebo, kateri je naloga dodeljena');
       return;
     }
+    if (!responsibleEmail || !assignedToEmails.includes(responsibleEmail)) {
+      alert('Prosim izberite odgovorno osebo (mora biti med dodeljenimi)');
+      return;
+    }
     
+    const responsibleUser = employees.find(e => e.email === responsibleEmail);
     const firstAssignee = employees.find(e => e.email === assignedToEmails[0]);
     
     onSave({
       title: title.trim(),
       description: description.trim(),
       assignedToEmails,
+      responsibleEmail,
+      responsibleName: responsibleUser?.name,
       department: firstAssignee?.department,
       company: company.trim(),
       area: area.trim(),
       priority,
-      dueDate: dueDate ? new Date(dueDate).toISOString() : null
+      dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+      recurringType,
+      pendingFiles // bodo naložene v App komponenti
     });
   };
 
@@ -1113,16 +1270,26 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
             />
           </div>
 
+          {/* MULTI-SELECT prejemnikov */}
           <div>
             <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
               <span className="flex items-center gap-1.5">
                 <Users className="w-4 h-4" />
                 Dodeljeno (komu) <span className="text-as-red-500">*</span>
-                {assignedToEmails.length > 1 && (
-                  <span className="ml-auto text-xs font-normal text-as-gray-400">
-                    Izbrano: {assignedToEmails.length}
-                  </span>
-                )}
+                <span className="ml-auto flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={allSelected ? deselectAll : selectAll}
+                    className="text-xs font-semibold text-as-red-600 hover:text-as-red-700 transition"
+                  >
+                    {allSelected ? 'Odznači vse' : 'Označi vse'}
+                  </button>
+                  {assignedToEmails.length > 1 && (
+                    <span className="text-xs font-normal text-as-gray-400">
+                      Izbrano: {assignedToEmails.length}
+                    </span>
+                  )}
+                </span>
               </span>
             </label>
             <div className="border border-as-gray-200 rounded-lg max-h-56 overflow-y-auto bg-white">
@@ -1149,10 +1316,38 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
               })}
             </div>
             <p className="text-xs text-as-gray-400 mt-1.5">
-              Lahko izberete več oseb hkrati (vsi bodo videli nalogo).
+              Vsi izbrani bodo videli nalogo in lahko dodajajo komentarje.
             </p>
           </div>
 
+          {/* ODGOVORNA OSEBA */}
+          <div>
+            <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
+              <span className="flex items-center gap-1.5">
+                <User className="w-4 h-4" style={{color: '#C8102E'}} />
+                Odgovorna oseba <span className="text-as-red-500">*</span>
+              </span>
+            </label>
+            <select
+              value={responsibleEmail}
+              onChange={(e) => setResponsibleEmail(e.target.value)}
+              className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 bg-white"
+            >
+              {assignedToEmails.map(email => {
+                const emp = employees.find(e => e.email === email);
+                return emp ? (
+                  <option key={email} value={email}>
+                    {emp.name} ({emp.department})
+                  </option>
+                ) : null;
+              })}
+            </select>
+            <p className="text-xs text-as-gray-400 mt-1.5">
+              Samo odgovorna oseba (ali admin) lahko označi nalogo kot opravljeno.
+            </p>
+          </div>
+
+          {/* PODJETJE in PODROČJE */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
@@ -1221,6 +1416,80 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
               />
             </div>
           </div>
+
+          {/* PONAVLJANJE */}
+          <div>
+            <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
+              <span className="flex items-center gap-1.5">
+                <Calendar className="w-4 h-4" />
+                Ponavljanje
+              </span>
+            </label>
+            <select
+              value={recurringType}
+              onChange={(e) => setRecurringType(e.target.value)}
+              className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 bg-white"
+            >
+              <option value="none">Brez ponavljanja (enkratna naloga)</option>
+              <option value="daily">Dnevno (vsak dan)</option>
+              <option value="weekly">Tedensko (vsak teden)</option>
+              <option value="monthly">Mesečno (vsak mesec)</option>
+            </select>
+            {recurringType !== 'none' && (
+              <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                Naloga se bo avtomatsko ponovila po opraviti. {recurringType === 'daily' && 'Nova kopija se bo ustvarila vsak dan.'}
+                {recurringType === 'weekly' && 'Nova kopija se bo ustvarila vsak teden.'}
+                {recurringType === 'monthly' && 'Nova kopija se bo ustvarila vsak mesec.'}
+              </p>
+            )}
+          </div>
+
+          {/* PRILOGE OB USTVARJANJU - samo za nove naloge */}
+          {!task && (
+            <div>
+              <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
+                <span className="flex items-center gap-1.5">
+                  <Paperclip className="w-4 h-4" />
+                  Priponke (neobvezno)
+                </span>
+              </label>
+              <label className="flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-as-gray-300 rounded-lg cursor-pointer hover:border-as-red-400 hover:bg-as-red-50 transition">
+                <Plus className="w-4 h-4 text-as-gray-400" />
+                <span className="text-sm text-as-gray-500 font-medium">Dodaj datoteke</span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handlePendingFilesAdd}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.txt"
+                />
+              </label>
+              {pendingFiles.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  {pendingFiles.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-2 bg-as-gray-50 rounded-lg">
+                      <Paperclip className="w-4 h-4 text-as-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-as-gray-700 truncate">{file.name}</div>
+                        <div className="text-xs text-as-gray-400">{formatBytes(file.size)}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePendingFile(idx)}
+                        className="p-1 hover:bg-white rounded text-as-gray-400 hover:text-as-red-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-as-gray-400 mt-1.5">
+                PDF, Word, Excel, slike (max 50MB na datoteko). Več priponk lahko dodaš tudi pozneje.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-as-gray-200 px-6 py-4 flex items-center justify-end gap-2">
