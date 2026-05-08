@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck } from 'lucide-react';
 import { supabase } from './supabase.js';
 import Reports from './Reports.jsx';
+import { syncTaskWebhook } from './webhooks.js';
 import DailyReports from './DailyReports.jsx';
 import { getTodayQuote } from './quotes.js';
 
@@ -282,6 +283,16 @@ export default function App() {
         .single();
 
       if (error) throw error;
+      // Pošlji v n8n: ustvari Outlook event + email
+      if (insertedTask && insertedTask.due_date) {
+        const result = await syncTaskWebhook('create', insertedTask, EMPLOYEES, currentUser.name);
+        if (result && result.outlook_event_id) {
+          await supabase
+            .from('tasks')
+            .update({ outlook_event_id: result.outlook_event_id })
+            .eq('id', insertedTask.id);
+        }
+      }
       
       // Naloži priponke, če so
       if (taskData.pendingFiles && taskData.pendingFiles.length > 0 && insertedTask) {
@@ -346,6 +357,12 @@ export default function App() {
         .eq('id', taskId);
 
       if (error) throw error;
+      // Pošlji v n8n: posodobi Outlook event + email
+      const updatedTask = tasks.find(t => t.id === taskId);
+      if (updatedTask && updatedTask.due_date && updatedTask.outlook_event_id) {
+        const merged = { ...updatedTask, ...dbUpdates };
+        await syncTaskWebhook('update', merged, EMPLOYEES, currentUser.name);
+      }
       
       setEditingTask(null);
       loadTasks();
@@ -425,6 +442,10 @@ export default function App() {
       if (task?.attachments?.length > 0) {
         const paths = task.attachments.map(a => a.storage_path);
         await supabase.storage.from('task-attachments').remove(paths);
+      }
+      // Pošlji v n8n: izbriši Outlook event
+      if (task && task.outlook_event_id) {
+        await syncTaskWebhook('delete', task, EMPLOYEES, currentUser.name);
       }
       
       // Brišemo nalogo (komentarji in priponke se zbrišejo avtomatsko zaradi CASCADE)
