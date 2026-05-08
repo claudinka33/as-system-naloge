@@ -1,7 +1,5 @@
 // webhooks.js — n8n integracija za sinhronizacijo nalog z Outlook koledarji in emailom
-
 const N8N_WEBHOOK_URL = 'https://claudinka33.app.n8n.cloud/webhook/task-sync';
-
 /**
  * Pošlje webhook v n8n.
  * Workflow v n8n potem: 
@@ -24,19 +22,16 @@ export async function syncTaskWebhook(action, task, employees, createdByName) {
       console.log('[webhook] Naloga nima dodeljenih, preskočim sinhronizacijo.');
       return null;
     }
-
     // Za update/delete potrebujemo outlook_event_id
     if ((action === 'update' || action === 'delete') && !task.outlook_event_id) {
       console.log('[webhook] Naloga nima outlook_event_id, preskočim ' + action);
       return null;
     }
-
     const results = [];
     
     for (const email of assignedEmails) {
       const employee = employees.find(e => e.email === email);
       const assignedName = employee ? employee.name : email;
-
       const payload = {
         action,
         task: {
@@ -46,27 +41,24 @@ export async function syncTaskWebhook(action, task, employees, createdByName) {
           due_date: task.due_date,
           priority: task.priority,
           assigned_by_name: createdByName || task.created_by_name || 'AS system',
+          add_to_calendar: task.add_to_calendar || false,
         },
         assigned_to_email: email,
         assigned_to_name: assignedName,
         outlook_event_id: task.outlook_event_id || null,
       };
-
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-
       if (!response.ok) {
         console.error('[webhook] napaka pri', action, 'za', email, ':', response.status);
         continue;
       }
-
       const data = await response.json();
       results.push({ email, ...data });
     }
-
     // Vrni prvi outlook_event_id (za primere ko je 1 zaposleni)
     return results[0] || null;
   } catch (error) {
