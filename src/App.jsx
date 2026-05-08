@@ -5,6 +5,8 @@ import Reports from './Reports.jsx';
 import { syncTaskWebhook } from './webhooks.js';
 import DailyReports from './DailyReports.jsx';
 import { getTodayQuote } from './quotes.js';
+import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
+import { Factory } from 'lucide-react';
 
 // E-maili z dostopom do VSEH nalog (direktor + marketing + računovodstvo)
 const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si', 'sara.jagodic@as-system.si'];
@@ -700,6 +702,16 @@ export default function App() {
                   <BarChart3 className="w-4 h-4" />
                   <span className="hidden sm:inline">Poročila</span>
                 </button>
+                {canAccessProduction(currentUser?.email) && (
+                  <button
+                    onClick={() => setMainSection('production')}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'production' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    style={mainSection === 'production' ? {backgroundColor: '#C8102E'} : {}}
+                  >
+                    <Factory className="w-4 h-4" />
+                    <span className="hidden sm:inline">Proizvodnja</span>
+                  </button>
+                )}
               </div>
 
               {/* Stikalo Seznam / Koledar - SAMO ZA NALOGE */}
@@ -777,6 +789,8 @@ export default function App() {
           <Reports currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'daily' ? (
           <DailyReports currentUser={currentUser} employees={EMPLOYEES} />
+        ) : mainSection === 'production' ? (
+          <ProductionTab currentUser={currentUser} />
         ) : (
           <>
         {/* Misel dneva */}
