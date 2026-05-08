@@ -276,6 +276,7 @@ export default function App() {
           due_date: taskData.dueDate,
           status: 'pending',
           recurring_type: taskData.recurringType || 'none',
+          add_to_calendar: taskData.addToCalendar || false,
           created_by_email: currentUser.email,
           created_by_name: currentUser.name
         })
@@ -346,6 +347,7 @@ export default function App() {
       if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
       if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
       if (updates.recurringType !== undefined) dbUpdates.recurring_type = updates.recurringType;
+      if (updates.addToCalendar !== undefined) dbUpdates.add_to_calendar = updates.addToCalendar;
       if (updates.status !== undefined) dbUpdates.status = updates.status;
       if (updates.completedAt !== undefined) dbUpdates.completed_at = updates.completedAt;
       if (updates.completedByEmail !== undefined) dbUpdates.completed_by_email = updates.completedByEmail;
@@ -1215,6 +1217,7 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
   const [priority, setPriority] = useState(task?.priority || 'medium');
   const [dueDate, setDueDate] = useState(task?.due_date ? task.due_date.split('T')[0] : '');
   const [recurringType, setRecurringType] = useState(task?.recurring_type || 'none');
+  const [addToCalendar, setAddToCalendar] = useState(task?.add_to_calendar || false);
   const [pendingFiles, setPendingFiles] = useState([]); // priloge ob ustvarjanju (še niso v bazi)
 
   const toggleAssignee = (email) => {
@@ -1296,6 +1299,7 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
       priority,
       dueDate: dueDate ? new Date(dueDate).toISOString() : null,
       recurringType,
+      addToCalendar,
       pendingFiles // bodo naložene v App komponenti
     });
   };
@@ -1510,6 +1514,28 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
                 {recurringType === 'monthly' && 'Nova kopija se bo ustvarila vsak mesec.'}
               </p>
             )}
+          </div>
+
+          {/* OUTLOOK KOLEDAR */}
+          <div>
+            <label className="flex items-start gap-3 p-3 border border-as-gray-200 rounded-lg cursor-pointer hover:border-as-red-300 hover:bg-as-red-50/30 transition">
+              <input
+                type="checkbox"
+                checked={addToCalendar}
+                onChange={(e) => setAddToCalendar(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-as-gray-300 cursor-pointer"
+                style={{accentColor: '#C8102E'}}
+              />
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-as-gray-700 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4" />
+                  Dodaj v Outlook koledar
+                </div>
+                <p className="text-xs text-as-gray-400 mt-0.5">
+                  Brez tega gre samo email opomnik. Označi, če rabiš nalogo tudi v koledarju.
+                </p>
+              </div>
+            </label>
           </div>
 
           {/* PRILOGE OB USTVARJANJU - samo za nove naloge */}
