@@ -10,8 +10,23 @@ export const REPORT_TEMPLATES = {
     color: '#0E7490', // teal-700
     bgColor: '#CFFAFE', // cyan-100
     fields: [
-      { key: 'completed_orders', label: 'Število izvedenih nalogov', type: 'number', placeholder: 'npr. 25' },
-      { key: 'open_orders', label: 'Število odprtih nalogov', type: 'number', placeholder: 'npr. 8' },
+      // SKUPINA: Izvedeni nalogi
+      { key: 'completed_group', label: 'Število izvedenih nalogov (KOS)', type: 'group_header' },
+      { key: 'completed_vijaki', label: 'Vijaki', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
+      { key: 'completed_pini', label: 'PINI', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
+      { key: 'completed_sidra', label: 'Sidra', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
+      { key: 'completed_struzena', label: 'Stružena sidra', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
+      { key: 'completed_ostalo', label: 'Ostalo', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
+      
+      // SKUPINA: Odprti nalogi
+      { key: 'open_group', label: 'Število odprtih nalogov (KOS)', type: 'group_header' },
+      { key: 'open_vijaki', label: 'Vijaki', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
+      { key: 'open_pini', label: 'PINI', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
+      { key: 'open_sidra', label: 'Sidra', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
+      { key: 'open_struzena', label: 'Stružena sidra', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
+      { key: 'open_ostalo', label: 'Ostalo', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
+      
+      // Tekstovna polja
       { key: 'delays', label: 'Zamude (zakaj?)', type: 'textarea', placeholder: 'Opišite vzroke zamud, če so se pojavile...' },
       { key: 'breakdowns', label: 'Okvare (kaj, koliko, zakaj)', type: 'textarea', placeholder: 'Opišite okvare strojev, vzroke...' },
       { key: 'spare_parts', label: 'Poraba rezervnih delov', type: 'textarea', placeholder: 'Kateri rezervni deli so bili porabljeni...' },
@@ -106,16 +121,50 @@ export const REPORT_TEMPLATES = {
       { key: 'other', label: 'Drugo (dopusti, prazniki, konflikti, opombe)', type: 'textarea', placeholder: 'Vse ostalo, kar je vredno omeniti...' },
     ]
   },
+
+  racunovodstvo: {
+    name: 'Računovodstvo',
+    icon: '💰',
+    color: '#854D0E', // yellow-800
+    bgColor: '#FEF3C7', // yellow-100
+    fields: [
+      { key: 'invoices_issued', label: 'Število izstavljenih računov + skupna vrednost', type: 'textarea', placeholder: 'Število, skupna vrednost, večji računi...' },
+      { key: 'payments_received', label: 'Prejeta plačila + skupna vrednost', type: 'textarea', placeholder: 'Število plačil, skupna vrednost, večja plačila...' },
+      { key: 'overdue', label: 'Zamude pri plačilih (zapadli računi)', type: 'textarea', placeholder: 'Zapadli računi, kdo dolguje, koliko, koliko časa...' },
+      { key: 'collection', label: 'Stik z neplačniki / izterjava', type: 'textarea', placeholder: 'Opomini, kontakti, dogovori za plačilo...' },
+      { key: 'tax_matters', label: 'Davčne zadeve (DDV, akontacije, posebnosti)', type: 'textarea', placeholder: 'DDV poročanje, akontacije, posebne davčne zadeve...' },
+      { key: 'issues', label: 'Računovodski problemi / opozorila', type: 'textarea', placeholder: 'Težave, nepravilnosti, opozorila za vodstvo...' },
+      { key: 'other', label: 'Drugo (poročila, analize, opombe)', type: 'textarea', placeholder: 'Pripravljene analize, mesečna poročila, drugo...' },
+    ]
+  },
+
+  marketing: {
+    name: 'Marketing',
+    icon: '📢',
+    color: '#9D174D', // pink-800
+    bgColor: '#FCE7F3', // pink-100
+    fields: [
+      { key: 'social_media', label: 'Družbena omrežja (objave, doseg, sledilci)', type: 'textarea', placeholder: 'Facebook, Instagram, LinkedIn — število objav, doseg, novi sledilci...' },
+      { key: 'website', label: 'Spletna stran (obiski, analitika)', type: 'textarea', placeholder: 'Število obiskov, najbolj obiskane strani, vir prometa...' },
+      { key: 'email_marketing', label: 'Email marketing / newsletter', type: 'textarea', placeholder: 'Poslane kampanje, odprtja, kliki, novi naročniki...' },
+      { key: 'events', label: 'Sejmi / dogodki / oglaševanje', type: 'textarea', placeholder: 'Načrtovani in izvedeni dogodki, oglasne kampanje...' },
+      { key: 'content_creation', label: 'Sodelovanje z grafiko / video / fotografijo', type: 'textarea', placeholder: 'Pripravljeni materiali, sodelovanje z izvajalci...' },
+      { key: 'customer_communication', label: 'Komunikacija s strankami za vsebine', type: 'textarea', placeholder: 'Pridobivanje izjav, primerov uporabe, zgodb strank...' },
+      { key: 'other', label: 'Drugo (analize, predlogi, opombe)', type: 'textarea', placeholder: 'Marketing analize, predlogi za izboljšave...' },
+    ]
+  },
 };
 
 // Mapiranje uporabnikov na oddelke (kdo lahko piše katero poročilo)
+// 'admin' = vidi VSA poročila + lahko piše na svoj domači oddelek
+// Array = lahko piše samo te oddelke
 export const USER_DEPARTMENT_MAP = {
-  'ales.seidl@as-system.si': 'admin', // Vidi VSA poročila
-  'claudia.seidl@as-system.si': 'admin', // Vidi VSA poročila
+  'ales.seidl@as-system.si': 'admin', // Direktor - vidi VSE
+  'claudia.seidl@as-system.si': 'admin', // Marketing - vidi VSE + piše marketing
+  'sara.jagodic@as-system.si': 'admin', // Računovodstvo - vidi VSE + piše računovodstvo
   'alen.drofenik@as-system.si': ['nabava'],
   'tjasa.mihevc@as-system.si': ['prodaja'],
   'matija.marguc@as-system.si': ['prodaja'],
-  'sara.jagodic@as-system.si': ['prodaja'],
   'cvetka.seidl@as-system.si': ['kadrovska'],
   'milena.jancic@as-system.si': ['montaza'],
   'gregor.koritnik@as-system.si': ['tehnolog'],
@@ -123,6 +172,13 @@ export const USER_DEPARTMENT_MAP = {
   'kakovost@as-system.si': ['kakovost'],
   'zan.seidl@as-system.si': ['prodaja'],
   'feliks.zekar@as-system.si': [], // Skladišče - nima poročila zaenkrat
+};
+
+// Domači oddelek za admin uporabnike (kjer pišejo svoja poročila)
+export const ADMIN_HOME_DEPARTMENT = {
+  'ales.seidl@as-system.si': null, // Direktor ne piše svojega poročila
+  'claudia.seidl@as-system.si': 'marketing',
+  'sara.jagodic@as-system.si': 'racunovodstvo',
 };
 
 // Kateri oddelek lahko piše uporabnik

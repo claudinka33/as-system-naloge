@@ -7,7 +7,8 @@ import {
 import { supabase } from './supabase.js';
 import { 
   REPORT_TEMPLATES, 
-  USER_DEPARTMENT_MAP, 
+  USER_DEPARTMENT_MAP,
+  ADMIN_HOME_DEPARTMENT,
   getUserDepartments, 
   isReportsAdmin,
   getCurrentWeekInfo,
@@ -146,12 +147,22 @@ export default function Reports({ currentUser, employees }) {
 
   // Oseba, ki bi morala napisati poročilo za določen oddelek
   const getResponsibleForDepartment = (deptKey) => {
-    const responsibleEmails = Object.entries(USER_DEPARTMENT_MAP)
-      .filter(([email, depts]) => {
-        if (depts === 'admin') return false;
-        return Array.isArray(depts) && depts.includes(deptKey);
-      })
-      .map(([email]) => email);
+    const responsibleEmails = [];
+    
+    // 1. Najdi vse, ki imajo ta oddelek v USER_DEPARTMENT_MAP
+    Object.entries(USER_DEPARTMENT_MAP).forEach(([email, depts]) => {
+      if (depts === 'admin') return; // Admin obravnavamo posebej
+      if (Array.isArray(depts) && depts.includes(deptKey)) {
+        responsibleEmails.push(email);
+      }
+    });
+    
+    // 2. Dodaj admin uporabnike, katerih HOME_DEPARTMENT je ta oddelek
+    Object.entries(ADMIN_HOME_DEPARTMENT).forEach(([email, homeDept]) => {
+      if (homeDept === deptKey && !responsibleEmails.includes(email)) {
+        responsibleEmails.push(email);
+      }
+    });
     
     return responsibleEmails.map(email => {
       const emp = employees.find(e => e.email === email);
@@ -612,28 +623,67 @@ function ReportEditModal({ department, existingReport, weekInfo, currentUser, on
             💡 Vsa polja so neobvezna. Lahko izpolnite samo tisto, kar je relevantno za ta teden.
           </p>
 
-          {template.fields.map(field => (
-            <div key={field.key}>
-              <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
-                {field.label}
-              </label>
-              {field.type === 'textarea' ? (
-                <textarea
-                  value={content[field.key] || ''}
-                  onChange={(e) => updateField(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400 resize-none"
-                />
-              ) : field.type === 'number' ? (
-                <input
-                  type="number"
-                  value={content[field.key] || ''}
-                  onChange={(e) => updateField(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400"
-                />
-              ) : (
+          {template.fields.map(field => {
+            // Skupinski header (npr. "Število izvedenih nalogov (KOS)")
+            if (field.type === 'group_header') {
+              return (
+                <div key={field.key} className="pt-2">
+                  <h3 className="text-sm font-bold uppercase tracking-wider pb-2 border-b-2" style={{ borderColor: template.color, color: template.color }}>
+                    {field.label}
+                  </h3>
+                </div>
+              );
+            }
+
+            // Številska polja (z opcijsko enoto)
+            if (field.type === 'number') {
+              return (
+                <div key={field.key} className={field.group ? 'pl-4' : ''}>
+                  <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
+                    {field.label}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={content[field.key] || ''}
+                      onChange={(e) => updateField(field.key, e.target.value)}
+                      placeholder={field.placeholder}
+                      className="w-full px-3 py-2 pr-12 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400"
+                    />
+                    {field.unit && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-as-gray-300 font-medium pointer-events-none">
+                        {field.unit}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            // Tekstovna polja (textarea)
+            if (field.type === 'textarea') {
+              return (
+                <div key={field.key}>
+                  <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
+                    {field.label}
+                  </label>
+                  <textarea
+                    value={content[field.key] || ''}
+                    onChange={(e) => updateField(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400 resize-none"
+                  />
+                </div>
+              );
+            }
+
+            // Privzeto: text
+            return (
+              <div key={field.key}>
+                <label className="block text-sm font-semibold text-as-gray-600 mb-1.5">
+                  {field.label}
+                </label>
                 <input
                   type="text"
                   value={content[field.key] || ''}
@@ -641,9 +691,9 @@ function ReportEditModal({ department, existingReport, weekInfo, currentUser, on
                   placeholder={field.placeholder}
                   className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400"
                 />
-              )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-as-gray-200 px-6 py-4 flex items-center justify-between gap-2">
@@ -728,16 +778,36 @@ function ReportViewModal({ report, onClose, onShowHistory }) {
           </div>
 
           {template.fields.map(field => {
+            // Skupinski header
+            if (field.type === 'group_header') {
+              // Preveri, ali so v tej skupini sploh kakšne vrednosti
+              const groupKey = field.key.replace('_group', '');
+              const hasValuesInGroup = template.fields.some(f => 
+                f.group === groupKey && report.content[f.key] && report.content[f.key].toString().trim() !== ''
+              );
+              if (!hasValuesInGroup) return null;
+              
+              return (
+                <div key={field.key} className="pt-2">
+                  <h3 className="text-sm font-bold uppercase tracking-wider pb-2 border-b-2" style={{ borderColor: template.color, color: template.color }}>
+                    {field.label}
+                  </h3>
+                </div>
+              );
+            }
+
             const value = report.content[field.key];
-            if (!value || value.trim?.() === '') return null;
+            if (!value || value.toString().trim() === '') return null;
             
             return (
-              <div key={field.key} className="bg-as-gray-50 rounded-lg p-3">
+              <div key={field.key} className={`bg-as-gray-50 rounded-lg p-3 ${field.group ? 'ml-4' : ''}`}>
                 <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">
                   {field.label}
+                  {field.unit && <span className="ml-1 text-as-gray-300 font-normal">({field.unit})</span>}
                 </div>
                 <div className="text-sm text-as-gray-700 whitespace-pre-wrap">
                   {value}
+                  {field.unit && <span className="ml-1 text-as-gray-400 font-normal">{field.unit}</span>}
                 </div>
               </div>
             );

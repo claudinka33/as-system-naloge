@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3 } from 'lucide-react';
+import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck } from 'lucide-react';
 import { supabase } from './supabase.js';
 import Reports from './Reports.jsx';
+import DailyReports from './DailyReports.jsx';
+import { getTodayQuote } from './quotes.js';
 
-// E-maili z dostopom do VSEH nalog (direktor + marketing)
-const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si'];
+// E-maili z dostopom do VSEH nalog (direktor + marketing + računovodstvo)
+const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si', 'sara.jagodic@as-system.si'];
 
 // Pravi zaposleni AS system d.o.o. - vsak ima svoje unikatno geslo
 const EMPLOYEES = [
@@ -24,7 +26,7 @@ const EMPLOYEES = [
 ];
 
 const DEPARTMENTS = [...new Set(EMPLOYEES.map(e => e.department))];
-const AREA_SUGGESTIONS = ['Prodaja', 'Nabava', 'Marketing', 'Računovodstvo', 'Kadrovska', 'Proizvodnja', 'Skladišče', 'Tehnolog', 'Kakovost', 'Montaža'];
+const AREA_SUGGESTIONS = ['Prodaja', 'Nabava', 'Montaža', 'Proizvodnja', 'Skladišče', 'Marketing', 'Kakovost', 'Tehnolog', 'Kadrovska', 'Računovodstvo', 'Komerciala'];
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -511,8 +513,8 @@ export default function App() {
               onClick={handleLogin} 
               className="w-full text-white font-semibold py-3 rounded-lg transition shadow-md hover:shadow-lg"
               style={{backgroundColor: '#C8102E'}}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#A50D26'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#C8102E'}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A50D26'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C8102E'}
             >
               Prijava
             </button>
@@ -649,7 +651,7 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* GLAVNO Stikalo Naloge / Poročila */}
+              {/* GLAVNO Stikalo Naloge / Dnevna opravila / Poročila */}
               <div className="bg-as-gray-100 rounded-lg p-1 flex border border-as-gray-200">
                 <button
                   onClick={() => setMainSection('tasks')}
@@ -658,6 +660,14 @@ export default function App() {
                 >
                   <ClipboardList className="w-4 h-4" />
                   <span className="hidden sm:inline">Naloge</span>
+                </button>
+                <button
+                  onClick={() => setMainSection('daily')}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'daily' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  style={mainSection === 'daily' ? {backgroundColor: '#C8102E'} : {}}
+                >
+                  <CalendarCheck className="w-4 h-4" />
+                  <span className="hidden sm:inline">Dnevna opravila</span>
                 </button>
                 <button
                   onClick={() => setMainSection('reports')}
@@ -688,7 +698,6 @@ export default function App() {
                   </button>
                 </div>
               )}
-
               {loading && (
                 <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-as-gray-400">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -728,11 +737,11 @@ export default function App() {
                 onClick={() => setShowNewTask(true)}
                 className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-semibold transition shadow-md hover:shadow-lg ${mainSection !== 'tasks' ? 'hidden' : ''}`}
                 style={{backgroundColor: '#C8102E'}}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#A50D26'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = '#C8102E'}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A50D26'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C8102E'}
               >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Nova naloga</span>
+                <Plus className="w-4 h-4 pointer-events-none" />
+                <span className="hidden sm:inline pointer-events-none">Nova naloga</span>
               </button>
             </div>
           </div>
@@ -740,11 +749,16 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        {/* GLAVNI POGOJ: Naloge ALI Poročila */}
+        {/* GLAVNI POGOJ: Naloge / Dnevna / Poročila */}
         {mainSection === 'reports' ? (
           <Reports currentUser={currentUser} employees={EMPLOYEES} />
+        ) : mainSection === 'daily' ? (
+          <DailyReports currentUser={currentUser} employees={EMPLOYEES} />
         ) : (
           <>
+        {/* Misel dneva */}
+        <QuoteOfTheDay />
+
         {/* Statistike (vedno vidne) */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <button
@@ -1407,19 +1421,16 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
                   Področje (neobvezno)
                 </span>
               </label>
-              <input
-                type="text"
+              <select
                 value={area}
                 onChange={(e) => setArea(e.target.value)}
-                placeholder="Npr. Prodaja, Nabava..."
-                list="area-suggestions"
-                className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400"
-              />
-              <datalist id="area-suggestions">
+                className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400 bg-white"
+              >
+                <option value="">— Izberi področje —</option>
                 {areaSuggestions.map(a => (
-                  <option key={a} value={a} />
+                  <option key={a} value={a}>{a}</option>
                 ))}
-              </datalist>
+              </select>
             </div>
           </div>
 
@@ -1890,6 +1901,68 @@ function CalendarView({ tasks, currentUser, isAdmin, isAssignedToMe, currentDate
           </span>
           <span className="text-as-gray-400">•</span>
           <span className="text-as-gray-500 italic">Klikni dan za pregled, nalogo za podrobnosti</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================
+// MISEL DNEVA - okvirček s citatom
+// =====================================
+function QuoteOfTheDay() {
+  const [dismissed, setDismissed] = React.useState(false);
+  const [quote, setQuote] = React.useState(getTodayQuote());
+
+  React.useEffect(() => {
+    // Preveri ali je uporabnik danes že zaprl misel
+    try {
+      const today = new Date().toDateString();
+      const dismissedDate = localStorage.getItem('as_quote_dismissed_date');
+      if (dismissedDate === today) {
+        setDismissed(true);
+      }
+    } catch (e) {}
+  }, []);
+
+  const handleDismiss = () => {
+    setDismissed(true);
+    try {
+      localStorage.setItem('as_quote_dismissed_date', new Date().toDateString());
+    } catch (e) {}
+  };
+
+  if (dismissed) return null;
+
+  return (
+    <div className="mb-4 bg-gradient-to-r from-as-red-50 to-amber-50 border border-as-red-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
+      <button
+        onClick={handleDismiss}
+        className="absolute top-2 right-2 p-1 hover:bg-white/50 rounded-full transition text-as-gray-400 hover:text-as-gray-600"
+        title="Skrij za danes"
+      >
+        <X className="w-4 h-4" />
+      </button>
+      
+      <div className="flex items-start gap-3 pr-6">
+        <div className="text-3xl flex-shrink-0">
+          {quote.emoji}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-xs font-bold uppercase tracking-wider text-as-gray-500">
+              Misel dneva
+            </span>
+          </div>
+          <p className="text-sm text-as-gray-700 italic leading-relaxed">
+            "{quote.text}"
+          </p>
+          {quote.author && (
+            <p className="text-xs text-as-gray-400 mt-1 font-medium">
+              — {quote.author}
+            </p>
+          )}
         </div>
       </div>
     </div>
