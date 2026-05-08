@@ -6,7 +6,8 @@ import { syncTaskWebhook } from './webhooks.js';
 import DailyReports from './DailyReports.jsx';
 import { getTodayQuote } from './quotes.js';
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
-import { Factory } from 'lucide-react';
+import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
+import { Factory, Wrench } from 'lucide-react';
 
 // E-maili z dostopom do VSEH nalog (direktor + marketing + računovodstvo)
 const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si', 'sara.jagodic@as-system.si'];
@@ -712,6 +713,16 @@ export default function App() {
                     <span className="hidden sm:inline">Proizvodnja</span>
                   </button>
                 )}
+                {canAccessAssembly(currentUser?.email) && (
+                  <button
+                    onClick={() => setMainSection('assembly')}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'assembly' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    style={mainSection === 'assembly' ? {backgroundColor: '#C8102E'} : {}}
+                  >
+                    <Wrench className="w-4 h-4" />
+                    <span className="hidden sm:inline">Montaža</span>
+                  </button>
+                )}
               </div>
 
               {/* Stikalo Seznam / Koledar - SAMO ZA NALOGE */}
@@ -791,6 +802,8 @@ export default function App() {
           <DailyReports currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'production' ? (
           <ProductionTab currentUser={currentUser} />
+        ) : mainSection === 'assembly' ? (
+          <AssemblyTab currentUser={currentUser} />
         ) : (
           <>
         {/* Misel dneva */}
