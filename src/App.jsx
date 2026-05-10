@@ -983,6 +983,16 @@ export default function App() {
             selectedCategoryFromHeader={racunovodstvoCategory}
             onCategoryHandled={() => setRacunovodstvoCategory(undefined)}
           />
+        ) : mainSection === 'nabava' ? (
+          <OddelekModule config={ODDELKI_CONFIG.nabava} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+        ) : mainSection === 'prodaja' ? (
+          <OddelekModule config={ODDELKI_CONFIG.prodaja} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+        ) : mainSection === 'tehnolog' ? (
+          <OddelekModule config={ODDELKI_CONFIG.tehnolog} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+        ) : mainSection === 'komerciala' ? (
+          <OddelekModule config={ODDELKI_CONFIG.komerciala} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+        ) : mainSection === 'kakovost' ? (
+          <OddelekModule config={ODDELKI_CONFIG.kakovost} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
         ) : mainSection === 'reports' ? (
           <Reports currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'daily' ? (
