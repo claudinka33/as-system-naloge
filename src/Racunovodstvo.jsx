@@ -1,10 +1,11 @@
 // =====================================
 // RAČUNOVODSTVO - Modul za Saro Jagodič
-// Vodenje stroškov, plač, kompenzacij, opominov, intrastat-a, DDV ...
-// Verzija 2: Excel izvoz, priponke, klepet, datumi dokumentacije, DDV
+// V3: Vnos / Dnevno / Mesečno (nadzorna plošča kot Proizvodnja)
+//     + Excel dialog z multi-select + datum filter
+//     + Dropdown kategorij iz App.jsx headerja
 // =====================================
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Plus, Trash2, Edit2, X, Wallet, FileText, Calendar,
@@ -13,7 +14,8 @@ import {
   TrendingDown, Bell, Award, Briefcase, Building2, Truck,
   RefreshCw, Megaphone, Settings, ShieldAlert, Flame, Recycle, Globe,
   User, Download, Paperclip, MessageSquare, Send, FileSpreadsheet,
-  FileImage, Calculator
+  FileImage, Calculator, BarChart3, Wallet as WalletIcon, TrendingUp,
+  ArrowUpRight, ArrowDownRight, CheckSquare, Square
 } from 'lucide-react';
 import { supabase } from './supabase.js';
 
@@ -187,16 +189,36 @@ function computeAutoStatus(entry) {
   return entry.status || 'open';
 }
 
-export default function Racunovodstvo({ currentUser, isAdmin, employees = [] }) {
+const formatEUR = (amt) => {
+  if (amt === null || amt === undefined || amt === '' || isNaN(amt)) return '0 €';
+  return new Intl.NumberFormat('sl-SI', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(amt);
+};
+
+const formatDateSL = (d) => {
+  if (!d) return '';
+  return new Date(d).toLocaleDateString('sl-SI');
+};
+
+export default function Racunovodstvo({ currentUser, isAdmin, employees = [], selectedCategoryFromHeader = null, onCategoryHandled = null }) {
   const [entries, setEntries] = useState([]);
   const [comments, setComments] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('entry');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  useEffect(() => {
+    if (selectedCategoryFromHeader !== null && selectedCategoryFromHeader !== undefined) {
+      setSelectedCategory(selectedCategoryFromHeader || null);
+      setView('entry');
+      if (onCategoryHandled) onCategoryHandled();
+    }
+  }, [selectedCategoryFromHeader]);
 
   useEffect(() => {
     loadAll();
@@ -335,10 +357,12 @@ export default function Racunovodstvo({ currentUser, isAdmin, employees = [] }) 
     } catch (e) { alert('Napaka pri brisanju priponke: ' + e.message); }
   }
 
-  function exportToExcel(categoryKey = null) {
-    const data = categoryKey ? entries.filter(e => e.category === categoryKey) : entries;
-    if (data.length === 0) { alert('Ni vnosov za izvoz.'); return; }
-    const rows = data.map(entry => {
+  function exportEntriesToExcel(selectedEntries, options = {}) {
+    if (!selectedEntries || selectedEntries.length === 0) {
+      alert('Ni vnosov za izvoz.');
+      return;
+    }
+    const rows = selectedEntries.map(entry => {
       const cat = RACUNOVODSTVO_KATEGORIJE[entry.category];
       const status = STATUSI.find(s => s.key === computeAutoStatus(entry)) || STATUSI[0];
       const entryComments = comments.filter(c => c.entry_id === entry.id);
@@ -365,49 +389,39 @@ export default function Racunovodstvo({ currentUser, isAdmin, employees = [] }) 
       };
     });
     const wb = XLSX.utils.book_new();
-    if (categoryKey) {
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const colWidths = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length, ...rows.map(r => String(r[k] || '').length)) + 2 }));
-      ws['!cols'] = colWidths;
-      const sheetName = (RACUNOVODSTVO_KATEGORIJE[categoryKey]?.name || categoryKey).substring(0, 31);
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    } else {
-      const allWs = XLSX.utils.json_to_sheet(rows);
-      const allCols = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length, ...rows.map(r => String(r[k] || '').length)) + 2 }));
-      allWs['!cols'] = allCols;
-      XLSX.utils.book_append_sheet(wb, allWs, 'Vse skupaj');
-      Object.entries(RACUNOVODSTVO_KATEGORIJE).forEach(([key, cat]) => {
-        const catRows = rows.filter(r => r['Kategorija'] === cat.name);
-        if (catRows.length === 0) return;
-        const ws = XLSX.utils.json_to_sheet(catRows);
-        const cols = Object.keys(catRows[0]).map(k => ({ wch: Math.max(k.length, ...catRows.map(r => String(r[k] || '').length)) + 2 }));
-        ws['!cols'] = cols;
-        XLSX.utils.book_append_sheet(wb, ws, cat.name.substring(0, 31));
-      });
-    }
+    const allWs = XLSX.utils.json_to_sheet(rows);
+    const allCols = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length, ...rows.map(r => String(r[k] ?? '').length)) + 2 }));
+    allWs['!cols'] = allCols;
+    XLSX.utils.book_append_sheet(wb, allWs, 'Izbrani');
+    Object.entries(RACUNOVODSTVO_KATEGORIJE).forEach(([key, cat]) => {
+      const catRows = rows.filter(r => r['Kategorija'] === cat.name);
+      if (catRows.length === 0) return;
+      const ws = XLSX.utils.json_to_sheet(catRows);
+      const cols = Object.keys(catRows[0]).map(k => ({ wch: Math.max(k.length, ...catRows.map(r => String(r[k] ?? '').length)) + 2 }));
+      ws['!cols'] = cols;
+      XLSX.utils.book_append_sheet(wb, ws, cat.name.substring(0, 31));
+    });
     const today = new Date().toISOString().split('T')[0];
-    const filename = categoryKey
-      ? `Racunovodstvo_${RACUNOVODSTVO_KATEGORIJE[categoryKey]?.name || categoryKey}_${today}.xlsx`
-      : `Racunovodstvo_Vse_${today}.xlsx`;
-    XLSX.writeFile(wb, filename.replace(/[^a-zA-Z0-9_.-]/g, '_'));
+    const baseName = options.filename || `Racunovodstvo_${today}`;
+    XLSX.writeFile(wb, baseName.replace(/[^a-zA-Z0-9_.-]/g, '_') + '.xlsx');
   }
 
-  const enrichedEntries = entries.map(e => ({
+  const enrichedEntries = useMemo(() => entries.map(e => ({
     ...e,
     _status: computeAutoStatus(e),
     _comments: comments.filter(c => c.entry_id === e.id),
     _attachments: attachments.filter(a => a.entry_id === e.id),
-  }));
+  })), [entries, comments, attachments]);
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: enrichedEntries.length,
     open: enrichedEntries.filter(e => e._status === 'open').length,
     in_progress: enrichedEntries.filter(e => e._status === 'in_progress').length,
     completed: enrichedEntries.filter(e => e._status === 'completed').length,
     overdue: enrichedEntries.filter(e => e._status === 'overdue').length,
-  };
+  }), [enrichedEntries]);
 
-  const filteredEntries = enrichedEntries.filter(e => {
+  const filteredEntries = useMemo(() => enrichedEntries.filter(e => {
     if (selectedCategory && e.category !== selectedCategory) return false;
     if (statusFilter !== 'all' && e._status !== statusFilter) return false;
     if (searchQuery) {
@@ -421,10 +435,8 @@ export default function Racunovodstvo({ currentUser, isAdmin, employees = [] }) 
       );
     }
     return true;
-  });
+  }), [enrichedEntries, selectedCategory, statusFilter, searchQuery]);
 
-  const countByCategory = (catKey) => enrichedEntries.filter(e => e.category === catKey).length;
-  const overdueByCategory = (catKey) => enrichedEntries.filter(e => e.category === catKey && e._status === 'overdue').length;
   const canEdit = isAdmin;
 
   if (!isAdmin) {
@@ -446,14 +458,21 @@ export default function Racunovodstvo({ currentUser, isAdmin, employees = [] }) 
               <Wallet className="w-6 h-6" style={{color: '#854D0E'}} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-as-gray-700">Računovodstvo</h1>
+              <h1 className="text-xl font-bold text-as-gray-700">
+                Računovodstvo
+                {selectedCategory && (
+                  <span className="ml-2 text-sm font-semibold" style={{color: RACUNOVODSTVO_KATEGORIJE[selectedCategory]?.color}}>
+                    › {RACUNOVODSTVO_KATEGORIJE[selectedCategory]?.name}
+                  </span>
+                )}
+              </h1>
               <p className="text-xs text-as-gray-500">Sproten pregled stroškov, plač, kompenzacij, opominov, DDV ...</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => exportToExcel(selectedCategory)} className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-2 font-semibold text-sm shadow-sm" title={selectedCategory ? `Izvozi samo "${RACUNOVODSTVO_KATEGORIJE[selectedCategory].name}"` : 'Izvozi vse vnose v Excel'}>
+            <button onClick={() => setShowExportDialog(true)} className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-2 font-semibold text-sm shadow-sm">
               <FileSpreadsheet className="w-4 h-4" />
-              <span className="hidden sm:inline">{selectedCategory ? 'Izvozi kategorijo' : 'Izvozi vse'}</span>
+              <span className="hidden sm:inline">Izvoz v Excel</span>
               <span className="sm:hidden">Excel</span>
             </button>
             <button onClick={() => setShowNewModal(true)} className="px-4 py-2 text-white rounded-lg flex items-center gap-2 font-semibold hover:shadow-md transition" style={{backgroundColor: '#C8102E'}}>
@@ -463,6 +482,66 @@ export default function Racunovodstvo({ currentUser, isAdmin, employees = [] }) 
         </div>
       </div>
 
+      <div className="flex gap-1 mb-4 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200 max-w-md">
+        <SubTab active={view === 'entry'} onClick={() => setView('entry')} icon={<Plus className="w-4 h-4" />} label="Vnos" />
+        <SubTab active={view === 'daily'} onClick={() => setView('daily')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
+        <SubTab active={view === 'monthly'} onClick={() => setView('monthly')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+      </div>
+
+      {view === 'entry' && (
+        <EntryView
+          enrichedEntries={enrichedEntries}
+          filteredEntries={filteredEntries}
+          stats={stats}
+          loading={loading}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
+          onEditEntry={(e) => setEditingEntry(e)}
+          onDeleteEntry={deleteEntry}
+          canEdit={canEdit}
+          onAddComment={addComment}
+          onUploadAttachment={uploadAttachment}
+          onDownloadAttachment={downloadAttachment}
+          onDeleteAttachment={deleteAttachment}
+          currentUser={currentUser}
+        />
+      )}
+
+      {view === 'daily' && (
+        <DashboardView mode="daily" enrichedEntries={enrichedEntries} comments={comments} attachments={attachments} onExport={(entries, opts) => exportEntriesToExcel(entries, opts)} onJumpToEntry={(entry) => { setSelectedCategory(entry.category); setView('entry'); }} />
+      )}
+
+      {view === 'monthly' && (
+        <DashboardView mode="monthly" enrichedEntries={enrichedEntries} comments={comments} attachments={attachments} onExport={(entries, opts) => exportEntriesToExcel(entries, opts)} onJumpToEntry={(entry) => { setSelectedCategory(entry.category); setView('entry'); }} />
+      )}
+
+      {(showNewModal || editingEntry) && (
+        <EntryModal entry={editingEntry} defaultCategory={selectedCategory} employees={employees} onSave={saveEntry} onClose={() => { setShowNewModal(false); setEditingEntry(null); }} />
+      )}
+
+      {showExportDialog && (
+        <ExportDialog entries={enrichedEntries} onExport={(selected, opts) => { exportEntriesToExcel(selected, opts); setShowExportDialog(false); }} onClose={() => setShowExportDialog(false)} />
+      )}
+    </div>
+  );
+}
+
+function SubTab({ active, onClick, icon, label }) {
+  return (
+    <button onClick={onClick} className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold rounded transition ${active ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`} style={active ? { backgroundColor: '#C8102E' } : {}}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function EntryView({ enrichedEntries, filteredEntries, stats, loading, searchQuery, setSearchQuery, statusFilter, setStatusFilter, selectedCategory, setSelectedCategory, onEditEntry, onDeleteEntry, canEdit, onAddComment, onUploadAttachment, onDownloadAttachment, onDeleteAttachment, currentUser }) {
+  return (
+    <>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         <button onClick={() => setStatusFilter('all')} className={`bg-white border rounded-xl p-3 text-left transition hover:shadow-md ${statusFilter === 'all' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}>
           <div className="text-2xl font-bold text-as-gray-700">{stats.total}</div>
@@ -477,52 +556,356 @@ export default function Racunovodstvo({ currentUser, isAdmin, employees = [] }) 
       </div>
 
       <div className="bg-white border border-as-gray-200 rounded-xl p-3 mb-3 shadow-sm flex items-center gap-2 flex-wrap">
+        {selectedCategory && (
+          <button onClick={() => setSelectedCategory(null)} className="px-3 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold flex items-center gap-1">
+            <X className="w-4 h-4" /> Vse kategorije
+          </button>
+        )}
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-as-gray-400" />
           <input type="text" placeholder="Išči po naslovu, opisu, partnerju, delavcu ..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
         </div>
       </div>
 
-      <CategoryPills selectedCategory={selectedCategory} onSelect={setSelectedCategory} countByCategory={countByCategory} overdueByCategory={overdueByCategory} />
-
       {!selectedCategory && !searchQuery && statusFilter === 'all' ? (
-        <KategorijeGrid countByCategory={countByCategory} overdueByCategory={overdueByCategory} onSelect={setSelectedCategory} />
+        <KategorijeGrid countByCategory={(k) => enrichedEntries.filter(e => e.category === k).length} overdueByCategory={(k) => enrichedEntries.filter(e => e.category === k && e._status === 'overdue').length} onSelect={setSelectedCategory} />
       ) : (
-        <EntriesList entries={filteredEntries} loading={loading} onEdit={(e) => setEditingEntry(e)} onDelete={deleteEntry} selectedCategory={selectedCategory} canEdit={canEdit} onExportCategory={() => exportToExcel(selectedCategory)} onAddComment={addComment} onUploadAttachment={uploadAttachment} onDownloadAttachment={downloadAttachment} onDeleteAttachment={deleteAttachment} currentUser={currentUser} />
+        <EntriesList entries={filteredEntries} loading={loading} onEdit={onEditEntry} onDelete={onDeleteEntry} selectedCategory={selectedCategory} canEdit={canEdit} onAddComment={onAddComment} onUploadAttachment={onUploadAttachment} onDownloadAttachment={onDownloadAttachment} onDeleteAttachment={onDeleteAttachment} currentUser={currentUser} />
       )}
+    </>
+  );
+}
 
-      {(showNewModal || editingEntry) && (
-        <EntryModal entry={editingEntry} defaultCategory={selectedCategory} employees={employees} onSave={saveEntry} onClose={() => { setShowNewModal(false); setEditingEntry(null); }} />
+function DashboardView({ mode, enrichedEntries, comments, attachments, onExport, onJumpToEntry }) {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
+
+  const periodEntries = useMemo(() => {
+    if (mode === 'daily') {
+      const target = selectedDate;
+      return enrichedEntries.filter(e => {
+        const d = e.document_date || e.due_date || (e.created_at ? e.created_at.split('T')[0] : null);
+        return d === target;
+      });
+    } else {
+      return enrichedEntries.filter(e => {
+        const d = e.document_date || e.due_date || (e.created_at ? e.created_at.split('T')[0] : null);
+        return d && d.startsWith(selectedMonth);
+      });
+    }
+  }, [mode, enrichedEntries, selectedDate, selectedMonth]);
+
+  const kpi = useMemo(() => {
+    const totalAmount = periodEntries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+    const paidAmount = periodEntries.filter(e => e.payment_date).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+    const openAmount = periodEntries.filter(e => !e.payment_date && e._status !== 'completed').reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+    const overdueCount = periodEntries.filter(e => e._status === 'overdue').length;
+    const overdueAmount = periodEntries.filter(e => e._status === 'overdue').reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+    return { totalAmount, paidAmount, openAmount, overdueCount, overdueAmount, count: periodEntries.length };
+  }, [periodEntries]);
+
+  const byCategory = useMemo(() => {
+    const map = {};
+    Object.keys(RACUNOVODSTVO_KATEGORIJE).forEach(k => { map[k] = { count: 0, amount: 0, overdue: 0 }; });
+    periodEntries.forEach(e => {
+      if (!map[e.category]) return;
+      map[e.category].count += 1;
+      map[e.category].amount += parseFloat(e.amount) || 0;
+      if (e._status === 'overdue') map[e.category].overdue += 1;
+    });
+    return Object.entries(map).filter(([_, v]) => v.count > 0).sort(([_, a], [__, b]) => b.amount - a.amount);
+  }, [periodEntries]);
+
+  const periodLabel = mode === 'daily' ? formatDateSL(selectedDate) : new Date(selectedMonth + '-01').toLocaleDateString('sl-SI', { month: 'long', year: 'numeric' });
+
+  return (
+    <div>
+      <div className="bg-white border border-as-gray-200 rounded-xl p-4 mb-4 shadow-sm flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <Calendar className="w-5 h-5 text-as-gray-400" />
+          {mode === 'daily' ? (
+            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="px-3 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
+          ) : (
+            <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="px-3 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
+          )}
+          <span className="text-sm text-as-gray-500 capitalize">{periodLabel}</span>
+        </div>
+        <button onClick={() => onExport(periodEntries, { filename: `Racunovodstvo_${mode}_${mode === 'daily' ? selectedDate : selectedMonth}` })} disabled={periodEntries.length === 0} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-as-gray-300 text-white rounded-lg flex items-center gap-2 font-semibold text-sm">
+          <Download className="w-4 h-4" /> Izvoz v Excel
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <KpiCard label="Število vnosov" value={kpi.count} icon={<FileText />} bg="#DBEAFE" color="#1D4ED8" />
+        <KpiCard label="Skupaj zneski" value={formatEUR(kpi.totalAmount)} icon={<WalletIcon />} bg="#FEF3C7" color="#854D0E" sub={`${kpi.count} vnosov`} />
+        <KpiCard label="Plačano" value={formatEUR(kpi.paidAmount)} icon={<CheckCircle2 />} bg="#D1FAE5" color="#065F46" />
+        <KpiCard label="Odprto / Zamuda" value={formatEUR(kpi.openAmount)} icon={<AlertCircle />} bg={kpi.overdueCount > 0 ? '#FEE2E2' : '#FEF3C7'} color={kpi.overdueCount > 0 ? '#B91C1C' : '#D97706'} sub={kpi.overdueCount > 0 ? `⚠ ${kpi.overdueCount} v zamudi (${formatEUR(kpi.overdueAmount)})` : 'brez zamud'} />
+      </div>
+
+      {periodEntries.length === 0 ? (
+        <div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center">
+          <FileText className="w-12 h-12 text-as-gray-300 mx-auto mb-3" />
+          <p className="text-as-gray-600 font-semibold">Ni vnosov za to obdobje</p>
+          <p className="text-as-gray-400 text-sm mt-1">Izberi drug datum ali dodaj nov vnos.</p>
+        </div>
+      ) : (
+        <>
+          <div className="bg-white border border-as-gray-200 rounded-xl p-4 mb-4 shadow-sm">
+            <h3 className="text-sm font-bold text-as-gray-700 mb-3 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4" /> Razčlenitev po kategorijah
+            </h3>
+            <div className="space-y-2">
+              {byCategory.map(([key, v]) => {
+                const cat = RACUNOVODSTVO_KATEGORIJE[key];
+                const Icon = cat.icon;
+                const pct = kpi.totalAmount > 0 ? (v.amount / kpi.totalAmount) * 100 : 0;
+                return (
+                  <div key={key} className="flex items-center gap-3 p-2 hover:bg-as-gray-50 rounded-lg transition">
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{backgroundColor: cat.bgColor}}>
+                      <Icon className="w-4 h-4" style={{color: cat.color}} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-semibold text-as-gray-700">{cat.name}</span>
+                        <div className="flex items-center gap-2">
+                          {v.overdue > 0 && (<span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-600 text-white">⚠ {v.overdue}</span>)}
+                          <span className="text-xs text-as-gray-500">{v.count} vnosov</span>
+                          <span className="text-sm font-bold text-as-gray-700">{formatEUR(v.amount)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 bg-as-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: cat.color }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm">
+            <h3 className="text-sm font-bold text-as-gray-700 mb-3 flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Vnosi v obdobju ({periodEntries.length})
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-as-gray-100 text-xs text-as-gray-500 uppercase tracking-wider">
+                    <th className="text-left py-2 px-2 font-bold">Kategorija</th>
+                    <th className="text-left py-2 px-2 font-bold">Naslov</th>
+                    <th className="text-left py-2 px-2 font-bold">Partner</th>
+                    <th className="text-right py-2 px-2 font-bold">Znesek</th>
+                    <th className="text-left py-2 px-2 font-bold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {periodEntries.slice(0, 50).map(e => {
+                    const cat = RACUNOVODSTVO_KATEGORIJE[e.category];
+                    const Icon = cat?.icon || FileText;
+                    const status = STATUSI.find(s => s.key === e._status) || STATUSI[0];
+                    return (
+                      <tr key={e.id} onClick={() => onJumpToEntry(e)} className="border-b border-as-gray-50 hover:bg-as-gray-50 cursor-pointer transition">
+                        <td className="py-2 px-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0" style={{backgroundColor: cat?.bgColor}}>
+                              <Icon className="w-3 h-3" style={{color: cat?.color}} />
+                            </div>
+                            <span className="text-xs text-as-gray-600">{cat?.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-2 px-2 font-semibold text-as-gray-700">{e.title}</td>
+                        <td className="py-2 px-2 text-as-gray-500">{e.counterparty || '—'}</td>
+                        <td className="py-2 px-2 text-right font-bold text-as-gray-700">{e.amount ? formatEUR(e.amount) : '—'}</td>
+                        <td className="py-2 px-2">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{backgroundColor: status.bgColor, color: status.color}}>{status.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {periodEntries.length > 50 && (<p className="text-xs text-as-gray-400 text-center mt-2 italic">Prikazanih prvih 50 od {periodEntries.length} vnosov. Za vse uporabi Excel izvoz.</p>)}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function CategoryPills({ selectedCategory, onSelect, countByCategory, overdueByCategory }) {
+function KpiCard({ label, value, icon, bg, color, sub }) {
   return (
-    <div className="bg-white border border-as-gray-200 rounded-xl p-2 mb-4 shadow-sm sticky top-[72px] z-30">
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
-        <button onClick={() => onSelect(null)} className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${!selectedCategory ? 'text-white' : 'bg-as-gray-100 text-as-gray-600 hover:bg-as-gray-200'}`} style={!selectedCategory ? {backgroundColor: '#C8102E'} : {}}>
-          <Filter className="w-3 h-3" /> Vse kategorije
-        </button>
-        {Object.entries(RACUNOVODSTVO_KATEGORIJE).map(([key, cat]) => {
-          const Icon = cat.icon;
-          const active = selectedCategory === key;
-          const count = countByCategory(key);
-          const overdueCount = overdueByCategory(key);
-          return (
-            <button key={key} onClick={() => onSelect(key)} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${active ? 'ring-2 ring-as-red-200' : 'hover:opacity-80'}`} style={{ backgroundColor: active ? cat.color : cat.bgColor, color: active ? '#fff' : cat.color }} title={cat.desc}>
-              <Icon className="w-3 h-3" />
-              <span>{cat.name}</span>
-              {count > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: active ? 'rgba(255,255,255,0.25)' : '#fff', color: active ? '#fff' : cat.color }}>{count}</span>
+    <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{backgroundColor: bg}}>
+          {React.cloneElement(icon, { className: 'w-5 h-5', style: { color } })}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider mb-0.5">{label}</div>
+          <div className="text-xl font-bold text-as-gray-700 truncate">{value}</div>
+          {sub && <div className="text-xs text-as-gray-400 mt-0.5">{sub}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExportDialog({ entries, onExport, onClose }) {
+  const today = new Date().toISOString().split('T')[0];
+  const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
+  const monthAgoStr = monthAgo.toISOString().split('T')[0];
+
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [selectedCategories, setSelectedCategories] = useState(new Set(Object.keys(RACUNOVODSTVO_KATEGORIJE)));
+  const [selectedStatuses, setSelectedStatuses] = useState(new Set(['open', 'in_progress', 'completed', 'overdue']));
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [searchInDialog, setSearchInDialog] = useState('');
+
+  const filtered = useMemo(() => entries.filter(e => {
+    const d = e.document_date || e.due_date || (e.created_at ? e.created_at.split('T')[0] : null);
+    if (dateFrom && d && d < dateFrom) return false;
+    if (dateTo && d && d > dateTo) return false;
+    if (!selectedCategories.has(e.category)) return false;
+    if (!selectedStatuses.has(e._status)) return false;
+    if (searchInDialog) {
+      const q = searchInDialog.toLowerCase();
+      const match = (e.title || '').toLowerCase().includes(q) || (e.counterparty || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    return true;
+  }), [entries, dateFrom, dateTo, selectedCategories, selectedStatuses, searchInDialog]);
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every(e => selectedIds.has(e.id));
+  const toggleAllFiltered = () => {
+    const next = new Set(selectedIds);
+    if (allFilteredSelected) filtered.forEach(e => next.delete(e.id)); else filtered.forEach(e => next.add(e.id));
+    setSelectedIds(next);
+  };
+  const toggleEntry = (id) => { const next = new Set(selectedIds); if (next.has(id)) next.delete(id); else next.add(id); setSelectedIds(next); };
+  const toggleCategory = (key) => { const next = new Set(selectedCategories); if (next.has(key)) next.delete(key); else next.add(key); setSelectedCategories(next); };
+  const toggleStatus = (key) => { const next = new Set(selectedStatuses); if (next.has(key)) next.delete(key); else next.add(key); setSelectedStatuses(next); };
+
+  const handleExport = () => {
+    const useSelected = selectedIds.size > 0;
+    const toExport = useSelected ? entries.filter(e => selectedIds.has(e.id)) : filtered;
+    if (toExport.length === 0) { alert('Ni vnosov za izvoz. Spremeni filter ali izberi vnose.'); return; }
+    let filename = `Racunovodstvo_izbrani`;
+    if (dateFrom && dateTo) filename = `Racunovodstvo_${dateFrom}_${dateTo}`;
+    else if (dateFrom) filename = `Racunovodstvo_od_${dateFrom}`;
+    else if (dateTo) filename = `Racunovodstvo_do_${dateTo}`;
+    onExport(toExport, { filename });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-3xl max-h-[95vh] flex flex-col">
+        <div className="border-b border-as-gray-200 px-5 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-emerald-600" /><h2 className="text-lg font-bold text-as-gray-700">Izvoz v Excel</h2></div>
+          <button onClick={onClose} className="p-1.5 hover:bg-as-gray-100 rounded-lg text-as-gray-400"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4 overflow-y-auto">
+          <div>
+            <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2">Časovno obdobje</label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex-1 min-w-[140px]"><span className="text-xs text-as-gray-500 block mb-0.5">Od datuma</span><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full px-3 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300" /></div>
+              <div className="flex-1 min-w-[140px]"><span className="text-xs text-as-gray-500 block mb-0.5">Do datuma</span><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full px-3 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300" /></div>
+              <div className="flex items-end gap-1">
+                <button type="button" onClick={() => { setDateFrom(monthAgoStr); setDateTo(today); }} className="px-2 py-1.5 bg-as-gray-100 hover:bg-as-gray-200 rounded text-xs font-semibold">Zadnji mesec</button>
+                <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); }} className="px-2 py-1.5 bg-as-gray-100 hover:bg-as-gray-200 rounded text-xs font-semibold">Reset</button>
+              </div>
+            </div>
+            <p className="text-xs text-as-gray-400 mt-1 italic">Filtrira po datumu dokumentacije / zapadlosti / vnosa</p>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span>Kategorije ({selectedCategories.size}/{Object.keys(RACUNOVODSTVO_KATEGORIJE).length})</span>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => setSelectedCategories(new Set(Object.keys(RACUNOVODSTVO_KATEGORIJE)))} className="px-2 py-0.5 text-[10px] bg-as-gray-100 hover:bg-as-gray-200 rounded font-semibold normal-case">Vse</button>
+                <button type="button" onClick={() => setSelectedCategories(new Set())} className="px-2 py-0.5 text-[10px] bg-as-gray-100 hover:bg-as-gray-200 rounded font-semibold normal-case">Nobena</button>
+              </div>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(RACUNOVODSTVO_KATEGORIJE).map(([key, cat]) => {
+                const Icon = cat.icon; const active = selectedCategories.has(key);
+                return (
+                  <button key={key} type="button" onClick={() => toggleCategory(key)} className="px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1.5" style={{ backgroundColor: active ? cat.color : '#F3F4F6', color: active ? '#fff' : '#9CA3AF', opacity: active ? 1 : 0.6 }}>
+                    {active ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                    <Icon className="w-3 h-3" />
+                    {cat.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2">Status</label>
+            <div className="flex flex-wrap gap-1.5">
+              {STATUSI.map(s => {
+                const active = selectedStatuses.has(s.key);
+                return (
+                  <button key={s.key} type="button" onClick={() => toggleStatus(s.key)} className="px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1.5" style={{ backgroundColor: active ? s.color : '#F3F4F6', color: active ? '#fff' : '#9CA3AF', opacity: active ? 1 : 0.6 }}>
+                    {active ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <label className="text-xs font-bold text-as-gray-500 uppercase tracking-wider">Posamezni vnosi ({filtered.length} po filtru, izbrano: {selectedIds.size})</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-as-gray-400" />
+                  <input type="text" value={searchInDialog} onChange={(e) => setSearchInDialog(e.target.value)} placeholder="Išči ..." className="pl-7 pr-2 py-1 border border-as-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-emerald-200 w-40" />
+                </div>
+                <button type="button" onClick={toggleAllFiltered} className="text-xs font-semibold flex items-center gap-1 px-2 py-1 bg-as-gray-100 hover:bg-as-gray-200 rounded">
+                  {allFilteredSelected ? <CheckSquare className="w-3 h-3 text-emerald-600" /> : <Square className="w-3 h-3" />}
+                  {allFilteredSelected ? 'Odznači filtrirane' : 'Označi filtrirane'}
+                </button>
+                <button type="button" onClick={() => setSelectedIds(new Set())} className="text-xs font-semibold px-2 py-1 bg-as-gray-100 hover:bg-as-gray-200 rounded">Reset izbora</button>
+              </div>
+            </div>
+            <div className="border border-as-gray-200 rounded-lg max-h-64 overflow-y-auto">
+              {filtered.length === 0 ? (
+                <p className="text-sm text-as-gray-400 italic p-4 text-center">Ni vnosov za prikazane filtre.</p>
+              ) : (
+                filtered.map(e => {
+                  const cat = RACUNOVODSTVO_KATEGORIJE[e.category];
+                  const status = STATUSI.find(s => s.key === e._status) || STATUSI[0];
+                  const isSelected = selectedIds.has(e.id);
+                  return (
+                    <label key={e.id} className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-as-gray-50 border-b border-as-gray-100 last:border-b-0 ${isSelected ? 'bg-emerald-50' : ''}`}>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleEntry(e.id)} className="w-4 h-4 rounded border-as-gray-300 cursor-pointer" style={{accentColor: '#059669'}} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-as-gray-700 truncate">{e.title}</span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{backgroundColor: cat?.bgColor, color: cat?.color}}>{cat?.name}</span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{backgroundColor: status.bgColor, color: status.color}}>{status.label}</span>
+                        </div>
+                        <div className="text-xs text-as-gray-500 flex items-center gap-2 mt-0.5">
+                          {e.counterparty && <span>{e.counterparty}</span>}
+                          {e.amount && <span className="font-semibold">{formatEUR(e.amount)}</span>}
+                          {(e.document_date || e.due_date || e.created_at) && (<span>{formatDateSL(e.document_date || e.due_date || e.created_at)}</span>)}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })
               )}
-              {overdueCount > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-600 text-white">⚠ {overdueCount}</span>
-              )}
-            </button>
-          );
-        })}
+            </div>
+            <p className="text-xs text-as-gray-400 mt-1 italic">{selectedIds.size > 0 ? `Izvozilo se bo ${selectedIds.size} izbranih vnosov.` : `Ker ni izbran noben vnos posebej, se bo izvozilo vseh ${filtered.length} filtriranih vnosov.`}</p>
+          </div>
+        </div>
+        <div className="border-t border-as-gray-200 px-5 py-3 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 text-as-gray-700 rounded-lg font-semibold text-sm">Prekliči</button>
+          <button onClick={handleExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm flex items-center gap-2"><Download className="w-4 h-4" /> Izvozi v Excel</button>
+        </div>
       </div>
     </div>
   );
@@ -544,9 +927,7 @@ function KategorijeGrid({ countByCategory, overdueByCategory, onSelect }) {
               <div className="flex items-center justify-between gap-2 mb-1">
                 <h3 className="font-bold text-as-gray-700 text-sm leading-tight">{cat.name}</h3>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  {overdueCount > 0 && (
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-600 text-white" title="Zamude">⚠ {overdueCount}</span>
-                  )}
+                  {overdueCount > 0 && (<span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-600 text-white" title="Zamude">⚠ {overdueCount}</span>)}
                   <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{backgroundColor: cat.bgColor, color: cat.color}}>{count}</span>
                 </div>
               </div>
@@ -559,7 +940,7 @@ function KategorijeGrid({ countByCategory, overdueByCategory, onSelect }) {
   );
 }
 
-function EntriesList({ entries, loading, onEdit, onDelete, selectedCategory, canEdit, onExportCategory, onAddComment, onUploadAttachment, onDownloadAttachment, onDeleteAttachment, currentUser }) {
+function EntriesList({ entries, loading, onEdit, onDelete, selectedCategory, canEdit, onAddComment, onUploadAttachment, onDownloadAttachment, onDeleteAttachment, currentUser }) {
   if (loading) {
     return (
       <div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center">
@@ -580,7 +961,7 @@ function EntriesList({ entries, loading, onEdit, onDelete, selectedCategory, can
   return (
     <div className="space-y-2">
       {selectedCategory && (
-        <div className="bg-white border border-as-gray-200 rounded-xl p-3 shadow-sm flex items-center justify-between flex-wrap gap-2">
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3 shadow-sm">
           <div className="flex items-center gap-3">
             {(() => {
               const cat = RACUNOVODSTVO_KATEGORIJE[selectedCategory];
@@ -598,9 +979,6 @@ function EntriesList({ entries, loading, onEdit, onDelete, selectedCategory, can
               );
             })()}
           </div>
-          <button onClick={onExportCategory} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-1.5 text-xs font-semibold">
-            <FileSpreadsheet className="w-3.5 h-3.5" /> Izvozi v Excel
-          </button>
         </div>
       )}
       {entries.map(entry => (
@@ -619,14 +997,6 @@ function EntryRow({ entry, onEdit, onDelete, canEdit, onAddComment, onUploadAtta
   const Icon = cat?.icon || FileText;
   const isOverdue = entry._status === 'overdue';
 
-  const formatAmount = (amt) => {
-    if (amt === null || amt === undefined || amt === '') return null;
-    return new Intl.NumberFormat('sl-SI', { style: 'currency', currency: 'EUR' }).format(amt);
-  };
-  const formatDate = (d) => {
-    if (!d) return null;
-    return new Date(d).toLocaleDateString('sl-SI');
-  };
   const formatBytes = (b) => {
     if (!b) return '';
     if (b < 1024) return b + ' B';
@@ -667,10 +1037,10 @@ function EntryRow({ entry, onEdit, onDelete, canEdit, onAddComment, onUploadAtta
             <div className="flex items-center gap-3 flex-wrap text-xs text-as-gray-500">
               {entry.employee_name && (<span className="flex items-center gap-1 font-semibold" style={{color: '#1E40AF'}}><User className="w-3 h-3" /> {entry.employee_name}</span>)}
               {entry.counterparty && (<span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {entry.counterparty}</span>)}
-              {entry.amount !== null && entry.amount !== undefined && entry.amount !== '' && (<span className="font-semibold text-as-gray-700">{formatAmount(entry.amount)}</span>)}
-              {entry.due_date && (<span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Rok: {formatDate(entry.due_date)}</span>)}
-              {entry.next_promise_date && !entry.payment_date && (<span className="flex items-center gap-1 font-semibold" style={{color: '#B91C1C'}}><Bell className="w-3 h-3" /> Obljubljeno: {formatDate(entry.next_promise_date)}</span>)}
-              {entry.payment_date && (<span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3 h-3" /> Plačano: {formatDate(entry.payment_date)}</span>)}
+              {entry.amount !== null && entry.amount !== undefined && entry.amount !== '' && (<span className="font-semibold text-as-gray-700">{formatEUR(entry.amount)}</span>)}
+              {entry.due_date && (<span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Rok: {formatDateSL(entry.due_date)}</span>)}
+              {entry.next_promise_date && !entry.payment_date && (<span className="flex items-center gap-1 font-semibold" style={{color: '#B91C1C'}}><Bell className="w-3 h-3" /> Obljubljeno: {formatDateSL(entry.next_promise_date)}</span>)}
+              {entry.payment_date && (<span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3 h-3" /> Plačano: {formatDateSL(entry.payment_date)}</span>)}
             </div>
           </div>
           <ChevronDown className={`w-4 h-4 text-as-gray-400 flex-shrink-0 mt-1 transition ${expanded ? 'rotate-180' : ''}`} />
@@ -681,33 +1051,12 @@ function EntryRow({ entry, onEdit, onDelete, canEdit, onAddComment, onUploadAtta
         <div className="border-t border-as-gray-100 bg-as-gray-50/50 p-3 space-y-3">
           {(entry.document_date || entry.service_date) && (
             <div className="grid grid-cols-2 gap-2 text-xs">
-              {entry.document_date && (
-                <div className="bg-white p-2 rounded border border-as-gray-100">
-                  <div className="text-[10px] font-bold text-as-gray-500 uppercase tracking-wider">Datum dokumentacije</div>
-                  <div className="text-sm font-semibold text-as-gray-700">{formatDate(entry.document_date)}</div>
-                </div>
-              )}
-              {entry.service_date && (
-                <div className="bg-white p-2 rounded border border-as-gray-100">
-                  <div className="text-[10px] font-bold text-as-gray-500 uppercase tracking-wider">Datum opravljene storitve</div>
-                  <div className="text-sm font-semibold text-as-gray-700">{formatDate(entry.service_date)}</div>
-                </div>
-              )}
+              {entry.document_date && (<div className="bg-white p-2 rounded border border-as-gray-100"><div className="text-[10px] font-bold text-as-gray-500 uppercase tracking-wider">Datum dokumentacije</div><div className="text-sm font-semibold text-as-gray-700">{formatDateSL(entry.document_date)}</div></div>)}
+              {entry.service_date && (<div className="bg-white p-2 rounded border border-as-gray-100"><div className="text-[10px] font-bold text-as-gray-500 uppercase tracking-wider">Datum opravljene storitve</div><div className="text-sm font-semibold text-as-gray-700">{formatDateSL(entry.service_date)}</div></div>)}
             </div>
           )}
-
-          {entry.description && (
-            <div>
-              <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opis</div>
-              <p className="text-sm text-as-gray-700 whitespace-pre-wrap">{entry.description}</p>
-            </div>
-          )}
-          {entry.notes && (
-            <div>
-              <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opombe</div>
-              <p className="text-sm text-as-gray-700 whitespace-pre-wrap">{entry.notes}</p>
-            </div>
-          )}
+          {entry.description && (<div><div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opis</div><p className="text-sm text-as-gray-700 whitespace-pre-wrap">{entry.description}</p></div>)}
+          {entry.notes && (<div><div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opombe</div><p className="text-sm text-as-gray-700 whitespace-pre-wrap">{entry.notes}</p></div>)}
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -755,7 +1104,7 @@ function EntryRow({ entry, onEdit, onDelete, canEdit, onAddComment, onUploadAtta
             </div>
           </div>
 
-          <div className="text-xs text-as-gray-400 pt-1">Ustvarjeno: {entry.created_by_name} · {formatDate(entry.created_at)}</div>
+          <div className="text-xs text-as-gray-400 pt-1">Ustvarjeno: {entry.created_by_name} · {formatDateSL(entry.created_at)}</div>
 
           {canEdit && (
             <div className="flex items-center gap-2 pt-2 border-t border-as-gray-200">
@@ -841,7 +1190,6 @@ function EntryModal({ entry, defaultCategory, employees = [], onSave, onClose })
             </select>
             {cat?.desc && (<p className="text-xs mt-1 italic" style={{ color: cat.color }}>{cat.desc}</p>)}
           </div>
-
           {cat?.subKategorije && cat.subKategorije.length > 0 && (
             <div>
               <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Podkategorija</label>
@@ -851,12 +1199,10 @@ function EntryModal({ entry, defaultCategory, employees = [], onSave, onClose })
               </select>
             </div>
           )}
-
           <div>
             <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Naslov *</label>
             <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="npr. Račun Elektro Maribor 11/2025" required className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
           </div>
-
           <div>
             <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">
               <span className="flex items-center gap-1.5"><User className="w-3 h-3" /> Delavec / zaposleni {cat?.showEmployee && '*'}</span>
@@ -866,12 +1212,10 @@ function EntryModal({ entry, defaultCategory, employees = [], onSave, onClose })
               {employees.map(emp => (<option key={emp.email} value={emp.email}>{emp.name} ({emp.department})</option>))}
             </select>
           </div>
-
           <div>
             <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Partner / dobavitelj / kupec</label>
             <input type="text" value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })} placeholder="npr. Elektro Maribor d.d." className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Znesek (€)</label>
@@ -884,7 +1228,6 @@ function EntryModal({ entry, defaultCategory, employees = [], onSave, onClose })
               </select>
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Datum zapadlosti</label>
@@ -895,20 +1238,12 @@ function EntryModal({ entry, defaultCategory, employees = [], onSave, onClose })
               <input type="date" value={form.payment_date} onChange={(e) => setForm({ ...form, payment_date: e.target.value })} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
             </div>
           </div>
-
           {cat?.showDocumentDates && (
             <div className="grid grid-cols-2 gap-3 p-3 rounded-lg" style={{backgroundColor: '#FEF9E7'}}>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider mb-1" style={{color: '#854D0E'}}>Datum dokumentacije</label>
-                <input type="date" value={form.document_date} onChange={(e) => setForm({ ...form, document_date: e.target.value })} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300 bg-white" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider mb-1" style={{color: '#854D0E'}}>Datum opravljene storitve</label>
-                <input type="date" value={form.service_date} onChange={(e) => setForm({ ...form, service_date: e.target.value })} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300 bg-white" />
-              </div>
+              <div><label className="block text-xs font-bold uppercase tracking-wider mb-1" style={{color: '#854D0E'}}>Datum dokumentacije</label><input type="date" value={form.document_date} onChange={(e) => setForm({ ...form, document_date: e.target.value })} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300 bg-white" /></div>
+              <div><label className="block text-xs font-bold uppercase tracking-wider mb-1" style={{color: '#854D0E'}}>Datum opravljene storitve</label><input type="date" value={form.service_date} onChange={(e) => setForm({ ...form, service_date: e.target.value })} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300 bg-white" /></div>
             </div>
           )}
-
           {cat?.showPromiseDate && (
             <div className="p-3 rounded-lg" style={{backgroundColor: '#FEE2E2'}}>
               <label className="block text-xs font-bold uppercase tracking-wider mb-1" style={{color: '#B91C1C'}}>
@@ -918,17 +1253,8 @@ function EntryModal({ entry, defaultCategory, employees = [], onSave, onClose })
               <p className="text-xs mt-1" style={{color: '#B91C1C'}}>Če ta datum preteče in ni datuma plačila → vnos se avtomatsko označi kot ZAMUDA. Zgodovino obljub piši v klepetu.</p>
             </div>
           )}
-
-          <div>
-            <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opis</label>
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Dodaten opis ..." rows={2} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opombe</label>
-            <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Opombe ..." rows={2} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
-          </div>
-
+          <div><label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opis</label><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Dodaten opis ..." rows={2} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" /></div>
+          <div><label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opombe</label><textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Opombe ..." rows={2} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" /></div>
           {!entry?.id && (
             <div>
               <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">
@@ -956,7 +1282,6 @@ function EntryModal({ entry, defaultCategory, employees = [], onSave, onClose })
               <p className="text-xs text-as-gray-400 mt-1.5">PDF, Word, Excel, slike (max 50MB).</p>
             </div>
           )}
-
           <div className="flex items-center gap-2 pt-2 border-t border-as-gray-100">
             <button type="button" onClick={onClose} className="px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 text-as-gray-700 rounded-lg font-semibold text-sm">Prekliči</button>
             <button type="submit" disabled={saving} className="px-4 py-2 text-white rounded-lg font-semibold text-sm flex items-center gap-2 disabled:opacity-50" style={{backgroundColor: '#C8102E'}}>
