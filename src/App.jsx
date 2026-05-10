@@ -9,7 +9,7 @@ import ProductionTab, { canAccessProduction } from './components/Production/Prod
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
-import Racunovodstvo from './Racunovodstvo.jsx';
+import Racunovodstvo, { RACUNOVODSTVO_KATEGORIJE } from './Racunovodstvo.jsx';
 
 // E-maili z dostopom do VSEH nalog (direktor + marketing + računovodstvo)
 const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si', 'sara.jagodic@as-system.si'];
@@ -59,6 +59,9 @@ export default function App() {
   
   // Glavni razdelek (Domov / Naloge / Dnevna / Poročila / Proizvodnja / Montaža / Računovodstvo)
   const [mainSection, setMainSection] = useState('home');
+  // Računovodstvo: dropdown kategorija iz headerja
+  const [racunovodstvoCategory, setRacunovodstvoCategory] = useState(null);
+  const [racunovodstvoMenuOpen, setRacunovodstvoMenuOpen] = useState(false);
 
   const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
 
@@ -752,14 +755,63 @@ export default function App() {
                   </button>
                 )}
                 {isAdmin && (
-                  <button
-                    onClick={() => setMainSection('racunovodstvo')}
-                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'racunovodstvo' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
-                    style={mainSection === 'racunovodstvo' ? {backgroundColor: '#C8102E'} : {}}
-                  >
-                    <Wallet className="w-4 h-4" />
-                    <span className="hidden sm:inline">Računovodstvo</span>
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        if (mainSection !== 'racunovodstvo') {
+                          setMainSection('racunovodstvo');
+                          setRacunovodstvoMenuOpen(true);
+                        } else {
+                          setRacunovodstvoMenuOpen(!racunovodstvoMenuOpen);
+                        }
+                      }}
+                      className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'racunovodstvo' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                      style={mainSection === 'racunovodstvo' ? {backgroundColor: '#C8102E'} : {}}
+                    >
+                      <Wallet className="w-4 h-4" />
+                      <span className="hidden sm:inline">Računovodstvo</span>
+                      <ChevronDown className={`w-3 h-3 transition ${racunovodstvoMenuOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {racunovodstvoMenuOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setRacunovodstvoMenuOpen(false)} />
+                        <div className="absolute right-0 top-full mt-1 bg-white border border-as-gray-200 rounded-xl shadow-2xl z-40 overflow-hidden w-72 max-h-[80vh] overflow-y-auto">
+                          <button
+                            onClick={() => {
+                              setRacunovodstvoCategory(null);
+                              setMainSection('racunovodstvo');
+                              setRacunovodstvoMenuOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2.5 hover:bg-as-gray-50 border-b border-as-gray-100 text-sm font-bold text-as-gray-700 flex items-center gap-2"
+                          >
+                            <Wallet className="w-4 h-4" style={{color: '#854D0E'}} />
+                            Vse kategorije
+                          </button>
+                          {Object.entries(RACUNOVODSTVO_KATEGORIJE || {}).map(([key, cat]) => {
+                            const Icon = cat.icon;
+                            return (
+                              <button
+                                key={key}
+                                onClick={() => {
+                                  setRacunovodstvoCategory(key);
+                                  setMainSection('racunovodstvo');
+                                  setRacunovodstvoMenuOpen(false);
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-as-gray-50 border-b border-as-gray-50 last:border-b-0 text-sm flex items-center gap-2"
+                              >
+                                <div className="w-7 h-7 rounded flex items-center justify-center flex-shrink-0" style={{backgroundColor: cat.bgColor}}>
+                                  <Icon className="w-3.5 h-3.5" style={{color: cat.color}} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-as-gray-700 truncate">{cat.name}</div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -841,7 +893,13 @@ export default function App() {
             onNavigate={handleHomeNavigate}
           />
         ) : mainSection === 'racunovodstvo' ? (
-          <Racunovodstvo currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+          <Racunovodstvo
+            currentUser={currentUser}
+            isAdmin={isAdmin}
+            employees={EMPLOYEES}
+            selectedCategoryFromHeader={racunovodstvoCategory}
+            onCategoryHandled={() => setRacunovodstvoCategory(undefined)}
+          />
         ) : mainSection === 'reports' ? (
           <Reports currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'daily' ? (
