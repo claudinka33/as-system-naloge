@@ -852,9 +852,6 @@ export default function App() {
           <AssemblyTab currentUser={currentUser} />
         ) : (
           <>
-        {/* Misel dneva */}
-        <QuoteOfTheDay />
-
         {/* Statistike (vedno vidne) */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <button
