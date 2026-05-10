@@ -7,8 +7,18 @@ import React, { useEffect, useState } from 'react';
 import { 
   ClipboardList, CalendarCheck, BarChart3, Sparkles, X,
   CheckCircle2, AlertCircle, Calendar, TrendingUp, Users,
-  Wallet, ArrowRight, Factory, Wrench
+  Wallet, ArrowRight, Factory, Wrench,
+  ShoppingCart, Cog, Phone, ShieldCheck, TrendingUp as TrendingUpIcon
 } from 'lucide-react';
+
+// === dostopni e-maili (drzano sinhrono z App.jsx) ===
+const ODDELEK_ALLOWED = {
+  nabava: ['alen.drofenik@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'],
+  prodaja: ['tjasa.mihevc@as-system.si', 'zan.seidl@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'],
+  tehnolog: ['gregor.koritnik@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'],
+  komerciala: ['mitja.marguc@as-system.si', 'zan.seidl@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'],
+  kakovost: ['kakovost@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'],
+};
 import { supabase } from './supabase.js';
 import { getTodayQuote } from './quotes.js';
 import { canAccessProduction } from './components/Production/ProductionTab.jsx';
@@ -180,6 +190,51 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
       color: '#854D0E',
       bgColor: '#FEF3C7',
       adminOnly: true, // samo admin/Sara
+    },
+    {
+      key: 'nabava',
+      title: 'Nabava',
+      desc: 'Naročila, dobavitelji, zaloge, ceniki',
+      icon: ShoppingCart,
+      color: '#854D0E',
+      bgColor: '#FEF3C7',
+      access: (u) => ODDELEK_ALLOWED.nabava.includes(u?.email),
+    },
+    {
+      key: 'prodaja',
+      title: 'Prodaja',
+      desc: 'Ponudbe, naročila strank, kupci',
+      icon: TrendingUpIcon,
+      color: '#065F46',
+      bgColor: '#A7F3D0',
+      access: (u) => ODDELEK_ALLOWED.prodaja.includes(u?.email),
+    },
+    {
+      key: 'tehnolog',
+      title: 'Tehnolog',
+      desc: 'Risbe, postopki, meritve, orodja',
+      icon: Cog,
+      color: '#1E40AF',
+      bgColor: '#DBEAFE',
+      access: (u) => ODDELEK_ALLOWED.tehnolog.includes(u?.email),
+    },
+    {
+      key: 'komerciala',
+      title: 'Komerciala',
+      desc: 'Kontakti, pogajanja, trgi, obiski strank',
+      icon: Phone,
+      color: '#5B21B6',
+      bgColor: '#DDD6FE',
+      access: (u) => ODDELEK_ALLOWED.komerciala.includes(u?.email),
+    },
+    {
+      key: 'kakovost',
+      title: 'Kakovost',
+      desc: 'Vstopna, procesna, končna kontrola',
+      icon: ShieldCheck,
+      color: '#9F1239',
+      bgColor: '#FFE4E6',
+      access: (u) => ODDELEK_ALLOWED.kakovost.includes(u?.email),
     },
   ];
 
