@@ -69,7 +69,8 @@ const ODDELKI_CONFIG = {
 
 
 
-// __REMOVED_EMPLOYEES_START__ const EMPLOYEES = [
+// Pravi zaposleni AS system d.o.o. - vsak ima svoje unikatno geslo
+const EMPLOYEES = [
   { email: 'ales.seidl@as-system.si', username: 'ales.seidl', name: 'Aleš Seidl', department: 'Direktor', password: 'AS-direktor-93' },
   { email: 'alen.drofenik@as-system.si', username: 'alen.drofenik', name: 'Alen Drofenik', department: 'Nabava', password: 'Drofenik-AS-7' },
   { email: 'tjasa.mihevc@as-system.si', username: 'tjasa.mihevc', name: 'Tjaša Mihevc', department: 'Komerciala-Prodaja', password: 'Mihevc-prodaja12' },
