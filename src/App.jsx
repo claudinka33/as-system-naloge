@@ -873,8 +873,12 @@ export default function App() {
                         if (mainSection !== 'racunovodstvo') {
                           setMainSection('racunovodstvo');
                           setRacunovodstvoMenuOpen(true);
+                        } else if (racunovodstvoMenuOpen) {
+                          setRacunovodstvoMenuOpen(false);
                         } else {
-                          setRacunovodstvoMenuOpen(!racunovodstvoMenuOpen);
+                          // dvojni klik na že-aktiven gumb → reset Računovodstva na vse kategorije
+                          setRacunovodstvoCategory(null);
+                          triggerModuleReset('racunovodstvo');
                         }
                       }}
                       className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'racunovodstvo' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
@@ -1011,18 +1015,27 @@ export default function App() {
             employees={EMPLOYEES}
             selectedCategoryFromHeader={racunovodstvoCategory}
             onCategoryHandled={() => setRacunovodstvoCategory(undefined)}
+            resetSignal={moduleResetCounters.racunovodstvo || 0}
           />
         ) : mainSection === 'nabava' ? (
-          <OddelekModule config={ODDELKI_CONFIG.nabava} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+          <OddelekModule config={ODDELKI_CONFIG.nabava} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.nabava || 0} />
         ) : mainSection === 'prodaja' ? (
-          <OddelekModule config={ODDELKI_CONFIG.prodaja} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+          <OddelekModule config={ODDELKI_CONFIG.prodaja} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.prodaja || 0} />
         ) : mainSection === 'tehnolog' ? (
-          <OddelekModule config={ODDELKI_CONFIG.tehnolog} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+          <OddelekModule config={ODDELKI_CONFIG.tehnolog} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.tehnolog || 0} />
         ) : mainSection === 'komerciala' ? (
-          <OddelekModule config={ODDELKI_CONFIG.komerciala} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+          <OddelekModule config={ODDELKI_CONFIG.komerciala} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.komerciala || 0} />
         ) : mainSection === 'kakovost' ? (
-          <OddelekModule config={ODDELKI_CONFIG.kakovost} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+          <OddelekModule config={ODDELKI_CONFIG.kakovost} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.kakovost || 0} />
         ) : mainSection === 'reports' ? (
+          <Reports currentUser={currentUser} employees={EMPLOYEES} />
+        ) : mainSection === 'daily' ? (
+          <DailyReports currentUser={currentUser} employees={EMPLOYEES} />
+        ) : mainSection === 'production' ? (
+          <ProductionTab currentUser={currentUser} resetSignal={moduleResetCounters.production || 0} />
+        ) : mainSection === 'assembly' ? (
+          <AssemblyTab currentUser={currentUser} resetSignal={moduleResetCounters.assembly || 0} />
+        ) : mainSection === 'oldreports' ? (
           <Reports currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'daily' ? (
           <DailyReports currentUser={currentUser} employees={EMPLOYEES} />
