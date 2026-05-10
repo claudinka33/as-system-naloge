@@ -89,7 +89,7 @@ export function getCurrentWeekDates() {
   monday.setHours(0, 0, 0, 0);
   
   const dates = [];
-  for (let i = 0; i < 7; i++) { // Pon - Ned
+  for (let i = 0; i < 5; i++) { // Pon - Pet
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     dates.push(d.toISOString().split('T')[0]);
