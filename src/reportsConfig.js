@@ -178,3 +178,51 @@ export const ADMIN_HOME_DEPARTMENT = {
   'claudia.seidl@as-system.si': 'marketing',
   'sara.jagodic@as-system.si': 'racunovodstvo',
 };
+
+// ===== HELPER FUNKCIJE =====
+
+export function getUserDepartments(email) {
+  const dept = USER_DEPARTMENT_MAP[email];
+  if (!dept) return [];
+  if (dept === 'admin') return Object.keys(REPORT_TEMPLATES);
+  return Array.isArray(dept) ? dept : [];
+}
+
+export function isReportsAdmin(email) {
+  return USER_DEPARTMENT_MAP[email] === 'admin';
+}
+
+export function getWeekInfo(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay() || 7;
+  if (day !== 1) d.setDate(d.getDate() - (day - 1));
+  const monday = new Date(d);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const target = new Date(monday);
+  target.setDate(target.getDate() + 3);
+  const firstThursday = new Date(target.getFullYear(), 0, 4);
+  const ftDay = firstThursday.getDay() || 7;
+  firstThursday.setDate(firstThursday.getDate() - (ftDay - 1) + 3);
+  const weekNumber = 1 + Math.round((target - firstThursday) / (7 * 24 * 60 * 60 * 1000));
+  return {
+    weekYear: target.getFullYear(),
+    weekNumber,
+    weekStart: monday.toISOString().split('T')[0],
+    weekEnd: sunday.toISOString().split('T')[0],
+    monday,
+    sunday
+  };
+}
+
+export function getCurrentWeekInfo() {
+  return getWeekInfo(new Date());
+}
+
+export function formatWeekRange(startStr, endStr) {
+  const s = new Date(startStr);
+  const e = new Date(endStr);
+  const fmt = (d) => d.getDate() + '. ' + (d.getMonth() + 1) + '.';
+  return fmt(s) + ' - ' + fmt(e) + ' ' + e.getFullYear();
+}
