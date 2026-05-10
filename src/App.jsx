@@ -837,6 +837,22 @@ export default function App() {
                     <span className="hidden sm:inline">Montaža</span>
                   </button>
                 )}
+                {Object.entries(ODDELKI_CONFIG).map(([key, oddelek]) => {
+                  const Icon = oddelek.icon;
+                  const allowed = isAdmin || (oddelek.allowedEmails && oddelek.allowedEmails.includes(currentUser?.email));
+                  if (!allowed) return null;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setMainSection(key)}
+                      className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === key ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                      style={mainSection === key ? {backgroundColor: '#C8102E'} : {}}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span className="hidden lg:inline">{oddelek.name}</span>
+                    </button>
+                  );
+                })}
                 {isAdmin && (
                   <div className="relative">
                     <button
