@@ -80,10 +80,18 @@ export function isFridayAfter3PM() {
   return false;
 }
 
+// Lokalni YYYY-MM-DD format (brez UTC pretvorbe)
+function toLocalDateStr(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 // Pridobi trenutni delovni teden (Pon-Pet)
 export function getCurrentWeekDates() {
   const today = new Date();
-  const day = today.getDay() || 7;
+  const day = today.getDay() || 7; // Ned=0→7, Pon=1, ..., Sob=6
   const monday = new Date(today);
   monday.setDate(today.getDate() - (day - 1));
   monday.setHours(0, 0, 0, 0);
@@ -92,7 +100,7 @@ export function getCurrentWeekDates() {
   for (let i = 0; i < 5; i++) { // Pon - Pet
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    dates.push(d.toISOString().split('T')[0]);
+    dates.push(toLocalDateStr(d));
   }
   
   return dates;
