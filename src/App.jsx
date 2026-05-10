@@ -10,6 +10,61 @@ import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTa
 import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
 import Racunovodstvo, { RACUNOVODSTVO_KATEGORIJE } from './Racunovodstvo.jsx';
+import OddelekModule from './OddelekModule.jsx';
+import { ShoppingCart, Briefcase, Cog, Phone, ShieldCheck, Package, FileText as FileTextIcon, TrendingUp as TrendingUpIcon, Award as AwardIcon, AlertCircle as AlertCircleIcon } from 'lucide-react';
+
+// === KONFIGURACIJE 5 ODDELKOV ===
+const NABAVA_KATEGORIJE = {
+  narocila: { name: 'Naročila dobaviteljem', icon: ShoppingCart, color: '#854D0E', bgColor: '#FEF3C7', desc: 'Aktivna naročila pri dobaviteljih', subKategorije: ['Material', 'Surovine', 'Polizdelki', 'Dodatki', 'Drugo'] },
+  dobavitelji: { name: 'Dobavitelji', icon: Building, color: '#1E40AF', bgColor: '#DBEAFE', desc: 'Komunikacija in dogovori z dobavitelji', subKategorije: ['Novi dobavitelj', 'Pogajanja', 'Reklamacija', 'Drugo'] },
+  zaloge: { name: 'Zaloge / minimalne', icon: Package, color: '#065F46', bgColor: '#A7F3D0', desc: 'Pregled zalog in minimalnih količin', subKategorije: ['Pod minimumom', 'Nujno naročiti', 'Prevzem'] },
+  cenik: { name: 'Ceniki / pogodbe', icon: FileTextIcon, color: '#5B21B6', bgColor: '#DDD6FE', desc: 'Letni ceniki in pogodbeni pogoji', subKategorije: ['Letni cenik', 'Pogodba', 'Sprememba cene'] },
+  reklamacije: { name: 'Reklamacije', icon: AlertCircleIcon, color: '#B91C1C', bgColor: '#FEE2E2', desc: 'Reklamacije dobaviteljem', subKategorije: ['Kakovost', 'Količina', 'Poškodbe', 'Zamuda'] },
+  drugo: { name: 'Ostalo', icon: FileTextIcon, color: '#374151', bgColor: '#E5E7EB', desc: 'Ostali vnosi nabave', subKategorije: ['Drugo'] },
+};
+
+const PRODAJA_KATEGORIJE = {
+  ponudbe: { name: 'Ponudbe', icon: FileTextIcon, color: '#854D0E', bgColor: '#FEF3C7', desc: 'Pripravljene in poslane ponudbe', subKategorije: ['Nova ponudba', 'Poslana', 'Odobreno', 'Zavrnjeno'] },
+  narocila_strank: { name: 'Naročila strank', icon: ShoppingCart, color: '#1E40AF', bgColor: '#DBEAFE', desc: 'Aktivna naročila strank', subKategorije: ['Novo', 'V obdelavi', 'Pripravljeno', 'Odpremljeno'] },
+  stranke: { name: 'Stranke / kupci', icon: Users, color: '#065F46', bgColor: '#A7F3D0', desc: 'Komunikacija s strankami', subKategorije: ['Nova stranka', 'Klic', 'Sestanek', 'Email'] },
+  reklamacije: { name: 'Reklamacije strank', icon: AlertCircleIcon, color: '#B91C1C', bgColor: '#FEE2E2', desc: 'Reklamacije od strank', subKategorije: ['Kakovost', 'Količina', 'Dostava', 'Drugo'] },
+  cenik: { name: 'Cenik / popusti', icon: TrendingUpIcon, color: '#5B21B6', bgColor: '#DDD6FE', desc: 'Cenik in posebni popusti', subKategorije: ['Sprememba cenika', 'Popust za stranko', 'Akcija'] },
+  drugo: { name: 'Ostalo', icon: FileTextIcon, color: '#374151', bgColor: '#E5E7EB', desc: 'Ostali vnosi prodaje', subKategorije: ['Drugo'] },
+};
+
+const TEHNOLOG_KATEGORIJE = {
+  risbe: { name: 'Risbe / načrti', icon: FileTextIcon, color: '#1E40AF', bgColor: '#DBEAFE', desc: 'Tehnične risbe in načrti', subKategorije: ['Nova risba', 'Sprememba', 'Odobritev'] },
+  postopki: { name: 'Tehnološki postopki', icon: Cog, color: '#854D0E', bgColor: '#FEF3C7', desc: 'Postopki izdelave in priprave', subKategorije: ['Nov postopek', 'Optimizacija', 'Nadgradnja'] },
+  meritve: { name: 'Meritve / kontrole', icon: AwardIcon, color: '#065F46', bgColor: '#A7F3D0', desc: 'Meritve in tehnične kontrole', subKategorije: ['Vstopna kontrola', 'Med procesom', 'Končna kontrola'] },
+  orodja: { name: 'Orodja / stroji', icon: Package, color: '#5B21B6', bgColor: '#DDD6FE', desc: 'Orodja, kalupi, vzdrževanje', subKategorije: ['Novo orodje', 'Vzdrževanje', 'Popravilo', 'Servis'] },
+  razvoj: { name: 'Razvoj izdelka', icon: TrendingUpIcon, color: '#0F766E', bgColor: '#CCFBF1', desc: 'Razvoj novih in obstoječih izdelkov', subKategorije: ['Nov izdelek', 'Sprememba', 'Prototip'] },
+  drugo: { name: 'Ostalo', icon: FileTextIcon, color: '#374151', bgColor: '#E5E7EB', desc: 'Ostali tehnološki vnosi', subKategorije: ['Drugo'] },
+};
+
+const KOMERCIALA_KATEGORIJE = {
+  kontakti: { name: 'Kontakti / klici', icon: Phone, color: '#1E40AF', bgColor: '#DBEAFE', desc: 'Klici in komunikacija', subKategorije: ['Odhodni klic', 'Vhodni klic', 'Sestanek', 'Email'] },
+  pogajanja: { name: 'Pogajanja / pogodbe', icon: FileTextIcon, color: '#854D0E', bgColor: '#FEF3C7', desc: 'Pogajanja in dolgoročne pogodbe', subKategorije: ['Nova pogodba', 'Podaljšanje', 'Spremembe pogojev'] },
+  trgi: { name: 'Trgi / razvoj', icon: TrendingUpIcon, color: '#065F46', bgColor: '#A7F3D0', desc: 'Razvoj trgov in novih kupcev', subKategorije: ['Nov trg', 'Novi kupec', 'Raziskava'] },
+  obiski: { name: 'Obiski strank', icon: Briefcase, color: '#5B21B6', bgColor: '#DDD6FE', desc: 'Načrtovani in opravljeni obiski', subKategorije: ['Sestanek', 'Predstavitev', 'Servis'] },
+  drugo: { name: 'Ostalo', icon: FileTextIcon, color: '#374151', bgColor: '#E5E7EB', desc: 'Ostali komercialni vnosi', subKategorije: ['Drugo'] },
+};
+
+const KAKOVOST_KATEGORIJE = {
+  vstopna: { name: 'Vstopna kontrola', icon: ShieldCheck, color: '#1E40AF', bgColor: '#DBEAFE', desc: 'Kontrola materiala ob prejemu', subKategorije: ['Odobreno', 'Zavrnjeno', 'Pogojno'] },
+  procesna: { name: 'Procesna kontrola', icon: Cog, color: '#854D0E', bgColor: '#FEF3C7', desc: 'Kontrola med proizvodnjo', subKategorije: ['Redna', 'Izredna', 'Vzorec'] },
+  koncna: { name: 'Končna kontrola', icon: AwardIcon, color: '#065F46', bgColor: '#A7F3D0', desc: 'Kontrola pred odpremo', subKategorije: ['Odobreno', 'Zavrnjeno', 'Rework'] },
+  reklamacije: { name: 'Reklamacije / neskladja', icon: AlertCircleIcon, color: '#B91C1C', bgColor: '#FEE2E2', desc: 'Reklamacije in neskladja', subKategorije: ['Notranje', 'Od stranke', 'Korektivni ukrep'] },
+  certifikati: { name: 'Certifikati / standardi', icon: FileTextIcon, color: '#5B21B6', bgColor: '#DDD6FE', desc: 'ISO, certifikati, standardi', subKategorije: ['ISO 9001', 'Drugi standard', 'Audit'] },
+  drugo: { name: 'Ostalo', icon: FileTextIcon, color: '#374151', bgColor: '#E5E7EB', desc: 'Ostali vnosi kakovosti', subKategorije: ['Drugo'] },
+};
+
+const ODDELKI_CONFIG = {
+  nabava: { name: 'Nabava', tableName: 'nabava_entries', accentColor: '#854D0E', accentBg: '#FEF3C7', icon: ShoppingCart, desc: 'Naročila, dobavitelji, zaloge, ceniki, reklamacije', categories: NABAVA_KATEGORIJE, allowedEmails: ['alen.drofenik@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'] },
+  prodaja: { name: 'Prodaja', tableName: 'prodaja_entries', accentColor: '#065F46', accentBg: '#A7F3D0', icon: TrendingUpIcon, desc: 'Ponudbe, naročila strank, stranke, reklamacije', categories: PRODAJA_KATEGORIJE, allowedEmails: ['tjasa.mihevc@as-system.si', 'zan.seidl@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'] },
+  tehnolog: { name: 'Tehnolog', tableName: 'tehnolog_entries', accentColor: '#1E40AF', accentBg: '#DBEAFE', icon: Cog, desc: 'Risbe, postopki, meritve, orodja, razvoj', categories: TEHNOLOG_KATEGORIJE, allowedEmails: ['gregor.koritnik@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'] },
+  komerciala: { name: 'Komerciala', tableName: 'komerciala_entries', accentColor: '#5B21B6', accentBg: '#DDD6FE', icon: Phone, desc: 'Kontakti, pogajanja, trgi, obiski strank', categories: KOMERCIALA_KATEGORIJE, allowedEmails: ['mitja.marguc@as-system.si', 'zan.seidl@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'] },
+  kakovost: { name: 'Kakovost', tableName: 'kakovost_entries', accentColor: '#9F1239', accentBg: '#FFE4E6', icon: ShieldCheck, desc: 'Vstopna, procesna, končna kontrola, certifikati', categories: KAKOVOST_KATEGORIJE, allowedEmails: ['kakovost@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'] },
+};
 
 // E-maili z dostopom do VSEH nalog (direktor + marketing + računovodstvo)
 const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si', 'sara.jagodic@as-system.si'];
@@ -57,11 +112,39 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
   
-  // Glavni razdelek (Domov / Naloge / Dnevna / Poročila / Proizvodnja / Montaža / Računovodstvo)
+  // Glavni razdelek (Domov / Naloge / Dnevna / Poročila / Proizvodnja / Montaža / Računovodstvo / Oddelki)
   const [mainSection, setMainSection] = useState('home');
   // Računovodstvo: dropdown kategorija iz headerja
   const [racunovodstvoCategory, setRacunovodstvoCategory] = useState(null);
   const [racunovodstvoMenuOpen, setRacunovodstvoMenuOpen] = useState(false);
+
+  // === BROWSER HISTORY: gumb "nazaj" v brskalniku naj te peljebe nazaj v aplikacijo, NE iz nje ===
+  useEffect(() => {
+    // ob spremembi mainSection vrini novo stanje v history
+    if (typeof window !== 'undefined') {
+      window.history.pushState({ section: mainSection }, '', `#${mainSection}`);
+    }
+  }, [mainSection]);
+
+  useEffect(() => {
+    // poslušaj brskalniškov gumb "nazaj"
+    const handlePopState = (event) => {
+      const target = event.state?.section || (window.location.hash.replace('#', '') || 'home');
+      if (['home','tasks','daily','reports','production','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost'].includes(target)) {
+        setMainSection(target);
+      } else {
+        setMainSection('home');
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('popstate', handlePopState);
+      // ob startu nastavi začetno stanje v history
+      if (!window.history.state) {
+        window.history.replaceState({ section: 'home' }, '', '#home');
+      }
+      return () => window.removeEventListener('popstate', handlePopState);
+    }
+  }, []);
 
   const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
 
@@ -679,7 +762,7 @@ export default function App() {
     <div className="min-h-screen" style={{fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#F5F5F5'}}>
       {/* Header */}
       <header className="bg-white border-b border-as-gray-200 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+        <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12 py-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
               <button 
@@ -884,7 +967,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      <main className="w-full px-4 sm:px-6 lg:px-8 xl:px-12 py-6">
         {/* GLAVNI POGOJ: Domov / Naloge / Dnevna / Poročila / Proizvodnja / Montaža / Računovodstvo */}
         {mainSection === 'home' ? (
           <HomePage
@@ -1092,7 +1175,7 @@ export default function App() {
         />
       )}
 
-      <footer className="max-w-7xl mx-auto px-4 sm:px-6 py-6 text-center">
+      <footer className="w-full px-4 sm:px-6 lg:px-8 xl:px-12 py-6 text-center">
         <p className="text-xs text-as-gray-400">
           AS system d.o.o. • Since 1993 • Interno orodje za upravljanje nalog
         </p>
