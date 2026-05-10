@@ -59,7 +59,7 @@ export default function DailyReports({ currentUser, employees }) {
         .from('daily_entries')
         .select('*')
         .gte('entry_date', weekDates[0])
-        .lte('entry_date', weekDates[4])
+        .lte('entry_date', weekDates[6])
         .order('entry_date', { ascending: true });
 
       if (error) throw error;
@@ -197,7 +197,7 @@ export default function DailyReports({ currentUser, employees }) {
     newMonday.setDate(newMonday.getDate() + (direction * 7));
     
     const dates = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 7; i++) {
       const d = new Date(newMonday);
       d.setDate(newMonday.getDate() + i);
       dates.push(d.toISOString().split('T')[0]);
@@ -236,10 +236,10 @@ export default function DailyReports({ currentUser, employees }) {
             </button>
             <div className="text-center min-w-[260px]">
               <div className="text-lg font-bold text-as-gray-700">
-                Teden: {formatShortDate(weekDates[0])} - {formatShortDate(weekDates[4])}
+                Teden: {formatShortDate(weekDates[0])} - {formatShortDate(weekDates[6])}
               </div>
               <div className="text-xs text-as-gray-400">
-                Dnevna opravila (Ponedeljek - Petek)
+                Dnevna opravila (Ponedeljek - Nedelja)
               </div>
             </div>
             <button
@@ -426,7 +426,7 @@ function DailyGrid({ weekDates, currentUser, viewingPerson, myDepartments, daily
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-2 p-3">
+            <div className="grid grid-cols-1 md:grid-cols-7 gap-2 p-3">
               {weekDates.map(date => {
                 const entry = getEntry(date, deptKey, viewerEmail);
                 const dateObj = new Date(date);
