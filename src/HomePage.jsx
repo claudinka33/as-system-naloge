@@ -7,10 +7,12 @@ import React, { useEffect, useState } from 'react';
 import { 
   ClipboardList, CalendarCheck, BarChart3, Sparkles, X,
   CheckCircle2, AlertCircle, Calendar, TrendingUp, Users,
-  Wallet, ArrowRight
+  Wallet, ArrowRight, Factory, Wrench
 } from 'lucide-react';
 import { supabase } from './supabase.js';
 import { getTodayQuote } from './quotes.js';
+import { canAccessProduction } from './components/Production/ProductionTab.jsx';
+import { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 
 // =====================================
 // Pozdrav po času dneva
@@ -153,6 +155,24 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
       bgColor: '#FED7AA',
     },
     {
+      key: 'production',
+      title: 'Proizvodnja',
+      desc: 'Vnos in pregled dnevne ter mesečne proizvodnje',
+      icon: Factory,
+      color: '#1E40AF',
+      bgColor: '#DBEAFE',
+      access: (u) => canAccessProduction(u?.email),
+    },
+    {
+      key: 'assembly',
+      title: 'Montaža',
+      desc: 'Vnos in pregled dela montaže',
+      icon: Wrench,
+      color: '#166534',
+      bgColor: '#DCFCE7',
+      access: (u) => canAccessAssembly(u?.email),
+    },
+    {
       key: 'racunovodstvo',
       title: 'Računovodstvo',
       desc: 'Stroški, plače, kompenzacije, opomini, intrastat',
@@ -164,7 +184,14 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
   ];
 
   // Filtriraj kartice glede na pravice
-  const visibleCards = navCards.filter(c => !c.adminOnly || isAdmin);
+  // - adminOnly: vidi samo admin
+  // - access(user): vidi, če funkcija vrne true
+  // - sicer: vidijo vsi
+  const visibleCards = navCards.filter(c => {
+    if (c.adminOnly) return isAdmin;
+    if (typeof c.access === 'function') return c.access(currentUser);
+    return true;
+  });
 
   return (
     <div className="space-y-6">
