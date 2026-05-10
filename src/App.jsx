@@ -815,7 +815,7 @@ export default function App() {
                   <span className="hidden sm:inline">Naloge</span>
                 </button>
                 <button
-                  onClick={() => setMainSection('daily')}
+                  onClick={() => handleModuleClick('daily')}
                   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'daily' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   style={mainSection === 'daily' ? {backgroundColor: '#C8102E'} : {}}
                 >
@@ -823,7 +823,7 @@ export default function App() {
                   <span className="hidden sm:inline">Dnevna opravila</span>
                 </button>
                 <button
-                  onClick={() => setMainSection('reports')}
+                  onClick={() => handleModuleClick('reports')}
                   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'reports' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   style={mainSection === 'reports' ? {backgroundColor: '#C8102E'} : {}}
                 >
