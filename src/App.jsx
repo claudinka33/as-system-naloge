@@ -1226,7 +1226,7 @@ export default function App() {
   );
 }
 
-function TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, onEdit, onDelete, onFileUpload, onDownloadFile, onRemoveAttachment, onAddComment, getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels, currentUser, isAdmin, isAssignedToMe, assignedNames }) {
+function __REMOVED_TASKCARD__() {
   const [commentText, setCommentText] = useState('');
   const isCompleted = task.status === 'completed';
 
