@@ -73,7 +73,7 @@ const ODDELKI_CONFIG = {
 
 
 
-  { email: 'mitja.marguc@as-system.si', username: 'mitja.marguc', name: 'Mitja Marguč', department: 'Komerciala', password: 'Marguc-komerc44' },
+  { email: 
 
 
 
