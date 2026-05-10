@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck } from 'lucide-react';
+import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck, Home, Wallet } from 'lucide-react';
 import { supabase } from './supabase.js';
 import Reports from './Reports.jsx';
 import { syncTaskWebhook } from './webhooks.js';
@@ -8,6 +8,8 @@ import { getTodayQuote } from './quotes.js';
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
+import HomePage from './HomePage.jsx';
+import Racunovodstvo from './Racunovodstvo.jsx';
 
 // E-maili z dostopom do VSEH nalog (direktor + marketing + računovodstvo)
 const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si', 'sara.jagodic@as-system.si'];
@@ -55,8 +57,8 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
   
-  // Glavni razdelek (Naloge / Poročila)
-  const [mainSection, setMainSection] = useState('tasks'); // 'tasks' ali 'reports'
+  // Glavni razdelek (Domov / Naloge / Dnevna / Poročila / Proizvodnja / Montaža / Računovodstvo)
+  const [mainSection, setMainSection] = useState('home');
 
   const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
 
@@ -171,6 +173,7 @@ export default function App() {
     setEmailInput('');
     setPasswordInput('');
     setTasks([]);
+    setMainSection('home'); // reset na home ob odjavi
     try {
       sessionStorage.removeItem('as_auth');
       sessionStorage.removeItem('as_user_email');
@@ -662,6 +665,13 @@ export default function App() {
     return emails.map(email => getEmployeeName(email));
   };
 
+  // === Helper za navigacijo iz HomePage
+  const handleHomeNavigate = (section, opts) => {
+    setMainSection(section);
+    if (opts?.filter) setFilter(opts.filter);
+    if (section === 'tasks') setViewMode('list');
+  };
+
   return (
     <div className="min-h-screen" style={{fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#F5F5F5'}}>
       {/* Header */}
@@ -669,16 +679,34 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <img src="/logo.jpg" alt="AS system" className="h-14 object-contain" />
-              <div className="hidden md:block border-l border-as-gray-200 pl-3">
+              <button 
+                onClick={() => setMainSection('home')}
+                className="hover:opacity-80 transition cursor-pointer"
+                title="Domov"
+              >
+                <img src="/logo.jpg" alt="AS system" className="h-14 object-contain" />
+              </button>
+              <button
+                onClick={() => setMainSection('home')}
+                className="hidden md:block border-l border-as-gray-200 pl-3 hover:bg-as-gray-50 rounded transition text-left cursor-pointer"
+                title="Domov"
+              >
                 <p className="text-xs text-as-gray-400 font-medium uppercase tracking-wider">Interno orodje</p>
                 <p className="text-sm text-as-gray-600 font-semibold">Upravljanje nalog</p>
-              </div>
+              </button>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* GLAVNO Stikalo Naloge / Dnevna opravila / Poročila */}
-              <div className="bg-as-gray-100 rounded-lg p-1 flex border border-as-gray-200">
+              {/* GLAVNO Stikalo: Domov / Naloge / Dnevna / Poročila / Proizvodnja / Montaža / Računovodstvo */}
+              <div className="bg-as-gray-100 rounded-lg p-1 flex border border-as-gray-200 flex-wrap">
+                <button
+                  onClick={() => setMainSection('home')}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'home' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  style={mainSection === 'home' ? {backgroundColor: '#C8102E'} : {}}
+                >
+                  <Home className="w-4 h-4" />
+                  <span className="hidden sm:inline">Domov</span>
+                </button>
                 <button
                   onClick={() => setMainSection('tasks')}
                   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'tasks' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
@@ -721,6 +749,16 @@ export default function App() {
                   >
                     <Wrench className="w-4 h-4" />
                     <span className="hidden sm:inline">Montaža</span>
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={() => setMainSection('racunovodstvo')}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'racunovodstvo' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    style={mainSection === 'racunovodstvo' ? {backgroundColor: '#C8102E'} : {}}
+                  >
+                    <Wallet className="w-4 h-4" />
+                    <span className="hidden sm:inline">Računovodstvo</span>
                   </button>
                 )}
               </div>
@@ -795,8 +833,16 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        {/* GLAVNI POGOJ: Naloge / Dnevna / Poročila */}
-        {mainSection === 'reports' ? (
+        {/* GLAVNI POGOJ: Domov / Naloge / Dnevna / Poročila / Proizvodnja / Montaža / Računovodstvo */}
+        {mainSection === 'home' ? (
+          <HomePage
+            currentUser={currentUser}
+            isAdmin={isAdmin}
+            onNavigate={handleHomeNavigate}
+          />
+        ) : mainSection === 'racunovodstvo' ? (
+          <Racunovodstvo currentUser={currentUser} isAdmin={isAdmin} />
+        ) : mainSection === 'reports' ? (
           <Reports currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'daily' ? (
           <DailyReports currentUser={currentUser} employees={EMPLOYEES} />
