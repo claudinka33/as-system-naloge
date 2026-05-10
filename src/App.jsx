@@ -5,6 +5,7 @@ import Reports from './Reports.jsx';
 import { syncTaskWebhook } from './webhooks.js';
 import DailyReports from './DailyReports.jsx';
 import { getTodayQuote } from './quotes.js';
+import { ADMIN_EMAILS, EMPLOYEES, DEPARTMENTS, AREA_SUGGESTIONS } from './constants.js';
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
@@ -66,8 +67,7 @@ const ODDELKI_CONFIG = {
   kakovost: { name: 'Kakovost', tableName: 'kakovost_entries', accentColor: '#9F1239', accentBg: '#FFE4E6', icon: ShieldCheck, desc: 'Vstopna, procesna, končna kontrola, certifikati', categories: KAKOVOST_KATEGORIJE, allowedEmails: ['kakovost@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'] },
 };
 
-// E-maili z dostopom do VSEH nalog (direktor + marketing + računovodstvo)
-const ADMIN_EMAILS = ['ales.seidl@as-system.si', 'claudia.seidl@as-system.si', 'sara.jagodic@as-system.si'];
+
 
 // Pravi zaposleni AS system d.o.o. - vsak ima svoje unikatno geslo
 const EMPLOYEES = [
@@ -86,8 +86,7 @@ const EMPLOYEES = [
   { email: 'feliks.zekar@as-system.si', username: 'feliks.zekar', name: 'Feliks Žekar', department: 'Skladišče', password: 'Zekar-skladi77' },
 ];
 
-const DEPARTMENTS = [...new Set(EMPLOYEES.map(e => e.department))];
-const AREA_SUGGESTIONS = ['Prodaja', 'Nabava', 'Montaža', 'Proizvodnja', 'Skladišče', 'Marketing', 'Kakovost', 'Tehnolog', 'Kadrovska', 'Računovodstvo', 'Komerciala'];
+
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
