@@ -56,9 +56,9 @@ export function aggregateDailyToWeekly(department, dailyEntries) {
   return result;
 }
 
-// Pomožne funkcije za delo z datumi
+// Pomožne funkcije za delo z datumi (lokalni čas)
 export function getTodayDate() {
-  return new Date().toISOString().split('T')[0];
+  return toLocalDateStr(new Date());
 }
 
 export function formatShortDate(dateStr) {
