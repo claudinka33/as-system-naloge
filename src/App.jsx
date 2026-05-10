@@ -807,7 +807,7 @@ export default function App() {
                   <span className="hidden sm:inline">Domov</span>
                 </button>
                 <button
-                  onClick={() => setMainSection('tasks')}
+                  onClick={() => handleModuleClick('tasks')}
                   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'tasks' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   style={mainSection === 'tasks' ? {backgroundColor: '#C8102E'} : {}}
                 >
@@ -832,7 +832,7 @@ export default function App() {
                 </button>
                 {canAccessProduction(currentUser?.email) && (
                   <button
-                    onClick={() => setMainSection('production')}
+                    onClick={() => handleModuleClick('production')}
                     className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'production' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                     style={mainSection === 'production' ? {backgroundColor: '#C8102E'} : {}}
                   >
@@ -842,7 +842,7 @@ export default function App() {
                 )}
                 {canAccessAssembly(currentUser?.email) && (
                   <button
-                    onClick={() => setMainSection('assembly')}
+                    onClick={() => handleModuleClick('assembly')}
                     className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'assembly' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                     style={mainSection === 'assembly' ? {backgroundColor: '#C8102E'} : {}}
                   >
@@ -857,7 +857,7 @@ export default function App() {
                   return (
                     <button
                       key={key}
-                      onClick={() => setMainSection(key)}
+                      onClick={() => handleModuleClick(key)}
                       className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === key ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                       style={mainSection === key ? {backgroundColor: '#C8102E'} : {}}
                     >
