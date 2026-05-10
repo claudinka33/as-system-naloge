@@ -199,7 +199,7 @@ const formatDateSL = (d) => {
   return new Date(d).toLocaleDateString('sl-SI');
 };
 
-export default function Racunovodstvo({ currentUser, isAdmin, employees = [], selectedCategoryFromHeader = null, onCategoryHandled = null }) {
+export default function Racunovodstvo({ currentUser, isAdmin, employees = [], selectedCategoryFromHeader = null, onCategoryHandled = null, resetSignal = 0 }) {
   const [entries, setEntries] = useState([]);
   const [comments, setComments] = useState([]);
   const [attachments, setAttachments] = useState([]);
@@ -219,6 +219,20 @@ export default function Racunovodstvo({ currentUser, isAdmin, employees = [], se
       if (onCategoryHandled) onCategoryHandled();
     }
   }, [selectedCategoryFromHeader]);
+
+  // Reset signal: ko klikneš že-aktiven gumb v headerju (App.jsx triggerModuleReset),
+  // se modul vrne na home (vse kategorije, brez filtra, view=entry)
+  useEffect(() => {
+    if (resetSignal > 0) {
+      setSelectedCategory(null);
+      setSearchQuery('');
+      setStatusFilter('all');
+      setView('entry');
+      setShowNewModal(false);
+      setEditingEntry(null);
+      setShowExportDialog(false);
+    }
+  }, [resetSignal]);
 
   useEffect(() => {
     loadAll();
