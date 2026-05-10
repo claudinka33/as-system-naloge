@@ -6,6 +6,7 @@ import { syncTaskWebhook } from './webhooks.js';
 import DailyReports from './DailyReports.jsx';
 import { getTodayQuote } from './quotes.js';
 import { ADMIN_EMAILS, EMPLOYEES, DEPARTMENTS, AREA_SUGGESTIONS } from './constants.js';
+import TaskCard from './components/TaskCard.jsx';
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
