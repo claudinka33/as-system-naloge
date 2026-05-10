@@ -7,38 +7,32 @@ export const REPORT_TEMPLATES = {
   proizvodnja: {
     name: 'Proizvodnja',
     icon: '🏭',
-    color: '#0E7490', // teal-700
-    bgColor: '#CFFAFE', // cyan-100
+    color: '#0E7490',
+    bgColor: '#CFFAFE',
     fields: [
-      // SKUPINA: Izvedeni nalogi
       { key: 'completed_group', label: 'Število izvedenih nalogov (KOS)', type: 'group_header' },
       { key: 'completed_vijaki', label: 'Vijaki', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
       { key: 'completed_pini', label: 'PINI', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
       { key: 'completed_sidra', label: 'Sidra', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
       { key: 'completed_struzena', label: 'Stružena sidra', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
       { key: 'completed_ostalo', label: 'Ostalo', type: 'number', placeholder: '0', unit: 'KOS', group: 'completed' },
-      
-      // SKUPINA: Odprti nalogi
       { key: 'open_group', label: 'Število odprtih nalogov (KOS)', type: 'group_header' },
       { key: 'open_vijaki', label: 'Vijaki', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
       { key: 'open_pini', label: 'PINI', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
       { key: 'open_sidra', label: 'Sidra', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
       { key: 'open_struzena', label: 'Stružena sidra', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
       { key: 'open_ostalo', label: 'Ostalo', type: 'number', placeholder: '0', unit: 'KOS', group: 'open' },
-      
-      // Tekstovna polja
       { key: 'delays', label: 'Zamude (zakaj?)', type: 'textarea', placeholder: 'Opišite vzroke zamud, če so se pojavile...' },
       { key: 'breakdowns', label: 'Okvare (kaj, koliko, zakaj)', type: 'textarea', placeholder: 'Opišite okvare strojev, vzroke...' },
       { key: 'spare_parts', label: 'Poraba rezervnih delov', type: 'textarea', placeholder: 'Kateri rezervni deli so bili porabljeni...' },
       { key: 'complaints', label: 'Reklamacije / napake', type: 'textarea', placeholder: 'Število in opis reklamacij, napak v proizvodnji...' },
     ]
   },
-  
   montaza: {
     name: 'Montaža',
     icon: '🔧',
-    color: '#7C2D12', // orange-900
-    bgColor: '#FED7AA', // orange-200
+    color: '#7C2D12',
+    bgColor: '#FED7AA',
     fields: [
       { key: 'completed_orders', label: 'Število izvedenih nalogov', type: 'number', placeholder: 'npr. 18' },
       { key: 'open_orders', label: 'Število odprtih nalogov', type: 'number', placeholder: 'npr. 5' },
@@ -48,12 +42,11 @@ export const REPORT_TEMPLATES = {
       { key: 'complaints', label: 'Reklamacije / napake', type: 'textarea', placeholder: 'Število in opis reklamacij...' },
     ]
   },
-  
   nabava: {
     name: 'Nabava',
     icon: '📦',
-    color: '#5B21B6', // violet-800
-    bgColor: '#DDD6FE', // violet-200
+    color: '#5B21B6',
+    bgColor: '#DDD6FE',
     fields: [
       { key: 'order_count', label: 'Koliko naročilnic', type: 'number', placeholder: 'npr. 12' },
       { key: 'suppliers', label: 'Komu (dobaviteljem)', type: 'textarea', placeholder: 'Naštej dobavitelje, ki so prejeli naročila...' },
@@ -62,12 +55,11 @@ export const REPORT_TEMPLATES = {
       { key: 'new_suppliers', label: 'Novi dobavitelji (koliko, kdo, rezultat)', type: 'textarea', placeholder: 'Imena novih dobaviteljev, status sodelovanja...' },
     ]
   },
-  
   prodaja: {
     name: 'Prodaja',
     icon: '💼',
-    color: '#C8102E', // AS red
-    bgColor: '#FEE2E2', // red-100
+    color: '#C8102E',
+    bgColor: '#FEE2E2',
     fields: [
       { key: 'calls', label: 'Klici (stari / novi kupci)', type: 'textarea', placeholder: 'Število klicev, razdelitev na obstoječe in nove kupce...' },
       { key: 'visits', label: 'Obiski (kupci, sejmi, predstavitve)', type: 'textarea', placeholder: 'Koga ste obiskali, kje, namen...' },
@@ -76,12 +68,26 @@ export const REPORT_TEMPLATES = {
       { key: 'problems', label: 'Problemi (kje izgubljamo posle)', type: 'textarea', placeholder: 'Razlogi za izgubljene posle, ovire pri prodaji...' },
     ]
   },
-  
+  komerciala: {
+    name: 'Komerciala',
+    icon: '📊',
+    color: '#1E3A8A',
+    bgColor: '#DBEAFE',
+    fields: [
+      { key: 'open_montage', label: 'Št. odprtih montažnih nalogov', type: 'number', placeholder: '0', unit: 'kos' },
+      { key: 'closed_montage', label: 'Št. zaključenih montažnih nalogov', type: 'number', placeholder: '0', unit: 'kos' },
+      { key: 'open_production', label: 'Št. odprtih proizvodnjih nalogov', type: 'number', placeholder: '0', unit: 'kos' },
+      { key: 'closed_production', label: 'Št. zaključenih proizvodnjih nalogov', type: 'number', placeholder: '0', unit: 'kos' },
+      { key: 'receipts', label: 'Št. prejemov', type: 'number', placeholder: '0', unit: 'kos' },
+      { key: 'complaints_count', label: 'Št. reklamacij', type: 'number', placeholder: '0', unit: 'kos' },
+      { key: 'notes', label: 'Opombe (neobvezno)', type: 'textarea', placeholder: 'Dodatne opombe, posebnosti dneva...' },
+    ]
+  },
   kakovost: {
     name: 'Kakovost',
     icon: '🔬',
-    color: '#065F46', // emerald-800
-    bgColor: '#A7F3D0', // emerald-200
+    color: '#065F46',
+    bgColor: '#A7F3D0',
     fields: [
       { key: 'inspections', label: 'Število pregledov / kontrol kakovosti', type: 'number', placeholder: 'npr. 45' },
       { key: 'defects_found', label: 'Število odkritih napak', type: 'number', placeholder: 'npr. 3' },
@@ -91,12 +97,11 @@ export const REPORT_TEMPLATES = {
       { key: 'supplier_quality', label: 'Sodelovanje z dobavitelji glede kakovosti', type: 'textarea', placeholder: 'Komunikacija, težave, izboljšave...' },
     ]
   },
-  
   tehnolog: {
     name: 'Tehnolog',
     icon: '⚙️',
-    color: '#1E40AF', // blue-800
-    bgColor: '#BFDBFE', // blue-200
+    color: '#1E40AF',
+    bgColor: '#BFDBFE',
     fields: [
       { key: 'new_developments', label: 'Število novih razvojev / projektov', type: 'textarea', placeholder: 'Kateri projekti potekajo, status...' },
       { key: 'optimizations', label: 'Optimizacije obstoječih procesov', type: 'textarea', placeholder: 'Kaj ste izboljšali, prihranki časa/materiala...' },
@@ -106,12 +111,11 @@ export const REPORT_TEMPLATES = {
       { key: 'tooling_status', label: 'Status orodjarne (skladnost, vzdrževanje)', type: 'textarea', placeholder: 'Stanje orodij, potrebno vzdrževanje...' },
     ]
   },
-  
   kadrovska: {
     name: 'Kadrovska',
     icon: '👥',
-    color: '#831843', // pink-900
-    bgColor: '#FBCFE8', // pink-200
+    color: '#831843',
+    bgColor: '#FBCFE8',
     fields: [
       { key: 'employee_changes', label: 'Spremembe zaposlenih (nove zaposlitve / odhodi)', type: 'textarea', placeholder: 'Kdo se je zaposlil, kdo odhaja...' },
       { key: 'absences', label: 'Bolniške / odsotnosti tega tedna', type: 'textarea', placeholder: 'Število, razlogi, dolžina...' },
@@ -121,12 +125,11 @@ export const REPORT_TEMPLATES = {
       { key: 'other', label: 'Drugo (dopusti, prazniki, konflikti, opombe)', type: 'textarea', placeholder: 'Vse ostalo, kar je vredno omeniti...' },
     ]
   },
-
   racunovodstvo: {
     name: 'Računovodstvo',
     icon: '💰',
-    color: '#854D0E', // yellow-800
-    bgColor: '#FEF3C7', // yellow-100
+    color: '#854D0E',
+    bgColor: '#FEF3C7',
     fields: [
       { key: 'invoices_issued', label: 'Število izstavljenih računov + skupna vrednost', type: 'textarea', placeholder: 'Število, skupna vrednost, večji računi...' },
       { key: 'payments_received', label: 'Prejeta plačila + skupna vrednost', type: 'textarea', placeholder: 'Število plačil, skupna vrednost, večja plačila...' },
@@ -137,12 +140,11 @@ export const REPORT_TEMPLATES = {
       { key: 'other', label: 'Drugo (poročila, analize, opombe)', type: 'textarea', placeholder: 'Pripravljene analize, mesečna poročila, drugo...' },
     ]
   },
-
   marketing: {
     name: 'Marketing',
     icon: '📢',
-    color: '#9D174D', // pink-800
-    bgColor: '#FCE7F3', // pink-100
+    color: '#9D174D',
+    bgColor: '#FCE7F3',
     fields: [
       { key: 'social_media', label: 'Družbena omrežja (objave, doseg, sledilci)', type: 'textarea', placeholder: 'Facebook, Instagram, LinkedIn — število objav, doseg, novi sledilci...' },
       { key: 'website', label: 'Spletna stran (obiski, analitika)', type: 'textarea', placeholder: 'Število obiskov, najbolj obiskane strani, vir prometa...' },
@@ -155,94 +157,24 @@ export const REPORT_TEMPLATES = {
   },
 };
 
-// Mapiranje uporabnikov na oddelke (kdo lahko piše katero poročilo)
-// 'admin' = vidi VSA poročila + lahko piše na svoj domači oddelek
-// Array = lahko piše samo te oddelke
 export const USER_DEPARTMENT_MAP = {
-  'ales.seidl@as-system.si': 'admin', // Direktor - vidi VSE
-  'claudia.seidl@as-system.si': 'admin', // Marketing - vidi VSE + piše marketing
-  'sara.jagodic@as-system.si': 'admin', // Računovodstvo - vidi VSE + piše računovodstvo
+  'ales.seidl@as-system.si': 'admin',
+  'claudia.seidl@as-system.si': 'admin',
+  'sara.jagodic@as-system.si': 'admin',
   'alen.drofenik@as-system.si': ['nabava'],
   'tjasa.mihevc@as-system.si': ['prodaja'],
-  'matija.marguc@as-system.si': ['prodaja'],
+  'mitja.marguc@as-system.si': ['komerciala'],
   'cvetka.seidl@as-system.si': ['kadrovska'],
   'milena.jancic@as-system.si': ['montaza'],
   'gregor.koritnik@as-system.si': ['tehnolog'],
   'boris.cernelc@as-system.si': ['proizvodnja'],
   'kakovost@as-system.si': ['kakovost'],
   'zan.seidl@as-system.si': ['prodaja'],
-  'feliks.zekar@as-system.si': [], // Skladišče - nima poročila zaenkrat
+  'feliks.zekar@as-system.si': [],
 };
 
-// Domači oddelek za admin uporabnike (kjer pišejo svoja poročila)
 export const ADMIN_HOME_DEPARTMENT = {
-  'ales.seidl@as-system.si': null, // Direktor ne piše svojega poročila
+  'ales.seidl@as-system.si': null,
   'claudia.seidl@as-system.si': 'marketing',
   'sara.jagodic@as-system.si': 'racunovodstvo',
 };
-
-// Kateri oddelek lahko piše uporabnik
-export function getUserDepartments(email) {
-  const dept = USER_DEPARTMENT_MAP[email];
-  if (!dept) return [];
-  if (dept === 'admin') return Object.keys(REPORT_TEMPLATES); // Vsi oddelki
-  return dept;
-}
-
-// Ali je uporabnik admin (vidi vsa poročila)
-export function isReportsAdmin(email) {
-  return USER_DEPARTMENT_MAP[email] === 'admin';
-}
-
-// Helper funkcije za delo s tedni
-export function getCurrentWeekInfo() {
-  const now = new Date();
-  return getWeekInfo(now);
-}
-
-export function getWeekInfo(date) {
-  const d = new Date(date);
-  
-  // ISO week: ponedeljek = 1, nedelja = 7
-  const dayNum = d.getDay() || 7;
-  d.setDate(d.getDate() + 4 - dayNum);
-  
-  const yearStart = new Date(d.getFullYear(), 0, 1);
-  const weekNumber = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-  
-  // Ponedeljek tega tedna
-  const monday = new Date(date);
-  const day = monday.getDay() || 7;
-  monday.setDate(monday.getDate() - (day - 1));
-  monday.setHours(0, 0, 0, 0);
-  
-  // Nedelja tega tedna
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  sunday.setHours(23, 59, 59, 999);
-  
-  return {
-    weekNumber,
-    weekYear: d.getFullYear(),
-    weekStart: monday.toISOString().split('T')[0],
-    weekEnd: sunday.toISOString().split('T')[0],
-    monday,
-    sunday
-  };
-}
-
-// Formatiranje tedna za prikaz
-export function formatWeekRange(weekStart, weekEnd) {
-  const start = new Date(weekStart);
-  const end = new Date(weekEnd);
-  const sameMonth = start.getMonth() === end.getMonth();
-  const sameYear = start.getFullYear() === end.getFullYear();
-  
-  if (sameMonth && sameYear) {
-    return `${start.getDate()}.-${end.getDate()}.${end.getMonth() + 1}.${end.getFullYear()}`;
-  } else if (sameYear) {
-    return `${start.getDate()}.${start.getMonth() + 1}.-${end.getDate()}.${end.getMonth() + 1}.${end.getFullYear()}`;
-  } else {
-    return `${start.getDate()}.${start.getMonth() + 1}.${start.getFullYear()}-${end.getDate()}.${end.getMonth() + 1}.${end.getFullYear()}`;
-  }
-}
