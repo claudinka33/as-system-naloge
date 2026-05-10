@@ -117,6 +117,19 @@ export default function App() {
   // Računovodstvo: dropdown kategorija iz headerja
   const [racunovodstvoCategory, setRacunovodstvoCategory] = useState(null);
   const [racunovodstvoMenuOpen, setRacunovodstvoMenuOpen] = useState(false);
+  // Reset counters za vsak modul: ko klikneš že-aktiven gumb v headerju, se modul resetira na home
+  const [moduleResetCounters, setModuleResetCounters] = useState({});
+  const triggerModuleReset = (key) => {
+    setModuleResetCounters(c => ({ ...c, [key]: (c[key] || 0) + 1 }));
+  };
+  const handleModuleClick = (key) => {
+    if (mainSection === key) {
+      // že je aktiven → reset na home tega modula
+      triggerModuleReset(key);
+    } else {
+      setMainSection(key);
+    }
+  };
 
   // === BROWSER HISTORY: gumb "nazaj" v brskalniku naj te peljebe nazaj v aplikacijo, NE iz nje ===
   useEffect(() => {
