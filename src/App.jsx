@@ -1035,14 +1035,6 @@ export default function App() {
           <ProductionTab currentUser={currentUser} resetSignal={moduleResetCounters.production || 0} />
         ) : mainSection === 'assembly' ? (
           <AssemblyTab currentUser={currentUser} resetSignal={moduleResetCounters.assembly || 0} />
-        ) : mainSection === 'oldreports' ? (
-          <Reports currentUser={currentUser} employees={EMPLOYEES} />
-        ) : mainSection === 'daily' ? (
-          <DailyReports currentUser={currentUser} employees={EMPLOYEES} />
-        ) : mainSection === 'production' ? (
-          <ProductionTab currentUser={currentUser} />
-        ) : mainSection === 'assembly' ? (
-          <AssemblyTab currentUser={currentUser} />
         ) : (
           <>
         {/* Statistike (vedno vidne) */}
