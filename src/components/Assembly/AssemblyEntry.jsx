@@ -8,13 +8,13 @@ import {
 
 const AS_RED = '#C8102E';
 
-export default function AssemblyEntry({ currentUser }) {
+export default function AssemblyEntry({ currentUser, initialDate, initialWorkerId, onConsumed }) {
   const today = new Date().toISOString().split('T')[0];
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(initialDate || today);
   const [workers, setWorkers] = useState([]);
   const [machines, setMachines] = useState([]);
   const [activities, setActivities] = useState([]);
-  const [selectedWorkerId, setSelectedWorkerId] = useState('');
+  const [selectedWorkerId, setSelectedWorkerId] = useState(initialWorkerId ? String(initialWorkerId) : '');
   const [loading, setLoading] = useState(true);
 
   // Form state
@@ -28,6 +28,14 @@ export default function AssemblyEntry({ currentUser }) {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [existingId, setExistingId] = useState(null);
+
+  // Ko spremenimo prikaz iz poročila (preusmeritev), uporabi tiste vrednosti
+  useEffect(() => {
+    if (initialDate) setDate(initialDate);
+    if (initialWorkerId) setSelectedWorkerId(String(initialWorkerId));
+    if ((initialDate || initialWorkerId) && onConsumed) onConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDate, initialWorkerId]);
 
   // Load šifranti
   useEffect(() => {
