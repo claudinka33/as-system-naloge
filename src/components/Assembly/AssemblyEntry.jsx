@@ -119,7 +119,30 @@ export default function AssemblyEntry({ currentUser }) {
         worker_id: Number(selectedWorkerId),
         machine_quantities: cleanMachineQty,
         activity_data: cleanActivityData,
-        normativ: normativ ? Number(normativ) : null,
+        normativ: (() => {
+          const sumA = Object.values(activityData).reduce((s, v) => {
+            if (v && typeof v === 'object' && v.normativ) return s + Number(v.normativ);
+            return s;
+          }, 0);
+          const sumM = Object.values(machineQty).reduce((s, v) => {
+            if (v && typeof v === 'object' && v.normativ) return s + Number(v.normativ);
+            return s;
+          }, 0);
+          const total = sumA + sumM;
+          return total > 0 ? total : null;
+        })(),
+        total_kos: (() => {
+          const sumA = Object.values(activityData).reduce((s, v) => {
+            if (v && typeof v === 'object' && v.kos) return s + Number(v.kos);
+            return s;
+          }, 0);
+          const sumM = Object.values(machineQty).reduce((s, v) => {
+            if (v && typeof v === 'object' && v.kos) return s + Number(v.kos);
+            return s;
+          }, 0);
+          const total = sumA + sumM;
+          return total > 0 ? total : null;
+        })(),
         total_hours: (() => {
           const sumActivity = Object.values(activityData).reduce((s, v) => {
             if (v && typeof v === 'object' && v.cas) return s + Number(v.cas);
@@ -332,10 +355,40 @@ export default function AssemblyEntry({ currentUser }) {
           <h3 className="font-bold text-as-gray-700 mb-3">📊 Povzetek dneva</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-semibold text-as-gray-600 mb-1">Normativ (kos)</label>
-              <input type="number" inputMode="numeric" placeholder="npr. 1350"
-                value={normativ} onChange={e => setNormativ(e.target.value)}
-                className="w-full px-3 py-2 border border-as-gray-200 rounded-lg" />
+              <label className="block text-sm font-semibold text-as-gray-600 mb-1">Skupaj KOS <span className="text-as-gray-400 font-normal text-xs">(avto)</span></label>
+              <input type="text" readOnly
+                value={(() => {
+                  const sumA = Object.values(activityData).reduce((s, v) => {
+                    if (v && typeof v === 'object' && v.kos) return s + Number(v.kos);
+                    return s;
+                  }, 0);
+                  const sumM = Object.values(machineQty).reduce((s, v) => {
+                    if (v && typeof v === 'object' && v.kos) return s + Number(v.kos);
+                    return s;
+                  }, 0);
+                  const total = sumA + sumM;
+                  return total > 0 ? total.toLocaleString('sl-SI') : '';
+                })()}
+                placeholder="se izračuna iz KOS polj"
+                className="w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-as-gray-50 text-as-gray-700" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-as-gray-600 mb-1">Skupaj normativ <span className="text-as-gray-400 font-normal text-xs">(avto)</span></label>
+              <input type="text" readOnly
+                value={(() => {
+                  const sumA = Object.values(activityData).reduce((s, v) => {
+                    if (v && typeof v === 'object' && v.normativ) return s + Number(v.normativ);
+                    return s;
+                  }, 0);
+                  const sumM = Object.values(machineQty).reduce((s, v) => {
+                    if (v && typeof v === 'object' && v.normativ) return s + Number(v.normativ);
+                    return s;
+                  }, 0);
+                  const total = sumA + sumM;
+                  return total > 0 ? total.toLocaleString('sl-SI') : '';
+                })()}
+                placeholder="se izračuna iz NORMATIV polj"
+                className="w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-as-gray-50 text-as-gray-700" />
             </div>
             <div>
               <label className="block text-sm font-semibold text-as-gray-600 mb-1">Skupne ure <span className="text-as-gray-400 font-normal text-xs">(avto)</span></label>
