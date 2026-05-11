@@ -239,6 +239,18 @@ export async function markGroupAsRead(group_id, my_email) {
   if (error) console.warn('markGroupAsRead:', error.message);
 }
 
+// Vrne mapo {member_email: last_read_at} za vse člane skupine (read receipts)
+export async function getGroupReadStatus(group_id) {
+  const { data, error } = await supabase
+    .from('chat_group_read')
+    .select('member_email, last_read_at')
+    .eq('group_id', group_id);
+  if (error) throw error;
+  const map = {};
+  (data || []).forEach(r => { map[r.member_email] = r.last_read_at; });
+  return map;
+}
+
 export async function getGroupReads(my_email) {
   const { data, error } = await supabase
     .from('chat_group_read')
