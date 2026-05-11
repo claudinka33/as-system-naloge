@@ -1413,7 +1413,7 @@ function _UNUSED_TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, on
   );
 }
 
-function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onClose }) {
+function _UNUSED_TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onClose }) {
   const defaultAssignee = employees.find(e => e.email !== currentUser.email) || employees[0];
   
   const initialAssignedEmails = task?.assigned_to_emails 
@@ -1816,7 +1816,7 @@ function TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onCl
 // =====================================
 // KOLEDAR KOMPONENTA
 // =====================================
-function CalendarView({ tasks, currentUser, isAdmin, isAssignedToMe, currentDate, setCurrentDate, calendarMode, setCalendarMode, selectedDay, setSelectedDay, filterPerson, setFilterPerson, employees, onTaskClick, getEmployeeName, priorityLabels }) {
+function _UNUSED_CalendarView({ tasks, currentUser, isAdmin, isAssignedToMe, currentDate, setCurrentDate, calendarMode, setCalendarMode, selectedDay, setSelectedDay, filterPerson, setFilterPerson, employees, onTaskClick, getEmployeeName, priorityLabels }) {
   
   // Filtrirane naloge (admin vidi vse, drugi samo svoje + ki so jih ustvarili)
   const visibleTasks = tasks.filter(task => {
@@ -2168,7 +2168,7 @@ function CalendarView({ tasks, currentUser, isAdmin, isAssignedToMe, currentDate
 // =====================================
 // MISEL DNEVA - okvirček s citatom
 // =====================================
-function QuoteOfTheDay() {
+function _UNUSED_QuoteOfTheDay() {
   const [dismissed, setDismissed] = React.useState(false);
   const [quote, setQuote] = React.useState(getTodayQuote());
 
