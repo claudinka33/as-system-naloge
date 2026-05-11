@@ -78,7 +78,7 @@ const ODDELKI_CONFIG = {
 
 
 
-  { email: 
+
 
 
 
