@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck, Home, Wallet } from 'lucide-react';
+import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck, Home, Wallet, NotebookPen } from 'lucide-react';
 import { supabase } from './supabase.js';
 import Reports from './Reports.jsx';
 import { syncTaskWebhook } from './webhooks.js';
@@ -148,7 +148,7 @@ export default function App() {
     // poslušaj brskalniškov gumb "nazaj"
     const handlePopState = (event) => {
       const target = event.state?.section || (window.location.hash.replace('#', '') || 'home');
-      if (['home','tasks','daily','reports','production','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost'].includes(target)) {
+      if (['home','tasks','daily','reports','production','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost','notes'].includes(target)) {
         setMainSection(target);
       } else {
         setMainSection('home');
@@ -788,6 +788,14 @@ export default function App() {
                   <span className="hidden sm:inline">Naloge</span>
                 </button>
                 <button
+                  onClick={() => handleModuleClick('notes')}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'notes' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  style={mainSection === 'notes' ? {backgroundColor: '#C8102E'} : {}}
+                >
+                  <NotebookPen className="w-4 h-4" />
+                  <span className="hidden sm:inline">Beležnica</span>
+                </button>
+                <button
                   onClick={() => handleModuleClick('daily')}
                   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'daily' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   style={mainSection === 'daily' ? {backgroundColor: '#C8102E'} : {}}
@@ -1008,6 +1016,8 @@ export default function App() {
           <ProductionTab currentUser={currentUser} resetSignal={moduleResetCounters.production || 0} />
         ) : mainSection === 'assembly' ? (
           <AssemblyTab currentUser={currentUser} resetSignal={moduleResetCounters.assembly || 0} />
+        ) : mainSection === 'notes' ? (
+          <Notes currentUser={currentUser} />
         ) : (
           <>
         {/* Statistike (vedno vidne) */}
