@@ -10,6 +10,13 @@ import {
 
 const AS_RED = '#C8102E';
 
+// Pretvori HH:MM v skupne minute (npr. "1:05" → 65)
+function hhmmToMin(hhmm) {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 export default function EntryForm({ currentUser }) {
   const [shifrants, setShifrants] = useState({
     machines: [], products: [], wires: [], workers: [],
@@ -118,7 +125,7 @@ function Section({ title, icon, emoji, color, bgColor, open, onToggle, children 
 function ProductionForm({ shifrants, currentUser }) {
   const today = new Date().toISOString().split('T')[0];
   const [form, setForm] = useState({
-    date: today, shift: 1, machine_id: '', product_id: '', quantity: '', worker_id: '', notes: ''
+    date: today, shift: 1, machine_id: '', product_id: '', quantity: '', normativ: '', cas: '', worker_id: '', notes: ''
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -143,6 +150,8 @@ function ProductionForm({ shifrants, currentUser }) {
         machine_id: Number(form.machine_id),
         product_id: Number(form.product_id),
         quantity: Number(form.quantity),
+        normativ: form.normativ ? Number(form.normativ) : null,
+        cas_min: form.cas ? hhmmToMin(form.cas) : null,
         worker_id: form.worker_id ? Number(form.worker_id) : null,
         notes: form.notes || null,
         entered_by_email: currentUser.email,
@@ -151,7 +160,7 @@ function ProductionForm({ shifrants, currentUser }) {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2000);
       // Reset form (ohranimo datum, izmeno, stroj za hitri zaporedni vnos)
-      setForm({ ...form, product_id: '', quantity: '', worker_id: '', notes: '' });
+      setForm({ ...form, product_id: '', quantity: '', normativ: '', cas: '', worker_id: '', notes: '' });
     } catch (e) {
       console.error(e);
       alert('Napaka pri shranjevanju: ' + e.message);
@@ -205,6 +214,19 @@ function ProductionForm({ shifrants, currentUser }) {
           className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
       </Field>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Normativ (kosov/uro)">
+          <input type="number" inputMode="numeric" placeholder="npr. 15000" value={form.normativ}
+            onChange={e => setForm({...form, normativ: e.target.value})}
+            className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+        </Field>
+        <Field label="Čas (HH:MM)">
+          <input type="time" placeholder="1:05" value={form.cas}
+            onChange={e => setForm({...form, cas: e.target.value})}
+            className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+        </Field>
+      </div>
+
       <Field label="Delavec (neobvezno)">
         <select value={form.worker_id} onChange={e => setForm({...form, worker_id: e.target.value})}
           className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300">
@@ -228,13 +250,13 @@ function BreakdownForm({ shifrants, currentUser }) {
   const today = new Date().toISOString().split('T')[0];
   const [form, setForm] = useState({
     date: today, machine_id: '', reason_id: '', description: '', repair_action: '',
-    duration_min: '', frequency: 1, repaired_by: ''
+    duration_hhmm: '', frequency: 1, repaired_by: ''
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async () => {
-    if (!form.machine_id || !form.duration_min) {
+    if (!form.machine_id || !form.duration_hhmm) {
       alert('Izpolni vsaj stroj in trajanje.');
       return;
     }
@@ -246,7 +268,7 @@ function BreakdownForm({ shifrants, currentUser }) {
         reason_id: form.reason_id ? Number(form.reason_id) : null,
         description: form.description || null,
         repair_action: form.repair_action || null,
-        duration_min: Number(form.duration_min),
+        duration_min: hhmmToMin(form.duration_hhmm),
         frequency: Number(form.frequency) || 1,
         repaired_by: form.repaired_by || null,
         entered_by_email: currentUser.email,
@@ -254,7 +276,7 @@ function BreakdownForm({ shifrants, currentUser }) {
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2000);
-      setForm({ ...form, description: '', repair_action: '', duration_min: '', frequency: 1, repaired_by: '' });
+      setForm({ ...form, description: '', repair_action: '', duration_hhmm: '', frequency: 1, repaired_by: '' });
     } catch (e) {
       console.error(e);
       alert('Napaka pri shranjevanju: ' + e.message);
@@ -269,9 +291,9 @@ function BreakdownForm({ shifrants, currentUser }) {
           <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})}
             className="w-full px-3 py-2 border border-as-gray-200 rounded-lg" />
         </Field>
-        <Field label="Trajanje (min) *" required>
-          <input type="number" inputMode="numeric" placeholder="npr. 60" value={form.duration_min}
-            onChange={e => setForm({...form, duration_min: e.target.value})}
+        <Field label="Trajanje (HH:MM) *" required>
+          <input type="time" placeholder="1:05" value={form.duration_hhmm}
+            onChange={e => setForm({...form, duration_hhmm: e.target.value})}
             className="w-full px-3 py-2 border border-as-gray-200 rounded-lg" />
         </Field>
       </div>
