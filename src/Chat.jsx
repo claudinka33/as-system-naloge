@@ -12,7 +12,7 @@ import {
   setTyping, clearTyping, updatePresence, getPresence, isOnline, formatChatTime,
   canEditMessage, CHAT_EDIT_LOCK_DAYS,
   getMyGroups, getGroupMembers, createGroup, addGroupMember, removeGroupMember, deleteGroup,
-  getGroupMessages, sendGroupMessage, markGroupAsRead, getGroupReads, getGroupUnreadCounts,
+  getGroupMessages, sendGroupMessage, markGroupAsRead, getGroupReads, getGroupUnreadCounts, getGroupReadStatus,
   getGroupLastMessageTimes,
   uploadAttachment, isImageAttachment, formatFileSize,
   avatarColor, initials, AVATAR_COLORS
@@ -63,6 +63,7 @@ export default function Chat({ currentUser, employees }) {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [groupMembersMap, setGroupMembersMap] = useState({}); // group_id -> [emails]
+  const [groupReadStatus, setGroupReadStatus] = useState({}); // za trenutno odprto skupino: { email: last_read_at }
 
   // Notifications
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -149,6 +150,11 @@ export default function Chat({ currentUser, employees }) {
           if (!cancelled) {
             setMessages(msgs);
             await markGroupAsRead(selected.id, currentUser.email);
+            // read receipts: kdo je nazadnje videl skupino
+            try {
+              const rs = await getGroupReadStatus(selected.id);
+              setGroupReadStatus(rs);
+            } catch {}
           }
         }
         await reloadAllCounts();
@@ -254,6 +260,16 @@ export default function Chat({ currentUser, employees }) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_groups' }, async () => {
         await reloadAllCounts();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_group_read' }, async (payload) => {
+        // Če je posodobljeno za trenutno skupino, osveži read receipts
+        const r = payload.new || payload.old;
+        if (r && selected?.type === 'group' && r.group_id === selected.id) {
+          try {
+            const rs = await getGroupReadStatus(selected.id);
+            setGroupReadStatus(rs);
+          } catch {}
+        }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -591,6 +607,15 @@ export default function Chat({ currentUser, employees }) {
                                 {m.edited_at && <span className="italic">· ured.</span>}
                                 {mine && selected.type === 'dm' && (m.read_at ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />)}
                               </div>
+                              {mine && selected.type === 'group' && (
+                                <GroupReadReceipt
+                                  message={m}
+                                  members={selectedGroupMembers}
+                                  readStatus={groupReadStatus}
+                                  employees={employees}
+                                  currentUserEmail={currentUser.email}
+                                />
+                              )}
                             </>
                           )}
                         </div>
@@ -693,6 +718,61 @@ export default function Chat({ currentUser, employees }) {
             await reloadAllCounts();
           }}
         />
+      )}
+    </div>
+  );
+}
+
+// =====================================
+// Group read receipt (kdo je prebral)
+// =====================================
+function GroupReadReceipt({ message, members, readStatus, employees, currentUserEmail }) {
+  const [showDetails, setShowDetails] = useState(false);
+  // Čas sporočila
+  const msgTime = new Date(message.created_at);
+  // Čdani člani brez avtorja (avtor je sam)
+  const otherMembers = (members || []).filter(e => e !== currentUserEmail);
+  // Tisti, ki imajo last_read_at >= msgTime, so prebrali
+  const readers = otherMembers.filter(email => {
+    const lastRead = readStatus[email];
+    if (!lastRead) return false;
+    return new Date(lastRead) >= msgTime;
+  });
+  if (otherMembers.length === 0) return null;
+  const total = otherMembers.length;
+  const readCount = readers.length;
+  const readerNames = readers.map(e => employees.find(emp => emp.email === e)?.name || e);
+  let summary;
+  if (readCount === 0) summary = '✓ poslano';
+  else if (readCount === total) summary = `✓✓ vsi prebrali`;
+  else if (readCount <= 3) summary = `✓✓ prebrali: ${readerNames.join(', ')}`;
+  else summary = `✓✓ prebrali: ${readCount}/${total}`;
+  return (
+    <div className="flex justify-end mt-0.5">
+      <button
+        onClick={() => setShowDetails(s => !s)}
+        className="text-[9px] text-white/80 hover:text-white underline-offset-2 hover:underline"
+        title="Klikni za podrobnosti"
+      >
+        {summary}
+      </button>
+      {showDetails && (
+        <div className="absolute bg-as-gray-800 text-white text-[10px] rounded-lg shadow-2xl mt-5 p-2 max-w-xs z-10"
+          onClick={() => setShowDetails(false)}>
+          <div className="font-bold mb-1">Prebrali ({readCount}/{total}):</div>
+          {otherMembers.map(email => {
+            const emp = employees.find(e => e.email === email);
+            const lastRead = readStatus[email];
+            const hasRead = lastRead && new Date(lastRead) >= msgTime;
+            return (
+              <div key={email} className="flex items-center gap-1.5">
+                <span className={hasRead ? 'text-green-300' : 'text-as-gray-400'}>{hasRead ? '✓✓' : '•'}</span>
+                <span className={hasRead ? '' : 'text-as-gray-400'}>{emp?.name || email}</span>
+                {hasRead && <span className="text-as-gray-400 ml-auto">{new Date(lastRead).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })}</span>}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
