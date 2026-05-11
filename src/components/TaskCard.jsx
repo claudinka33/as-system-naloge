@@ -11,6 +11,7 @@ export default function TaskCard({
   priorityColors, priorityLabels, currentUser, isAdmin, isAssignedToMe, assignedNames
 }) {
   const [commentText, setCommentText] = useState('');
+  const [showAssigned, setShowAssigned] = useState(false);
   const isCompleted = task.status === 'completed';
 
   return (
@@ -68,10 +69,33 @@ export default function TaskCard({
                 </span>
               )}
               {assignedNames.length > 1 && (
-                <span className="flex items-center gap-1">
-                  <Users className="w-3 h-3" />
-                  <span className="font-medium">+ {assignedNames.length - 1} drugi</span>
-                </span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowAssigned(v => !v); }}
+                    className="flex items-center gap-1 hover:text-as-red-600 transition cursor-pointer"
+                    title="Prikaži vse dodeljene"
+                  >
+                    <Users className="w-3 h-3" />
+                    <span className="font-medium underline decoration-dotted">+ {assignedNames.length - 1} drugi</span>
+                  </button>
+                  {showAssigned && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowAssigned(false)} />
+                      <div className="absolute top-full left-0 mt-1 z-20 bg-white border border-as-gray-200 rounded-lg shadow-lg py-2 min-w-[200px] max-h-64 overflow-y-auto">
+                        <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-as-gray-400 font-semibold border-b border-as-gray-100 mb-1">
+                          Dodeljeni ({assignedNames.length})
+                        </div>
+                        {assignedNames.map((name, i) => (
+                          <div key={i} className="px-3 py-1.5 text-xs text-as-gray-700 hover:bg-as-gray-50 flex items-center gap-2">
+                            <User className="w-3 h-3 text-as-gray-400" />
+                            {name}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
               {task.recurring_type && task.recurring_type !== 'none' && (
                 <span className="flex items-center gap-1 text-purple-600 font-semibold">
