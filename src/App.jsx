@@ -1228,6 +1228,9 @@ export default function App() {
         )}
       </main>
 
+      {/* Plavajoči klepet — vedno spodaj desno (skrije se na strani Klepet) */}
+      {mainSection !== 'chat' && <FloatingChat currentUser={currentUser} employees={EMPLOYEES} />}
+
       {(showNewTask || editingTask) && (
         <TaskModal
           task={editingTask}
