@@ -19,6 +19,14 @@ export function canAccessAssembly(email) {
 
 export default function AssemblyTab({ currentUser }) {
   const [view, setView] = useState('entry');
+  const [initialDate, setInitialDate] = useState(null);
+  const [initialWorkerId, setInitialWorkerId] = useState(null);
+
+  const handleEditEntry = (date, workerId) => {
+    setInitialDate(date);
+    setInitialWorkerId(workerId);
+    setView('entry');
+  };
 
   if (!canAccessAssembly(currentUser?.email)) {
     return (
@@ -44,9 +52,9 @@ export default function AssemblyTab({ currentUser }) {
           icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
       </div>
 
-      {view === 'entry' && <AssemblyEntry currentUser={currentUser} />}
-      {view === 'daily' && <AssemblyDailyReport />}
-      {view === 'monthly' && <AssemblyMonthlyReport />}
+      {view === 'entry' && <AssemblyEntry currentUser={currentUser} initialDate={initialDate} initialWorkerId={initialWorkerId} onConsumed={() => { setInitialDate(null); setInitialWorkerId(null); }} />}
+      {view === 'daily' && <AssemblyDailyReport onEditEntry={handleEditEntry} />}
+      {view === 'monthly' && <AssemblyMonthlyReport onEditEntry={handleEditEntry} />}
     </div>
   );
 }
