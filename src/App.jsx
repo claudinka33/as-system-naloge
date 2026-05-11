@@ -6,6 +6,7 @@ import { syncTaskWebhook } from './webhooks.js';
 import DailyReports from './DailyReports.jsx';
 import { getTodayQuote } from './quotes.js';
 import Chat from './Chat.jsx';
+import { getUnreadCounts as getChatUnreadCounts, getMyGroups as getChatMyGroups, getGroupReads as getChatGroupReads, getGroupUnreadCounts as getChatGroupUnreadCounts } from './lib/chatApi.js';
 import { ADMIN_EMAILS, EMPLOYEES, DEPARTMENTS, AREA_SUGGESTIONS } from './constants.js';
 import TaskCard from './components/TaskCard.jsx';
 import TaskModal from './components/TaskModal.jsx';
@@ -798,11 +799,16 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => handleModuleClick('chat')}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'chat' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 relative ${mainSection === 'chat' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   style={mainSection === 'chat' ? {backgroundColor: '#C8102E'} : {}}
                 >
                   <MessageSquare className="w-4 h-4" />
                   <span className="hidden sm:inline">Klepet</span>
+                  {chatUnread > 0 && mainSection !== 'chat' && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white rounded-full flex items-center justify-center animate-pulse" style={{ backgroundColor: '#C8102E', boxShadow: '0 0 0 2px white' }}>
+                      {chatUnread > 99 ? '99+' : chatUnread}
+                    </span>
+                  )}
                 </button>
                 <button
                   style={{ display: (currentUser?.email || '').toLowerCase().trim() === 'boris.cernelc@as-system.si' ? 'none' : undefined }} onClick={() => handleModuleClick('daily')}
