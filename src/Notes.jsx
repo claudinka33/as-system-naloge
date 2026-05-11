@@ -131,51 +131,83 @@ export default function Notes({ currentUser }) {
     handleContentChange();
   };
 
-  // PDF Export via print
-  const exportToPDF = () => {
+  // PDF Export - prenese kot fajl
+  const exportToPDF = async () => {
     const content = editorRef.current?.innerHTML || '';
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            @page { margin: 2cm; }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-              line-height: 1.6;
-              color: #111827;
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            h1 { color: #C8102E; border-bottom: 2px solid #C8102E; padding-bottom: 8px; margin-top: 0; }
-            h2 { color: #1f2937; margin-top: 24px; }
-            .meta { color: #6b7280; font-size: 12px; margin-bottom: 24px; }
-            .content h1 { font-size: 28px; border: none; padding: 0; color: #111827; }
-            .content h2 { font-size: 22px; }
-            .content ul, .content ol { padding-left: 24px; }
-            .content li { margin: 4px 0; }
-            .content p { margin: 8px 0; }
-            @media print {
-              .no-print { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <h1>${title}</h1>
-          <div class="meta">
-            Avtor: ${currentUser.name} • Datum: ${new Date().toLocaleDateString('sl-SI')}
-          </div>
-          <div class="content">${content}</div>
-          <script>
-            window.onload = () => { window.print(); }
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    setSaving(true);
+    try {
+      // Dinamično naloži jsPDF in html2canvas iz CDN
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('https://esm.sh/jspdf@2.5.2'),
+        import('https://esm.sh/html2canvas@1.4.1')
+      ]);
+
+      // Ustvari skriti container z vsebino
+      const container = document.createElement('div');
+      container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;padding:40px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;line-height:1.6;color:#111827;background:white;';
+      container.innerHTML = `
+        <h1 style="color:#C8102E;border-bottom:2px solid #C8102E;padding-bottom:8px;margin:0 0 8px;font-size:28px;">${title}</h1>
+        <div style="color:#6b7280;font-size:12px;margin-bottom:24px;">
+          Avtor: ${currentUser.name} • Datum: ${new Date().toLocaleDateString('sl-SI')}
+        </div>
+        <div style="font-size:14px;">${content}</div>
+        <style>
+          h1 { font-size: 24px; font-weight: 700; margin: 16px 0 8px; color: #C8102E; }
+          h2 { font-size: 18px; font-weight: 600; margin: 14px 0 8px; color: #1f2937; }
+          p { margin: 8px 0; }
+          ul { list-style: disc; padding-left: 24px; margin: 8px 0; }
+          ol { list-style: decimal; padding-left: 24px; margin: 8px 0; }
+          li { margin: 4px 0; }
+        </style>
+      `;
+      document.body.appendChild(container);
+
+      // Render v canvas
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        logging: false,
+        useCORS: true
+      });
+
+      document.body.removeChild(container);
+
+      // Generiraj PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pdfWidth - 20; // 10mm margin na vsako stran
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 10;
+      const pageHeight = pdfHeight - 20;
+
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Dodaj dodatne strani če je daljše od ene strani
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight + 10;
+        pdf.addPage();
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      // Sanitiziraj title za filename
+      const safeTitle = (title || 'dokument').replace(/[^a-zA-Z0-9\u00C0-\u017F]+/g, '_').replace(/^_+|_+$/g, '');
+      pdf.save(`${safeTitle || 'dokument'}.pdf`);
+    } catch (err) {
+      console.error('PDF export napaka:', err);
+      alert('Napaka pri ustvarjanju PDF: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const formatTimeAgo = (date) => {
