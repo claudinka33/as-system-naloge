@@ -847,7 +847,7 @@ export default function App() {
                     </button>
                   );
                 })}
-                {(isAdmin || canAccessProduction(currentUser)) && (
+                {isAdmin && (
                   <div className="relative">
                     <button
                       onClick={() => {
