@@ -139,9 +139,10 @@ export default function AssemblyDailyReport() {
                           <span className="text-xs text-as-gray-400 ml-2">{WORK_TYPE_LABELS[e.assembly_workers?.work_type]}</span>
                         </div>
                         <div className="text-sm text-as-gray-500">
-                          {automateSum > 0 && <span>🤖 {formatNumber(automateSum)} kos </span>}
+                          {e.total_kos != null ? <span>📦 {formatNumber(e.total_kos)} kos </span> : automateSum > 0 && <span>🤖 {formatNumber(automateSum)} kos </span>}
                           {e.total_hours && <span>· ⏱️ {e.total_hours} h </span>}
                           {e.normativ && <span>· 🎯 {formatNumber(e.normativ)} norm.</span>}
+                          {e.normativ > 0 && e.total_kos > 0 && <span>· 📈 {((e.total_kos / e.normativ) * 100).toFixed(0)}%</span>}
                         </div>
                       </div>
                       {Object.keys(e.machine_quantities || {}).length > 0 && (
