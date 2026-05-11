@@ -92,7 +92,16 @@ export default function AssemblyEntry({ currentUser }) {
       });
       const cleanActivityData = {};
       Object.entries(activityData).forEach(([k, v]) => {
-        if (v && String(v).trim() !== '') cleanActivityData[k] = String(v).trim();
+        // Nov format: { kos, cas, normativ } za aktivnosti z enotami; string za 'opis'
+        if (v && typeof v === 'object') {
+          const obj = {};
+          if (v.kos && String(v.kos).trim() !== '') obj.kos = Number(v.kos);
+          if (v.cas && String(v.cas).trim() !== '') obj.cas = Number(v.cas);
+          if (v.normativ && String(v.normativ).trim() !== '') obj.normativ = Number(v.normativ);
+          if (Object.keys(obj).length > 0) cleanActivityData[k] = obj;
+        } else if (v && String(v).trim() !== '') {
+          cleanActivityData[k] = String(v).trim();
+        }
       });
 
       await upsertAssemblyEntry({
@@ -101,7 +110,13 @@ export default function AssemblyEntry({ currentUser }) {
         machine_quantities: cleanMachineQty,
         activity_data: cleanActivityData,
         normativ: normativ ? Number(normativ) : null,
-        total_hours: totalHours ? Number(totalHours) : null,
+        total_hours: (() => {
+          const sum = Object.values(activityData).reduce((s, v) => {
+            if (v && typeof v === 'object' && v.cas) return s + Number(v.cas);
+            return s;
+          }, 0);
+          return sum > 0 ? sum : null;
+        })(),
         breakdowns: breakdowns || null,
         notes: notes || null,
         entered_by_email: currentUser.email,
@@ -201,18 +216,64 @@ export default function AssemblyEntry({ currentUser }) {
           <h3 className="font-bold text-as-gray-700 mb-3 flex items-center gap-2">
             👐 Ročna montaža
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {activities.map(a => (
-              <div key={a.id}>
-                <label className="block text-sm font-semibold text-as-gray-600 mb-1">
-                  {a.name} <span className="text-as-gray-400 font-normal">({a.unit})</span>
-                </label>
-                <input type="text" inputMode="decimal" placeholder={a.unit === 'h' ? 'npr. 2.5' : a.unit === 'kos' ? 'npr. 1500' : 'opis'}
-                  value={activityData[a.code] || ''}
-                  onChange={e => setActivityData({ ...activityData, [a.code]: e.target.value })}
-                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
-              </div>
-            ))}
+          <div className="space-y-4">
+            {activities.map(a => {
+              // 'opis' aktivnost (npr. Ostalo) – samo 1 input
+              if (a.unit === 'opis') {
+                return (
+                  <div key={a.id}>
+                    <label className="block text-sm font-semibold text-as-gray-600 mb-1">
+                      {a.name} <span className="text-as-gray-400 font-normal">(opis)</span>
+                    </label>
+                    <input type="text" placeholder="opis"
+                      value={typeof activityData[a.code] === 'string' ? activityData[a.code] : ''}
+                      onChange={e => setActivityData({ ...activityData, [a.code]: e.target.value })}
+                      className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+                  </div>
+                );
+              }
+              // Ostale aktivnosti: 3 inputi KOS + ČAS + NORMATIV
+              // Backward-compat: če je string (star format), ga obravnavaj kot kos ali cas glede na unit
+              let cur = activityData[a.code];
+              if (typeof cur === 'string') {
+                cur = a.unit === 'h' ? { cas: cur } : { kos: cur };
+              }
+              cur = cur || {};
+              const setField = (field, val) => {
+                setActivityData({
+                  ...activityData,
+                  [a.code]: { ...cur, [field]: val }
+                });
+              };
+              return (
+                <div key={a.id} className="border border-as-gray-100 rounded-lg p-3 bg-as-gray-50">
+                  <div className="font-semibold text-as-gray-700 mb-2">{a.name}</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-xs text-as-gray-500 mb-1">KOS</label>
+                      <input type="number" inputMode="numeric" placeholder="npr. 1500"
+                        value={cur.kos || ''}
+                        onChange={e => setField('kos', e.target.value)}
+                        className="w-full px-2 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-as-gray-500 mb-1">ČAS (h)</label>
+                      <input type="number" inputMode="decimal" step="0.25" placeholder="npr. 2.5"
+                        value={cur.cas || ''}
+                        onChange={e => setField('cas', e.target.value)}
+                        className="w-full px-2 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-as-gray-500 mb-1">NORMATIV</label>
+                      <input type="number" inputMode="numeric" placeholder="npr. 1350"
+                        value={cur.normativ || ''}
+                        onChange={e => setField('normativ', e.target.value)}
+                        className="w-full px-2 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -229,10 +290,17 @@ export default function AssemblyEntry({ currentUser }) {
                 className="w-full px-3 py-2 border border-as-gray-200 rounded-lg" />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-as-gray-600 mb-1">Skupne ure</label>
-              <input type="number" step="0.25" placeholder="npr. 7.5"
-                value={totalHours} onChange={e => setTotalHours(e.target.value)}
-                className="w-full px-3 py-2 border border-as-gray-200 rounded-lg" />
+              <label className="block text-sm font-semibold text-as-gray-600 mb-1">Skupne ure <span className="text-as-gray-400 font-normal text-xs">(avto)</span></label>
+              <input type="text" readOnly
+                value={(() => {
+                  const sum = Object.values(activityData).reduce((s, v) => {
+                    if (v && typeof v === 'object' && v.cas) return s + Number(v.cas);
+                    return s;
+                  }, 0);
+                  return sum > 0 ? sum.toFixed(2) : '';
+                })()}
+                placeholder="se izračuna iz ČAS polj"
+                className="w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-as-gray-50 text-as-gray-700" />
             </div>
           </div>
           <div className="mt-3">
