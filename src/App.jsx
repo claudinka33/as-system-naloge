@@ -10,7 +10,7 @@ import TaskCard from './components/TaskCard.jsx';
 import TaskModal from './components/TaskModal.jsx';
 import CalendarView from './components/CalendarView.jsx';
 import QuoteOfTheDay from './components/QuoteOfTheDay.jsx';
-import { getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels } from './utils/taskHelpers.js';
+import { getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels } from './utils/taskHelpers.jsx';
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
