@@ -9,7 +9,7 @@ export const EMPLOYEES = [
   { email: 'alen.drofenik@as-system.si', username: 'alen.drofenik', name: 'Alen Drofenik', department: 'Nabava', password: 'Drofenik-AS-7' },
   { email: 'tjasa.mihevc@as-system.si', username: 'tjasa.mihevc', name: 'Tjaša Mihevc', department: 'Komerciala-Prodaja', password: 'Mihevc-prodaja12' },
   { email: 'prodaja@as-system.si', username: 'mitja.marguc', name: 'Mitja Marguč', department: 'Komerciala', password: 'Marguc-komerc44' },
-  { email: 'sara.jagodic@as-system.si', username: 'sara.jagodic', name: 'Sara Jagodič', department: 'Računovodstvo', password: 'Jagodaaa-22' },
+  { email: 'sara.jagodic@as-system.si', username: 'sara.jagodic', name: 'Sara Jagodič', department: 'Računovodstvo', password: 'Jagoda0202' },
   { email: 'cvetka.seidl@as-system.si', username: 'cvetka.seidl', name: 'Cvetka Seidl', department: 'Kadrovska', password: 'Cvetka-kadri88' },
   { email: 'claudia.seidl@as-system.si', username: 'claudia.seidl', name: 'Claudia Seidl', department: 'Marketing', password: 'Klavdija-AS33' },
   { email: 'milena.jancic@as-system.si', username: 'milena.jancic', name: 'Milena Jančič', department: 'Montaža', password: 'Jancic-montaza5' },
