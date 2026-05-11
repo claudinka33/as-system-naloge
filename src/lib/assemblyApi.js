@@ -48,6 +48,16 @@ export async function upsertAssemblyEntry(entry) {
   return data;
 }
 
+// Izbriši vnos po ID
+export async function deleteAssemblyEntry(id) {
+  const { error } = await supabase
+    .from('assembly_entries')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+  return true;
+}
+
 export async function getAssemblyEntry(date, worker_id) {
   const { data, error } = await supabase
     .from('assembly_entries')
@@ -102,6 +112,19 @@ export function formatNumber(n) {
 export function formatDate(dateStr) {
   const d = new Date(dateStr);
   return `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`;
+}
+
+// 7-dnevno zaklepanje: vnos lahko urejaš/brišeš samo 7 dni nazaj
+export const EDIT_LOCK_DAYS = 7;
+
+export function canEditEntry(dateStr) {
+  if (!dateStr) return false;
+  const entryDate = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  entryDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((today - entryDate) / (1000 * 60 * 60 * 24));
+  return diffDays >= 0 && diffDays <= EDIT_LOCK_DAYS;
 }
 
 export const WORK_TYPE_LABELS = {
