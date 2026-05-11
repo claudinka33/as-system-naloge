@@ -8,7 +8,6 @@ import MonthlyReport from './MonthlyReport.jsx';
 // Dovoljeni emaili (mora se ujemati z Supabase RLS funkcijo)
 const PRODUCTION_USERS = [
   'boris.cernelc@as-system.si',
-  'gregor.koritnik@as-system.si',
   'ales.seidl@as-system.si',
   'claudia.seidl@as-system.si',
   'sara.jagodic@as-system.si',
@@ -28,7 +27,7 @@ export default function ProductionTab({ currentUser }) {
         <h3 className="font-bold text-as-gray-700 mb-2">Ni dostopa</h3>
         <p className="text-sm text-as-gray-500">
           Do modula Proizvodnja imajo dostop samo:<br />
-          Boris Černelč, Gregor Koritnik, Aleš Seidl, Claudia Seidl, Sara Jagodič.
+          Boris Černelč, Aleš Seidl, Claudia Seidl, Sara Jagodič.
         </p>
       </div>
     );
