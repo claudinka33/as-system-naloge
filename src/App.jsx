@@ -797,8 +797,8 @@ export default function App() {
                 </button>
                 <button
                   style={{ display: (currentUser?.email || '').toLowerCase().trim() === 'boris.cernelc@as-system.si' ? 'none' : undefined }} onClick={() => handleModuleClick('daily')}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'daily' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
-                  style={mainSection === 'daily' ? {backgroundColor: '#C8102E'} : {}}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${(mainSection === 'daily' && (currentUser?.email || '').toLowerCase().trim() !== 'boris.cernelc@as-system.si') ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  style={(mainSection === 'daily' && (currentUser?.email || '').toLowerCase().trim() !== 'boris.cernelc@as-system.si') ? {backgroundColor: '#C8102E'} : {}}
                 >
                   <CalendarCheck className="w-4 h-4" />
                   <span className="hidden sm:inline">Dnevna opravila</span>
@@ -1010,7 +1010,7 @@ export default function App() {
           <OddelekModule config={ODDELKI_CONFIG.kakovost} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.kakovost || 0} />
         ) : mainSection === 'reports' ? (
           <Reports currentUser={currentUser} employees={EMPLOYEES} />
-        ) : mainSection === 'daily' ? (
+        ) : (mainSection === 'daily' && (currentUser?.email || '').toLowerCase().trim() !== 'boris.cernelc@as-system.si') ? (
           <DailyReports currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'production' ? (
           <ProductionTab currentUser={currentUser} resetSignal={moduleResetCounters.production || 0} />
