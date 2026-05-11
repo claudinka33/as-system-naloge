@@ -1027,6 +1027,8 @@ export default function App() {
           <AssemblyTab currentUser={currentUser} resetSignal={moduleResetCounters.assembly || 0} />
         ) : mainSection === 'notes' ? (
           <Notes currentUser={currentUser} />
+        ) : mainSection === 'chat' ? (
+          <Chat currentUser={currentUser} employees={EMPLOYEES} />
         ) : (
           <>
         {/* Statistike (vedno vidne) */}
