@@ -11,51 +11,71 @@ const PRODUCTION_USERS = [
   'gregor.koritnik@as-system.si',
   'ales.seidl@as-system.si',
   'claudia.seidl@as-system.si',
-  'sara.jagodic@as-system.si'
+  'sara.jagodic@as-system.si',
 ];
 
-export function canAccessProduction(currentUser) {
-  if (!currentUser) return false;
-  return PRODUCTION_USERS.includes(currentUser.email);
+export function canAccessProduction(email) {
+  return PRODUCTION_USERS.includes(email);
 }
 
 export default function ProductionTab({ currentUser }) {
-  const [activeTab, setActiveTab] = useState('entry');
+  const [view, setView] = useState('entry'); // 'entry' | 'daily' | 'monthly'
 
-  const tabs = [
-    { id: 'entry',   label: 'Vnos',             icon: Plus },
-    { id: 'daily',   label: 'Dnevno poročilo',  icon: Calendar },
-    { id: 'monthly', label: 'Mesečno poročilo', icon: BarChart3 }
-  ];
+  if (!canAccessProduction(currentUser?.email)) {
+    return (
+      <div className="bg-white border border-as-gray-200 rounded-xl p-8 text-center">
+        <div className="text-4xl mb-3">🔒</div>
+        <h3 className="font-bold text-as-gray-700 mb-2">Ni dostopa</h3>
+        <p className="text-sm text-as-gray-500">
+          Do modula Proizvodnja imajo dostop samo:<br />
+          Boris Černelč, Gregor Koritnik, Aleš Seidl, Claudia Seidl, Sara Jagodič.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-6">
-      {/* TAB NAVIGATION */}
-      <div className="flex gap-1 sm:gap-2 mb-6 border-b border-as-gray-200 overflow-x-auto">
-        {tabs.map(tab => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition border-b-2 ${
-                active
-                  ? 'border-cyan-700 text-cyan-700'
-                  : 'border-transparent text-as-gray-500 hover:text-as-gray-700'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          );
-        })}
+    <div>
+      {/* Podzavihki */}
+      <div className="flex gap-1 mb-6 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200 max-w-md">
+        <SubTab
+          active={view === 'entry'}
+          onClick={() => setView('entry')}
+          icon={<Plus className="w-4 h-4" />}
+          label="Vnos"
+        />
+        <SubTab
+          active={view === 'daily'}
+          onClick={() => setView('daily')}
+          icon={<Calendar className="w-4 h-4" />}
+          label="Dnevno"
+        />
+        <SubTab
+          active={view === 'monthly'}
+          onClick={() => setView('monthly')}
+          icon={<BarChart3 className="w-4 h-4" />}
+          label="Mesečno"
+        />
       </div>
 
-      {/* TAB CONTENT */}
-      {activeTab === 'entry'   && <EntryForm currentUser={currentUser} />}
-      {activeTab === 'daily'   && <DailyReport currentUser={currentUser} />}
-      {activeTab === 'monthly' && <MonthlyReport currentUser={currentUser} />}
+      {view === 'entry' && <EntryForm currentUser={currentUser} />}
+      {view === 'daily' && <DailyReport />}
+      {view === 'monthly' && <MonthlyReport />}
     </div>
+  );
+}
+
+function SubTab({ active, onClick, icon, label }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold rounded transition ${
+        active ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'
+      }`}
+      style={active ? { backgroundColor: '#C8102E' } : {}}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
   );
 }
