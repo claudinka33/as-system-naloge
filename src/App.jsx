@@ -796,7 +796,7 @@ export default function App() {
                   <span className="hidden sm:inline">Beležnica</span>
                 </button>
                 <button
-                  style={{ display: currentUser?.email === 'boris.cernelc@as-system.si' ? 'none' : undefined }} onClick={() => handleModuleClick('daily')}
+                  style={{ display: (currentUser?.email || '').toLowerCase().trim() === 'boris.cernelc@as-system.si' ? 'none' : undefined }} onClick={() => handleModuleClick('daily')}
                   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'daily' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   style={mainSection === 'daily' ? {backgroundColor: '#C8102E'} : {}}
                 >
