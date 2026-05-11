@@ -88,7 +88,17 @@ export default function AssemblyEntry({ currentUser }) {
       // Filter prazne vrednosti
       const cleanMachineQty = {};
       Object.entries(machineQty).forEach(([k, v]) => {
-        if (v && Number(v) > 0) cleanMachineQty[k] = Number(v);
+        // Nov format: { kos, cas, normativ }
+        if (v && typeof v === 'object') {
+          const obj = {};
+          if (v.kos && Number(v.kos) > 0) obj.kos = Number(v.kos);
+          if (v.cas && Number(v.cas) > 0) obj.cas = Number(v.cas);
+          if (v.normativ && Number(v.normativ) > 0) obj.normativ = Number(v.normativ);
+          if (Object.keys(obj).length > 0) cleanMachineQty[k] = obj;
+        } else if (v && Number(v) > 0) {
+          // Backward compat: star format (samo število)
+          cleanMachineQty[k] = Number(v);
+        }
       });
       const cleanActivityData = {};
       Object.entries(activityData).forEach(([k, v]) => {
@@ -111,11 +121,16 @@ export default function AssemblyEntry({ currentUser }) {
         activity_data: cleanActivityData,
         normativ: normativ ? Number(normativ) : null,
         total_hours: (() => {
-          const sum = Object.values(activityData).reduce((s, v) => {
+          const sumActivity = Object.values(activityData).reduce((s, v) => {
             if (v && typeof v === 'object' && v.cas) return s + Number(v.cas);
             return s;
           }, 0);
-          return sum > 0 ? sum : null;
+          const sumMachines = Object.values(machineQty).reduce((s, v) => {
+            if (v && typeof v === 'object' && v.cas) return s + Number(v.cas);
+            return s;
+          }, 0);
+          const total = sumActivity + sumMachines;
+          return total > 0 ? total : null;
         })(),
         breakdowns: breakdowns || null,
         notes: notes || null,
@@ -194,18 +209,51 @@ export default function AssemblyEntry({ currentUser }) {
       {showAutomats && (
         <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
           <h3 className="font-bold text-as-gray-700 mb-3 flex items-center gap-2">
-            🤖 Avtomati (kosov na stroj)
+            🤖 Avtomati
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {machines.map(m => (
-              <div key={m.id}>
-                <label className="block text-sm font-semibold text-as-gray-600 mb-1">{m.name}</label>
-                <input type="number" inputMode="numeric" placeholder="0"
-                  value={machineQty[m.name] || ''}
-                  onChange={e => setMachineQty({ ...machineQty, [m.name]: e.target.value })}
-                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
-              </div>
-            ))}
+          <div className="space-y-4">
+            {machines.map(m => {
+              // Backward-compat: če je star format (število), ga obravnavaj kot kos
+              let cur = machineQty[m.name];
+              if (typeof cur === 'number' || (typeof cur === 'string' && cur !== '')) {
+                cur = { kos: cur };
+              }
+              cur = cur || {};
+              const setField = (field, val) => {
+                setMachineQty({
+                  ...machineQty,
+                  [m.name]: { ...cur, [field]: val }
+                });
+              };
+              return (
+                <div key={m.id} className="border border-as-gray-100 rounded-lg p-3 bg-as-gray-50">
+                  <div className="font-semibold text-as-gray-700 mb-2">{m.name}</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-xs text-as-gray-500 mb-1">KOS</label>
+                      <input type="number" inputMode="numeric" placeholder="0"
+                        value={cur.kos || ''}
+                        onChange={e => setField('kos', e.target.value)}
+                        className="w-full px-2 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-as-gray-500 mb-1">ČAS (h)</label>
+                      <input type="number" inputMode="decimal" step="0.25" placeholder="npr. 7.5"
+                        value={cur.cas || ''}
+                        onChange={e => setField('cas', e.target.value)}
+                        className="w-full px-2 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-as-gray-500 mb-1">NORMATIV</label>
+                      <input type="number" inputMode="numeric" placeholder="npr. 4500"
+                        value={cur.normativ || ''}
+                        onChange={e => setField('normativ', e.target.value)}
+                        className="w-full px-2 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -293,11 +341,16 @@ export default function AssemblyEntry({ currentUser }) {
               <label className="block text-sm font-semibold text-as-gray-600 mb-1">Skupne ure <span className="text-as-gray-400 font-normal text-xs">(avto)</span></label>
               <input type="text" readOnly
                 value={(() => {
-                  const sum = Object.values(activityData).reduce((s, v) => {
+                  const sumActivity = Object.values(activityData).reduce((s, v) => {
                     if (v && typeof v === 'object' && v.cas) return s + Number(v.cas);
                     return s;
                   }, 0);
-                  return sum > 0 ? sum.toFixed(2) : '';
+                  const sumMachines = Object.values(machineQty).reduce((s, v) => {
+                    if (v && typeof v === 'object' && v.cas) return s + Number(v.cas);
+                    return s;
+                  }, 0);
+                  const total = sumActivity + sumMachines;
+                  return total > 0 ? total.toFixed(2) : '';
                 })()}
                 placeholder="se izračuna iz ČAS polj"
                 className="w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-as-gray-50 text-as-gray-700" />
