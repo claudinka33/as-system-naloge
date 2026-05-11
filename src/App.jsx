@@ -168,6 +168,33 @@ export default function App() {
 
   const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
 
+  // Chat unread badge — poll vsakih 15s
+  const [chatUnread, setChatUnread] = useState(0);
+  useEffect(() => {
+    if (!authenticated || !currentUser) return;
+    let cancelled = false;
+    const fetchUnread = async () => {
+      try {
+        const dm = await getChatUnreadCounts(currentUser.email);
+        const groups = await getChatMyGroups(currentUser.email);
+        const reads = await getChatGroupReads(currentUser.email);
+        const gUnread = await getChatGroupUnreadCounts(currentUser.email, groups, reads);
+        const dmTotal = Object.values(dm).reduce((s, n) => s + n, 0);
+        const gTotal = Object.values(gUnread).reduce((s, n) => s + n, 0);
+        if (!cancelled) setChatUnread(dmTotal + gTotal);
+      } catch (e) { /* ignore */ }
+    };
+    fetchUnread();
+    const id = setInterval(fetchUnread, 15000);
+    // realtime: takoj posodobi ob novem sporočilu
+    const channel = supabase
+      .channel('app-chat-unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, fetchUnread)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages' }, fetchUnread)
+      .subscribe();
+    return () => { cancelled = true; clearInterval(id); supabase.removeChannel(channel); };
+  }, [authenticated, currentUser]);
+
   // === LOAD SESSION ===
   useEffect(() => {
     try {
