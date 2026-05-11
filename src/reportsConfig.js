@@ -163,7 +163,7 @@ export const USER_DEPARTMENT_MAP = {
   'sara.jagodic@as-system.si': 'admin',
   'alen.drofenik@as-system.si': ['nabava'],
   'tjasa.mihevc@as-system.si': ['prodaja'],
-  'mitja.marguc@as-system.si': ['komerciala'],
+  'prodaja@as-system.si': ['komerciala'],
   'cvetka.seidl@as-system.si': ['kadrovska'],
   'milena.jancic@as-system.si': ['montaza'],
   'gregor.koritnik@as-system.si': ['tehnolog'],
