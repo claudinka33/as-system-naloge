@@ -5,6 +5,7 @@ import Reports from './Reports.jsx';
 import { syncTaskWebhook } from './webhooks.js';
 import DailyReports from './DailyReports.jsx';
 import { getTodayQuote } from './quotes.js';
+import Chat from './Chat.jsx';
 import { ADMIN_EMAILS, EMPLOYEES, DEPARTMENTS, AREA_SUGGESTIONS } from './constants.js';
 import TaskCard from './components/TaskCard.jsx';
 import TaskModal from './components/TaskModal.jsx';
@@ -794,6 +795,14 @@ export default function App() {
                 >
                   <NotebookPen className="w-4 h-4" />
                   <span className="hidden sm:inline">Beležnica</span>
+                </button>
+                <button
+                  onClick={() => handleModuleClick('chat')}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'chat' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  style={mainSection === 'chat' ? {backgroundColor: '#C8102E'} : {}}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span className="hidden sm:inline">Klepet</span>
                 </button>
                 <button
                   style={{ display: (currentUser?.email || '').toLowerCase().trim() === 'boris.cernelc@as-system.si' ? 'none' : undefined }} onClick={() => handleModuleClick('daily')}
