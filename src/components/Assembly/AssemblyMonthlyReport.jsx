@@ -1,12 +1,12 @@
 // AssemblyMonthlyReport.jsx — Mesečno poročilo montaže
 import React, { useState, useEffect } from 'react';
-import { Calendar, Loader2, Download } from 'lucide-react';
+import { Calendar, Loader2, Download, Edit2, Trash2, Lock, ChevronDown, ChevronRight } from 'lucide-react';
 import {
-  getMonthlyAssembly, loadAssemblyMachines, loadAssemblyActivities, loadAssemblyWorkers,
-  formatNumber, SLOVENIAN_MONTHS, WORK_TYPE_LABELS
+  getMonthlyAssembly, loadAssemblyMachines, loadAssemblyActivities, loadAssemblyWorkers, deleteAssemblyEntry,
+  formatNumber, formatDate, SLOVENIAN_MONTHS, WORK_TYPE_LABELS, canEditEntry, EDIT_LOCK_DAYS
 } from '../../lib/assemblyApi.js';
 
-export default function AssemblyMonthlyReport() {
+export default function AssemblyMonthlyReport({ onEditEntry }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -15,28 +15,43 @@ export default function AssemblyMonthlyReport() {
   const [activities, setActivities] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expandedWorkerId, setExpandedWorkerId] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const [e, m, a, w] = await Promise.all([
-          getMonthlyAssembly(year, month),
-          loadAssemblyMachines(),
-          loadAssemblyActivities(),
-          loadAssemblyWorkers(),
-        ]);
-        setEntries(e);
-        setMachines(m);
-        setActivities(a);
-        setWorkers(w);
-      } catch (err) {
-        console.error(err);
-        alert('Napaka pri nalaganju: ' + err.message);
-      }
-      setLoading(false);
-    })();
-  }, [year, month]);
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const [e, m, a, w] = await Promise.all([
+        getMonthlyAssembly(year, month),
+        loadAssemblyMachines(),
+        loadAssemblyActivities(),
+        loadAssemblyWorkers(),
+      ]);
+      setEntries(e);
+      setMachines(m);
+      setActivities(a);
+      setWorkers(w);
+    } catch (err) {
+      console.error(err);
+      alert('Napaka pri nalaganju: ' + err.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { reload(); }, [year, month]);
+
+  const handleDelete = async (entry) => {
+    if (!canEditEntry(entry.date)) {
+      alert(`Vnos je starejši od ${EDIT_LOCK_DAYS} dni in je zaklenjen za brisanje.`);
+      return;
+    }
+    if (!confirm(`Izbriši vnos za ${entry.assembly_workers?.name} (${formatDate(entry.date)})?`)) return;
+    try {
+      await deleteAssemblyEntry(entry.id);
+      await reload();
+    } catch (err) {
+      alert('Napaka pri brisanju: ' + err.message);
+    }
+  };
 
   // Helper: iz vrednosti machine_quantities[name] vrne število kosov (kompat. star/nov format)
   const mqKos = v => (v && typeof v === 'object') ? Number(v.kos || 0) : Number(v || 0);
@@ -141,18 +156,83 @@ export default function AssemblyMonthlyReport() {
                     {workerRows.map(r => {
                       const pct = r.normativ > 0 ? (r.automatKos / r.normativ) * 100 : 0;
                       const color = pct >= 100 ? '#16A34A' : pct >= 75 ? '#0E7490' : pct >= 50 ? '#D97706' : '#DC2626';
+                      const isExpanded = expandedWorkerId === r.worker.id;
+                      const workerEntries = entries.filter(e => e.worker_id === r.worker.id).sort((a, b) => a.date.localeCompare(b.date));
                       return (
-                        <tr key={r.worker.id} className="border-t border-as-gray-100">
-                          <td className="p-2 font-semibold">{r.worker.name}</td>
-                          <td className="p-2 text-xs text-as-gray-500">{WORK_TYPE_LABELS[r.worker.work_type]}</td>
-                          <td className="p-2 text-right">{r.days}</td>
-                          <td className="p-2 text-right font-semibold">{formatNumber(r.automatKos)}</td>
-                          <td className="p-2 text-right">{formatNumber(r.normativ)}</td>
-                          <td className="p-2 text-right font-bold" style={{ color: r.normativ > 0 ? color : '#9CA3AF' }}>
-                            {r.normativ > 0 ? `${pct.toFixed(0)}%` : '—'}
-                          </td>
-                          <td className="p-2 text-right">{r.hours.toFixed(1)}</td>
-                        </tr>
+                        <React.Fragment key={r.worker.id}>
+                          <tr
+                            className="border-t border-as-gray-100 cursor-pointer hover:bg-as-gray-50"
+                            onClick={() => setExpandedWorkerId(isExpanded ? null : r.worker.id)}
+                          >
+                            <td className="p-2 font-semibold">
+                              <span className="inline-flex items-center gap-1">
+                                {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-as-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-as-gray-400" />}
+                                {r.worker.name}
+                              </span>
+                            </td>
+                            <td className="p-2 text-xs text-as-gray-500">{WORK_TYPE_LABELS[r.worker.work_type]}</td>
+                            <td className="p-2 text-right">{r.days}</td>
+                            <td className="p-2 text-right font-semibold">{formatNumber(r.automatKos)}</td>
+                            <td className="p-2 text-right">{formatNumber(r.normativ)}</td>
+                            <td className="p-2 text-right font-bold" style={{ color: r.normativ > 0 ? color : '#9CA3AF' }}>
+                              {r.normativ > 0 ? `${pct.toFixed(0)}%` : '—'}
+                            </td>
+                            <td className="p-2 text-right">{r.hours.toFixed(1)}</td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="bg-as-gray-50">
+                              <td colSpan={7} className="p-3">
+                                <div className="space-y-2">
+                                  <div className="text-xs uppercase font-semibold text-as-gray-500 tracking-wider mb-2">Dnevni vnosi</div>
+                                  {workerEntries.length === 0 ? (
+                                    <div className="text-xs text-as-gray-400">Ni vnosov.</div>
+                                  ) : (
+                                    workerEntries.map(en => {
+                                      const editable = canEditEntry(en.date);
+                                      const enKos = Number(en.total_kos || 0);
+                                      return (
+                                        <div key={en.id} className="flex items-center justify-between bg-white border border-as-gray-200 rounded-lg px-3 py-2 text-sm">
+                                          <div className="flex items-center gap-3">
+                                            <span className="font-semibold text-as-gray-700 w-28">{formatDate(en.date)}</span>
+                                            <span className="text-as-gray-500 text-xs">
+                                              {enKos > 0 && <>📦 {formatNumber(enKos)} kos </>}
+                                              {en.total_hours && <>· ⏱️ {en.total_hours} h </>}
+                                              {en.normativ > 0 && <>· 🎯 {formatNumber(en.normativ)}</>}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            {editable ? (
+                                              <>
+                                                <button
+                                                  onClick={(ev) => { ev.stopPropagation(); onEditEntry && onEditEntry(en.date, en.worker_id); }}
+                                                  title="Uredi vnos"
+                                                  className="p-1.5 text-as-gray-400 hover:text-as-red-600 hover:bg-as-red-50 rounded transition"
+                                                >
+                                                  <Edit2 className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                  onClick={(ev) => { ev.stopPropagation(); handleDelete(en); }}
+                                                  title="Izbriši vnos"
+                                                  className="p-1.5 text-as-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                                                >
+                                                  <Trash2 className="w-4 h-4" />
+                                                </button>
+                                              </>
+                                            ) : (
+                                              <span title={`Zaklenjeno (starejše od ${EDIT_LOCK_DAYS} dni)`} className="p-1.5 text-as-gray-300">
+                                                <Lock className="w-4 h-4" />
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
