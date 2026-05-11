@@ -21,6 +21,10 @@ export default function Notes({ currentUser }) {
   const [lastSaved, setLastSaved] = useState(null);
   const [showMoveMenu, setShowMoveMenu] = useState(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [draggedNoteId, setDraggedNoteId] = useState(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState(null);
   const editorRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
@@ -100,13 +104,20 @@ export default function Notes({ currentUser }) {
     saveTimeoutRef.current = setTimeout(() => { saveNote(e.target.value); }, 1500);
   };
 
+  const openNewFolderModal = () => {
+    setNewFolderName('');
+    setShowNewFolderModal(true);
+  };
+
   const createFolder = async () => {
-    const name = prompt('Ime nove mapice:');
-    if (!name || !name.trim()) return;
-    const { data, error } = await supabase.from('note_folders').insert([{ user_email: currentUser.email, name: name.trim() }]).select().single();
+    const name = newFolderName.trim();
+    if (!name) return;
+    const { data, error } = await supabase.from('note_folders').insert([{ user_email: currentUser.email, name }]).select().single();
     if (!error && data) {
       setFolders([...folders, data]);
       setExpandedFolders({ ...expandedFolders, [data.id]: true });
+      setShowNewFolderModal(false);
+      setNewFolderName('');
     }
   };
 
@@ -201,7 +212,14 @@ export default function Notes({ currentUser }) {
   const unfiledNotes = notes.filter(n => !n.folder_id);
 
   const renderNoteItem = (note, indent = false) => (
-    <div key={note.id} onClick={() => selectNote(note)} className={`p-2 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${selectedNote?.id === note.id ? 'bg-red-50 border-l-4 border-l-red-700' : ''} ${indent ? 'pl-6' : ''}`}>
+    <div
+      key={note.id}
+      draggable
+      onDragStart={(e) => { setDraggedNoteId(note.id); e.dataTransfer.effectAllowed = 'move'; }}
+      onDragEnd={() => { setDraggedNoteId(null); setDragOverFolderId(null); }}
+      onClick={() => selectNote(note)}
+      className={`p-2 border-b border-gray-100 cursor-grab active:cursor-grabbing hover:bg-gray-50 transition-colors ${selectedNote?.id === note.id ? 'bg-red-50 border-l-4 border-l-red-700' : ''} ${indent ? 'pl-6' : ''} ${draggedNoteId === note.id ? 'opacity-40' : ''}`}
+    >
       <div className="flex items-start justify-between gap-1">
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm text-gray-900 truncate">{note.title || 'Brez naslova'}</div>
@@ -229,7 +247,7 @@ export default function Notes({ currentUser }) {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><FileText className="w-7 h-7 text-red-700" />Beležnica</h2>
         <div className="flex items-center gap-2">
-          <button onClick={createFolder} className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"><FolderPlus className="w-4 h-4" /><span className="hidden sm:inline">Nova mapica</span></button>
+          <button onClick={openNewFolderModal} className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"><FolderPlus className="w-4 h-4" /><span className="hidden sm:inline">Nova mapica</span></button>
           <button onClick={createNote} className="flex items-center gap-2 px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition-colors"><Plus className="w-5 h-5" />Nov dokument</button>
         </div>
       </div>
@@ -244,7 +262,13 @@ export default function Notes({ currentUser }) {
                   const isExpanded = expandedFolders[folder.id];
                   return (
                     <div key={folder.id}>
-                      <div className="flex items-center gap-1 p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 group" onClick={() => toggleFolder(folder.id)}>
+                      <div
+                        className={`flex items-center gap-1 p-2 cursor-pointer border-b border-gray-100 group transition-colors ${dragOverFolderId === folder.id ? 'bg-red-100 border-2 border-red-500' : 'hover:bg-gray-100'}`}
+                        onClick={() => toggleFolder(folder.id)}
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverFolderId(folder.id); }}
+                        onDragLeave={() => setDragOverFolderId(null)}
+                        onDrop={(e) => { e.preventDefault(); if (draggedNoteId) { moveNoteToFolder(draggedNoteId, folder.id); } setDragOverFolderId(null); setDraggedNoteId(null); }}
+                      >
                         {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-500" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500" />}
                         <Folder className="w-4 h-4 text-red-700" />
                         <span className="text-sm font-medium text-gray-800 flex-1 truncate">{folder.name}</span>
@@ -256,8 +280,12 @@ export default function Notes({ currentUser }) {
                   );
                 })}
                 {unfiledNotes.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-1 p-2 bg-gray-50 border-b border-gray-100"><FolderOpen className="w-4 h-4 text-gray-400" /><span className="text-sm font-medium text-gray-600 flex-1">Brez mape</span><span className="text-xs text-gray-400">{unfiledNotes.length}</span></div>
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverFolderId('unfiled'); }}
+                    onDragLeave={() => setDragOverFolderId(null)}
+                    onDrop={(e) => { e.preventDefault(); if (draggedNoteId) { moveNoteToFolder(draggedNoteId, null); } setDragOverFolderId(null); setDraggedNoteId(null); }}
+                  >
+                    <div className={`flex items-center gap-1 p-2 border-b border-gray-100 transition-colors ${dragOverFolderId === 'unfiled' ? 'bg-red-100 border-2 border-red-500' : 'bg-gray-50'}`}><FolderOpen className="w-4 h-4 text-gray-400" /><span className="text-sm font-medium text-gray-600 flex-1">Brez mape</span><span className="text-xs text-gray-400">{unfiledNotes.length}</span></div>
                     {unfiledNotes.map(n => renderNoteItem(n, true))}
                   </div>
                 )}
@@ -320,6 +348,45 @@ export default function Notes({ currentUser }) {
           )}
         </div>
       </div>
+      {/* Modal za novo mapico */}
+      {showNewFolderModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowNewFolderModal(false); }}
+        >
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <FolderPlus className="w-6 h-6 text-red-700" />
+              <h3 className="text-lg font-bold text-gray-900">Nova mapica</h3>
+            </div>
+            <input
+              type="text"
+              autoFocus
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') setShowNewFolderModal(false); }}
+              placeholder="npr. SESTANKI, JAGROS, MONTAŽA..."
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-base"
+            />
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={() => setShowNewFolderModal(false)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Prekliči
+              </button>
+              <button
+                onClick={createFolder}
+                disabled={!newFolderName.trim()}
+                className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Ustvari mapico
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         [contenteditable] h1 { font-size: 1.875rem; font-weight: 700; margin: 1rem 0 0.5rem; color: #C8102E; }
         [contenteditable] h2 { font-size: 1.5rem; font-weight: 600; margin: 0.875rem 0 0.5rem; color: #1f2937; }
