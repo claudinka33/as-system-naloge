@@ -38,9 +38,12 @@ export default function AssemblyMonthlyReport() {
     })();
   }, [year, month]);
 
+  // Helper: iz vrednosti machine_quantities[name] vrne število kosov (kompat. star/nov format)
+  const mqKos = v => (v && typeof v === 'object') ? Number(v.kos || 0) : Number(v || 0);
+
   // Skupne vsote
   const totalAutomatKos = entries.reduce((sum, e) => {
-    return sum + Object.values(e.machine_quantities || {}).reduce((s, v) => s + Number(v || 0), 0);
+    return sum + Object.values(e.machine_quantities || {}).reduce((s, v) => s + mqKos(v), 0);
   }, 0);
   const totalHours = entries.reduce((s, e) => s + Number(e.total_hours || 0), 0);
   const totalNormativ = entries.reduce((s, e) => s + Number(e.normativ || 0), 0);
@@ -50,7 +53,7 @@ export default function AssemblyMonthlyReport() {
   machines.forEach(m => byMachine[m.name] = 0);
   entries.forEach(e => {
     Object.entries(e.machine_quantities || {}).forEach(([n, q]) => {
-      byMachine[n] = (byMachine[n] || 0) + Number(q || 0);
+      byMachine[n] = (byMachine[n] || 0) + mqKos(q);
     });
   });
 
@@ -68,7 +71,7 @@ export default function AssemblyMonthlyReport() {
   entries.forEach(e => {
     const wid = e.worker_id;
     if (!byWorker[wid]) return;
-    byWorker[wid].automatKos += Object.values(e.machine_quantities || {}).reduce((s, v) => s + Number(v || 0), 0);
+    byWorker[wid].automatKos += Object.values(e.machine_quantities || {}).reduce((s, v) => s + mqKos(v), 0);
     byWorker[wid].hours += Number(e.total_hours || 0);
     byWorker[wid].normativ += Number(e.normativ || 0);
     byWorker[wid].days += 1;
