@@ -574,6 +574,20 @@ export default function App() {
     }
   };
 
+  const editComment = async (taskId, commentId, newText) => {
+    if (!newText || !newText.trim()) return;
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .update({ text: newText.trim(), updated_at: new Date().toISOString() })
+        .eq('id', commentId);
+      if (error) throw error;
+      await loadTasks();
+    } catch (e) {
+      alert('Napaka pri urejanju komentarja: ' + e.message);
+    }
+  };
+
   const addComment = async (taskId, commentText) => {
     if (!commentText.trim()) return;
     
@@ -1113,7 +1127,8 @@ export default function App() {
                     onFileUpload={(e) => handleFileUpload(e, task.id)}
                     onDownloadFile={downloadFile}
                     onRemoveAttachment={removeAttachment}
-                    onAddComment={(text) => addComment(task.id, text)}
+                    onEditComment={(commentId, newText) => editComment(task.id, commentId, newText)}
+                onAddComment={(text) => addComment(task.id, text)}
                     getFileIcon={getFileIcon}
                     formatFileSize={formatFileSize}
                     formatDate={formatDate}
