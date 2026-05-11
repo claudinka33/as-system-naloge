@@ -33,8 +33,11 @@ export default function AssemblyDailyReport() {
   }, [date]);
 
   // Računi
+  // Helper: iz vrednosti machine_quantities[name] vrne število kosov (kompat. star/nov format)
+  const mqKos = v => (v && typeof v === 'object') ? Number(v.kos || 0) : Number(v || 0);
+
   const totalAutomatKos = entries.reduce((sum, e) => {
-    return sum + Object.values(e.machine_quantities || {}).reduce((s, v) => s + Number(v || 0), 0);
+    return sum + Object.values(e.machine_quantities || {}).reduce((s, v) => s + mqKos(v), 0);
   }, 0);
   const totalHours = entries.reduce((s, e) => s + Number(e.total_hours || 0), 0);
   const totalNormativ = entries.reduce((s, e) => s + Number(e.normativ || 0), 0);
@@ -44,7 +47,7 @@ export default function AssemblyDailyReport() {
   machines.forEach(m => byMachine[m.name] = 0);
   entries.forEach(e => {
     Object.entries(e.machine_quantities || {}).forEach(([machineName, qty]) => {
-      byMachine[machineName] = (byMachine[machineName] || 0) + Number(qty || 0);
+      byMachine[machineName] = (byMachine[machineName] || 0) + mqKos(qty);
     });
   });
 
@@ -110,7 +113,7 @@ export default function AssemblyDailyReport() {
             ) : (
               <div className="space-y-3">
                 {entries.map(e => {
-                  const automateSum = Object.values(e.machine_quantities || {}).reduce((s, v) => s + Number(v || 0), 0);
+                  const automateSum = Object.values(e.machine_quantities || {}).reduce((s, v) => s + mqKos(v), 0);
                   const activitySummary = Object.entries(e.activity_data || {})
                     .map(([code, val]) => {
                       const act = activities.find(a => a.code === code);
@@ -143,7 +146,16 @@ export default function AssemblyDailyReport() {
                       </div>
                       {Object.keys(e.machine_quantities || {}).length > 0 && (
                         <div className="text-xs text-as-gray-500 mb-1">
-                          <strong>Avtomati:</strong> {Object.entries(e.machine_quantities).map(([k, v]) => `${k} ${formatNumber(v)}`).join(' · ')}
+                          <strong>Avtomati:</strong> {Object.entries(e.machine_quantities).map(([k, v]) => {
+                            if (v && typeof v === 'object') {
+                              const parts = [];
+                              if (v.kos != null) parts.push(`${formatNumber(v.kos)} kos`);
+                              if (v.cas != null) parts.push(`${v.cas} h`);
+                              if (v.normativ != null) parts.push(`norm. ${formatNumber(v.normativ)}`);
+                              return `${k}: ${parts.join(', ')}`;
+                            }
+                            return `${k} ${formatNumber(v)}`;
+                          }).join(' · ')}
                         </div>
                       )}
                       {activitySummary && (
@@ -200,7 +212,16 @@ function exportToCSV(date, entries, machines, activities) {
   entries.forEach(e => {
     const row = [e.assembly_workers?.name || ''];
     machines.forEach(m => {
-      row.push(e.machine_quantities?.[m.name] || '');
+      const val = e.machine_quantities?.[m.name];
+      if (val && typeof val === 'object') {
+        const parts = [];
+        if (val.kos != null) parts.push(`${val.kos} kos`);
+        if (val.cas != null) parts.push(`${val.cas}h`);
+        if (val.normativ != null) parts.push(`norm.${val.normativ}`);
+        row.push(parts.join(' / '));
+      } else {
+        row.push(val || '');
+      }
     });
     activities.forEach(a => {
       const val = e.activity_data?.[a.code];
