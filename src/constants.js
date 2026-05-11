@@ -22,4 +22,4 @@ export const EMPLOYEES = [
 
 export const DEPARTMENTS = [...new Set(EMPLOYEES.map(e => e.department))];
 
-export const AREA_SUGGESTIONS = ['Prodaja', 'Nabava', 'Montaža', 'Proizvodnja', 'Skladišče', 'Marketing', 'Kakovost', 'Tehnolog', 'Kadrovska', 'Računovodstvo', 'Komerciala'];
+export const AREA_SUGGESTIONS = ['Prodaja', 'Nabava', 'Montaža', 'Proizvodnja', 'Skladišče', 'Marketing', 'Kakovost', 'Tehnolog', 'Kadrovska', 'Računovodstvo', 'Komerciala', 'Uprava', 'Splošno', 'Direktor'];
