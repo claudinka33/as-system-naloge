@@ -290,9 +290,15 @@ export default function Reports({ currentUser, employees }) {
       {viewingReport && (
         <ReportViewModal
           report={viewingReport}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
           onClose={() => setViewingReport(null)}
           onShowHistory={() => {
             setShowHistory(viewingReport);
+            setViewingReport(null);
+          }}
+          onEdit={(rep) => {
+            setEditingReport({ department: rep.department, existingReport: rep });
             setViewingReport(null);
           }}
         />
@@ -728,7 +734,8 @@ function ReportEditModal({ department, existingReport, weekInfo, currentUser, on
 // =====================================
 // MODAL: PREGLED POROČILA
 // =====================================
-function ReportViewModal({ report, onClose, onShowHistory }) {
+function ReportViewModal({ report, onClose, onShowHistory, onEdit, currentUser, isAdmin }) {
+  const canEdit = isAdmin || report.author_email === currentUser?.email;
   const template = REPORT_TEMPLATES[report.department];
 
   return (
@@ -758,7 +765,7 @@ function ReportViewModal({ report, onClose, onShowHistory }) {
         </div>
 
         <div className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <span 
               className="text-xs px-3 py-1 rounded-full font-semibold"
               style={{
@@ -768,13 +775,25 @@ function ReportViewModal({ report, onClose, onShowHistory }) {
             >
               {report.status === 'submitted' ? '✓ Oddano' : 'Osnutek'}
             </span>
-            <button
-              onClick={onShowHistory}
-              className="text-xs text-as-gray-500 hover:text-as-red-600 flex items-center gap-1"
-            >
-              <History className="w-3 h-3" />
-              Zgodovina sprememb
-            </button>
+            <div className="flex items-center gap-3">
+              {canEdit && onEdit && (
+                <button
+                  onClick={() => onEdit(report)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 text-white shadow-sm transition"
+                  style={{ backgroundColor: template.color }}
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  Uredi
+                </button>
+              )}
+              <button
+                onClick={onShowHistory}
+                className="text-xs text-as-gray-500 hover:text-as-red-600 flex items-center gap-1"
+              >
+                <History className="w-3 h-3" />
+                Zgodovina sprememb
+              </button>
+            </div>
           </div>
 
           {template.fields.map(field => {
