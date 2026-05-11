@@ -6,12 +6,14 @@ import {
 
 export default function TaskCard({
   task, isExpanded, onToggleExpand, onToggleStatus, onEdit, onDelete,
-  onFileUpload, onDownloadFile, onRemoveAttachment, onAddComment,
+  onFileUpload, onDownloadFile, onRemoveAttachment, onAddComment, onEditComment,
   getFileIcon, formatFileSize, formatDate, isOverdue,
   priorityColors, priorityLabels, currentUser, isAdmin, isAssignedToMe, assignedNames
 }) {
   const [commentText, setCommentText] = useState('');
   const [showAssigned, setShowAssigned] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingText, setEditingText] = useState('');
   const isCompleted = task.status === 'completed';
 
   return (
@@ -202,17 +204,68 @@ export default function TaskCard({
               </h4>
               {task.comments?.length > 0 && (
                 <div className="space-y-2 mb-2">
-                  {task.comments.map(comment => (
-                    <div key={comment.id} className="bg-as-gray-50 rounded-lg p-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-semibold text-as-gray-600">{comment.author_name}</span>
-                        <span className="text-xs text-as-gray-400">
-                          {new Date(comment.created_at).toLocaleString('sl-SI')}
-                        </span>
+                  {task.comments.map(comment => {
+                    const canEditComment = comment.author_email === currentUser.email || isAdmin;
+                    const isEditing = editingCommentId === comment.id;
+                    return (
+                      <div key={comment.id} className="bg-as-gray-50 rounded-lg p-2 group">
+                        <div className="flex items-center justify-between mb-1 gap-2">
+                          <span className="text-xs font-semibold text-as-gray-600">{comment.author_name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-as-gray-400">
+                              {new Date(comment.created_at).toLocaleString('sl-SI')}
+                              {comment.updated_at && comment.updated_at !== comment.created_at && (
+                                <span className="italic ml-1">(urejeno)</span>
+                              )}
+                            </span>
+                            {canEditComment && !isEditing && (
+                              <button
+                                onClick={() => { setEditingCommentId(comment.id); setEditingText(comment.text); }}
+                                className="p-1 hover:bg-as-gray-200 rounded text-as-gray-400 hover:text-as-red-600 opacity-0 group-hover:opacity-100 transition"
+                                title="Uredi komentar"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {isEditing ? (
+                          <div className="flex gap-2 items-start">
+                            <textarea
+                              value={editingText}
+                              onChange={(e) => setEditingText(e.target.value)}
+                              rows={2}
+                              className="flex-1 px-2 py-1 text-sm border border-as-red-300 rounded focus:outline-none focus:ring-2 focus:ring-as-red-100"
+                              autoFocus
+                            />
+                            <div className="flex flex-col gap-1">
+                              <button
+                                onClick={() => {
+                                  if (editingText.trim()) {
+                                    onEditComment(comment.id, editingText.trim());
+                                  }
+                                  setEditingCommentId(null);
+                                  setEditingText('');
+                                }}
+                                className="px-2 py-1 text-xs text-white rounded font-semibold"
+                                style={{backgroundColor: '#C8102E'}}
+                              >
+                                Shrani
+                              </button>
+                              <button
+                                onClick={() => { setEditingCommentId(null); setEditingText(''); }}
+                                className="px-2 py-1 text-xs bg-as-gray-200 text-as-gray-600 rounded font-semibold hover:bg-as-gray-300"
+                              >
+                                Preklici
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-as-gray-600 whitespace-pre-wrap">{comment.text}</p>
+                        )}
                       </div>
-                      <p className="text-sm text-as-gray-600">{comment.text}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               <div className="flex gap-2">
