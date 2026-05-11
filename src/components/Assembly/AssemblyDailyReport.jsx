@@ -114,7 +114,17 @@ export default function AssemblyDailyReport() {
                   const activitySummary = Object.entries(e.activity_data || {})
                     .map(([code, val]) => {
                       const act = activities.find(a => a.code === code);
-                      return act ? `${act.name}: ${val}` : null;
+                      if (!act) return null;
+                      // Nov format: { kos, cas, normativ }
+                      if (val && typeof val === 'object') {
+                        const parts = [];
+                        if (val.kos != null) parts.push(`${formatNumber(val.kos)} kos`);
+                        if (val.cas != null) parts.push(`${val.cas} h`);
+                        if (val.normativ != null) parts.push(`norm. ${formatNumber(val.normativ)}`);
+                        return `${act.name}: ${parts.join(', ')}`;
+                      }
+                      // Star format: string
+                      return `${act.name}: ${val}`;
                     })
                     .filter(Boolean)
                     .join(' · ');
@@ -193,7 +203,16 @@ function exportToCSV(date, entries, machines, activities) {
       row.push(e.machine_quantities?.[m.name] || '');
     });
     activities.forEach(a => {
-      row.push(e.activity_data?.[a.code] || '');
+      const val = e.activity_data?.[a.code];
+      if (val && typeof val === 'object') {
+        const parts = [];
+        if (val.kos != null) parts.push(`${val.kos} kos`);
+        if (val.cas != null) parts.push(`${val.cas}h`);
+        if (val.normativ != null) parts.push(`norm.${val.normativ}`);
+        row.push(parts.join(' / '));
+      } else {
+        row.push(val || '');
+      }
     });
     row.push(e.normativ || '', e.total_hours || '', e.breakdowns || '', e.notes || '');
     lines.push(row.join(';'));
