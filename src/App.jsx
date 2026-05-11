@@ -1063,7 +1063,12 @@ export default function App() {
           <Notes currentUser={currentUser} />
         ) : mainSection === 'chat' ? (
           <Chat currentUser={currentUser} employees={EMPLOYEES} />
-        ) : (
+        ) : null}
+
+        {/* Plavajoči klepet — vedno spodaj desno (skrije se na strani Klepet) */}
+        {mainSection !== 'chat' && <FloatingChat currentUser={currentUser} employees={EMPLOYEES} />}
+
+        {mainSection !== 'home' && mainSection !== 'racunovodstvo' && mainSection !== 'nabava' && mainSection !== 'prodaja' && mainSection !== 'tehnolog' && mainSection !== 'komerciala' && mainSection !== 'kakovost' && mainSection !== 'reports' && mainSection !== 'daily' && mainSection !== 'production' && mainSection !== 'assembly' && mainSection !== 'notes' && mainSection !== 'chat' && (
           <>
         {/* Statistike (vedno vidne) */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
