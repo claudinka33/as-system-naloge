@@ -6,6 +6,7 @@ import { syncTaskWebhook } from './webhooks.js';
 import DailyReports from './DailyReports.jsx';
 import { getTodayQuote } from './quotes.js';
 import Chat from './Chat.jsx';
+import FloatingChat from './FloatingChat.jsx';
 import { getUnreadCounts as getChatUnreadCounts, getMyGroups as getChatMyGroups, getGroupReads as getChatGroupReads, getGroupUnreadCounts as getChatGroupUnreadCounts } from './lib/chatApi.js';
 import { ADMIN_EMAILS, EMPLOYEES, DEPARTMENTS, AREA_SUGGESTIONS } from './constants.js';
 import TaskCard from './components/TaskCard.jsx';
