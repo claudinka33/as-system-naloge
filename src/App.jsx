@@ -72,6 +72,8 @@ const ODDELKI_CONFIG = {
   kakovost: { name: 'Kakovost', tableName: 'kakovost_entries', accentColor: '#9F1239', accentBg: '#FFE4E6', icon: ShieldCheck, desc: 'Vstopna, procesna, končna kontrola, certifikati', categories: KAKOVOST_KATEGORIJE, allowedEmails: ['kakovost@as-system.si', 'ales.seidl@as-system.si', 'claudia.seidl@as-system.si'] },
 };
 
+// === MAIN APP COMPONENT ===
+
 
 
 
