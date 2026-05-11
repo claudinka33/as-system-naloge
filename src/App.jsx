@@ -1486,10 +1486,9 @@ function _UNUSED_TaskCard({ task, isExpanded, onToggleExpand, onToggleStatus, on
 }
 
 function _UNUSED_TaskModal({ task, employees, areaSuggestions, currentUser, onSave, onClose }) {
-  const defaultAssignee = employees.find(e => e.email !== currentUser.email) || employees[0];
-  
+  // Privzeto: trenutni uporabnik (oseba, ki ustvarja nalogo)
   const initialAssignedEmails = task?.assigned_to_emails 
-    || (task?.assignedToEmail ? [task.assignedToEmail] : [defaultAssignee.email]);
+    || (task?.assignedToEmail ? [task.assignedToEmail] : [currentUser.email]);
   
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
