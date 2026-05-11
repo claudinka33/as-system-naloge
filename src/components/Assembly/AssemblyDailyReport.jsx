@@ -1,12 +1,12 @@
 // AssemblyDailyReport.jsx — Dnevno poročilo montaže
 import React, { useState, useEffect } from 'react';
-import { Calendar, Loader2, Download } from 'lucide-react';
+import { Calendar, Loader2, Download, Edit2, Trash2, Lock } from 'lucide-react';
 import {
-  getDailyAssembly, loadAssemblyMachines, loadAssemblyActivities,
-  formatNumber, formatDate, WORK_TYPE_LABELS
+  getDailyAssembly, loadAssemblyMachines, loadAssemblyActivities, deleteAssemblyEntry,
+  formatNumber, formatDate, WORK_TYPE_LABELS, canEditEntry, EDIT_LOCK_DAYS
 } from '../../lib/assemblyApi.js';
 
-export default function AssemblyDailyReport() {
+export default function AssemblyDailyReport({ onEditEntry }) {
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
   const [entries, setEntries] = useState([]);
@@ -14,23 +14,37 @@ export default function AssemblyDailyReport() {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const [e, m, a] = await Promise.all([
-          getDailyAssembly(date), loadAssemblyMachines(), loadAssemblyActivities()
-        ]);
-        setEntries(e);
-        setMachines(m);
-        setActivities(a);
-      } catch (err) {
-        console.error(err);
-        alert('Napaka pri nalaganju: ' + err.message);
-      }
-      setLoading(false);
-    })();
-  }, [date]);
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const [e, m, a] = await Promise.all([
+        getDailyAssembly(date), loadAssemblyMachines(), loadAssemblyActivities()
+      ]);
+      setEntries(e);
+      setMachines(m);
+      setActivities(a);
+    } catch (err) {
+      console.error(err);
+      alert('Napaka pri nalaganju: ' + err.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { reload(); }, [date]);
+
+  const handleDelete = async (entry) => {
+    if (!canEditEntry(entry.date)) {
+      alert(`Vnos je starejši od ${EDIT_LOCK_DAYS} dni in je zaklenjen za brisanje.`);
+      return;
+    }
+    if (!confirm(`Izbriši vnos za ${entry.assembly_workers?.name} (${formatDate(entry.date)})?`)) return;
+    try {
+      await deleteAssemblyEntry(entry.id);
+      await reload();
+    } catch (err) {
+      alert('Napaka pri brisanju: ' + err.message);
+    }
+  };
 
   // Računi
   // Helper: iz vrednosti machine_quantities[name] vrne število kosov (kompat. star/nov format)
@@ -131,12 +145,35 @@ export default function AssemblyDailyReport() {
                     })
                     .filter(Boolean)
                     .join(' · ');
+                  const editable = canEditEntry(e.date);
                   return (
                     <div key={e.id} className="border border-as-gray-100 rounded-lg p-3">
                       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-                        <div>
+                        <div className="flex items-center gap-2">
                           <span className="font-bold text-as-gray-700">{e.assembly_workers?.name}</span>
-                          <span className="text-xs text-as-gray-400 ml-2">{WORK_TYPE_LABELS[e.assembly_workers?.work_type]}</span>
+                          <span className="text-xs text-as-gray-400">{WORK_TYPE_LABELS[e.assembly_workers?.work_type]}</span>
+                          {editable ? (
+                            <div className="flex items-center gap-1 ml-1">
+                              <button
+                                onClick={() => onEditEntry && onEditEntry(e.date, e.worker_id)}
+                                title="Uredi vnos"
+                                className="p-1 text-as-gray-400 hover:text-as-red-600 hover:bg-as-red-50 rounded transition"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(e)}
+                                title="Izbriši vnos"
+                                className="p-1 text-as-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span title={`Zaklenjeno (starejše od ${EDIT_LOCK_DAYS} dni)`} className="ml-1 text-as-gray-300">
+                              <Lock className="w-3.5 h-3.5" />
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm text-as-gray-500">
                           {e.total_kos != null ? <span>📦 {formatNumber(e.total_kos)} kos </span> : automateSum > 0 && <span>🤖 {formatNumber(automateSum)} kos </span>}
