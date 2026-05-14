@@ -725,6 +725,11 @@ export default function App() {
     if (filter === 'completed' && task.status !== 'completed') return false;
     if (filter === 'mine' && !isAssignedToMe(task)) return false;
     if (filter === 'created' && task.created_by_email !== currentUser.email) return false;
+    if (filter === 'overdue') {
+      if (task.status === 'completed') return false;
+      if (!task.due_date) return false;
+      if (new Date(task.due_date) >= new Date()) return false;
+    }
     
     if (filterPerson !== 'all') {
       if (!task.assigned_to_emails?.includes(filterPerson)) return false;
@@ -1095,10 +1100,13 @@ export default function App() {
             <div className="text-2xl font-bold text-emerald-600">{stats.completed}</div>
             <div className="text-xs text-as-gray-500 mt-1 font-medium">Opravljene</div>
           </button>
-          <div className="bg-white border border-as-gray-200 rounded-xl p-4">
+          <button
+            onClick={() => { setFilter('overdue'); setViewMode('list'); }}
+            className={`bg-white border rounded-xl p-4 text-left transition hover:shadow-md ${filter === 'overdue' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
+          >
             <div className="text-2xl font-bold" style={{color: '#C8102E'}}>{stats.overdue}</div>
             <div className="text-xs text-as-gray-500 mt-1 font-medium">Zamujene</div>
-          </div>
+          </button>
         </div>
 
         {/* POGOJ: Seznam ali Koledar */}
@@ -1123,6 +1131,7 @@ export default function App() {
                 >
                   <option value="mine">Moje naloge</option>
                   <option value="created">Sem dodelil</option>
+                  <option value="overdue">Zamujene</option>
                   <option value="all">Vse naloge</option>
                   <option value="pending">V teku</option>
                   <option value="completed">Opravljene</option>
