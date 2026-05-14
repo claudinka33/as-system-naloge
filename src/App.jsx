@@ -548,6 +548,23 @@ export default function App() {
           newDueDate = newDueDate.toISOString();
         }
 
+        // ANTI-DUPLIKAT: preveri ali že obstaja pending instanca z istim parent_id in due_date
+        const parentId = task.recurring_parent_id || task.id;
+        if (newDueDate) {
+          const { data: existing } = await supabase
+            .from('tasks')
+            .select('id')
+            .eq('recurring_parent_id', parentId)
+            .eq('due_date', newDueDate)
+            .eq('status', 'pending')
+            .limit(1);
+          if (existing && existing.length > 0) {
+            console.log('Naslednja instanca že obstaja, preskakujem podvajanje');
+            loadTasks();
+            return;
+          }
+        }
+
         await supabase
           .from('tasks')
           .insert({
@@ -714,12 +731,44 @@ export default function App() {
     return false;
   };
 
+  // OPCIJA 3: za ponavljajoče naloge prikaži samo najbližjo pending instanco na ekipo
+  // (po recurring_parent_id grupiramo in obdržimo samo najbližji due_date)
+  const recurringNearestIds = (() => {
+    const groups = {};
+    tasks.forEach(t => {
+      if (t.status !== 'pending') return;
+      if (!t.recurring_type || t.recurring_type === 'none') return;
+      const groupKey = t.recurring_parent_id || t.id;
+      if (!groups[groupKey]) groups[groupKey] = [];
+      groups[groupKey].push(t);
+    });
+    const keepIds = new Set();
+    Object.values(groups).forEach(group => {
+      const sorted = group.sort((a, b) => {
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return new Date(a.due_date) - new Date(b.due_date);
+      });
+      if (sorted[0]) keepIds.add(sorted[0].id);
+    });
+    return keepIds;
+  })();
+
+  const isHiddenRecurringInstance = (task) => {
+    if (task.status !== 'pending') return false;
+    if (!task.recurring_type || task.recurring_type === 'none') return false;
+    return !recurringNearestIds.has(task.id);
+  };
+
   const filteredTasks = tasks.filter(task => {
     if (!isAdmin) {
       const isMine = isAssignedToMe(task);
       const iCreated = task.created_by_email === currentUser.email;
       if (!isMine && !iCreated) return false;
     }
+
+    // Skrij oddaljene ponavljajoče instance v 'mine' in 'pending' filtru
+    if ((filter === 'mine' || filter === 'pending') && isHiddenRecurringInstance(task)) return false;
 
     if (filter === 'pending' && task.status !== 'pending') return false;
     if (filter === 'completed' && task.status !== 'completed') return false;
@@ -744,9 +793,9 @@ export default function App() {
   const visibleTasks = isAdmin ? tasks : tasks.filter(t => isAssignedToMe(t) || t.created_by_email === currentUser.email);
   
   const stats = {
-    mine: tasks.filter(t => isAssignedToMe(t) && t.status === 'pending').length,
+    mine: tasks.filter(t => isAssignedToMe(t) && t.status === 'pending' && !isHiddenRecurringInstance(t)).length,
     created: tasks.filter(t => t.created_by_email === currentUser.email).length,
-    pending: visibleTasks.filter(t => t.status === 'pending').length,
+    pending: visibleTasks.filter(t => t.status === 'pending' && !isHiddenRecurringInstance(t)).length,
     completed: visibleTasks.filter(t => t.status === 'completed').length,
     overdue: visibleTasks.filter(t => {
       if (t.status === 'completed') return false;
