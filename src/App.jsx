@@ -767,8 +767,9 @@ export default function App() {
       if (!isMine && !iCreated) return false;
     }
 
-    // Skrij oddaljene ponavljajoče instance v 'mine' in 'pending' filtru
-    if ((filter === 'mine' || filter === 'pending') && isHiddenRecurringInstance(task)) return false;
+    // Skrij oddaljene ponavljajoče instance v vseh filtrih razen 'completed' in 'overdue'
+    // (v 'completed' jih ne skrivamo ker je smiselno videti vse opravljene; v 'overdue' jih itak filter sam izloči)
+    if (filter !== 'completed' && filter !== 'overdue' && isHiddenRecurringInstance(task)) return false;
 
     if (filter === 'pending' && task.status !== 'pending') return false;
     if (filter === 'completed' && task.status !== 'completed') return false;
@@ -1122,38 +1123,39 @@ export default function App() {
         {/* Statistike (vedno vidne) */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <button
-            onClick={() => { setFilter('mine'); setViewMode('list'); }}
+            onClick={() => { setFilter(filter === 'mine' && viewMode === 'list' ? 'all' : 'mine'); setViewMode('list'); }}
             className={`bg-white border rounded-xl p-4 text-left transition hover:shadow-md ${filter === 'mine' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
           >
             <div className="text-2xl font-bold" style={{color: '#C8102E'}}>{stats.mine}</div>
             <div className="text-xs text-as-gray-500 mt-1 font-medium">Moje naloge</div>
           </button>
           <button
-            onClick={() => { setFilter('created'); setViewMode('list'); }}
+            onClick={() => { setFilter(filter === 'created' && viewMode === 'list' ? 'all' : 'created'); setViewMode('list'); }}
             className={`bg-white border rounded-xl p-4 text-left transition hover:shadow-md ${filter === 'created' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
           >
             <div className="text-2xl font-bold text-as-gray-700">{stats.created}</div>
             <div className="text-xs text-as-gray-500 mt-1 font-medium">Sem dodelil</div>
           </button>
           <button
-            onClick={() => { setFilter('pending'); setViewMode('list'); }}
+            onClick={() => { setFilter(filter === 'pending' && viewMode === 'list' ? 'all' : 'pending'); setViewMode('list'); }}
             className={`bg-white border rounded-xl p-4 text-left transition hover:shadow-md ${filter === 'pending' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
           >
             <div className="text-2xl font-bold text-amber-600">{stats.pending}</div>
             <div className="text-xs text-as-gray-500 mt-1 font-medium">V teku {isAdmin && '(vse)'}</div>
           </button>
           <button
-            onClick={() => { setFilter('completed'); setViewMode('list'); }}
+            onClick={() => { setFilter(filter === 'completed' && viewMode === 'list' ? 'all' : 'completed'); setViewMode('list'); }}
             className={`bg-white border rounded-xl p-4 text-left transition hover:shadow-md ${filter === 'completed' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
           >
             <div className="text-2xl font-bold text-emerald-600">{stats.completed}</div>
             <div className="text-xs text-as-gray-500 mt-1 font-medium">Opravljene</div>
           </button>
           <button
-            onClick={() => { setFilter('overdue'); setViewMode('list'); }}
-            className={`bg-white border rounded-xl p-4 text-left transition hover:shadow-md ${filter === 'overdue' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
+            onClick={() => { if (stats.overdue === 0) return; setFilter(filter === 'overdue' && viewMode === 'list' ? 'all' : 'overdue'); setViewMode('list'); }}
+            disabled={stats.overdue === 0}
+            className={`bg-white border rounded-xl p-4 text-left transition ${stats.overdue === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md cursor-pointer'} ${filter === 'overdue' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
           >
-            <div className="text-2xl font-bold" style={{color: '#C8102E'}}>{stats.overdue}</div>
+            <div className="text-2xl font-bold" style={{color: stats.overdue === 0 ? '#9CA3AF' : '#C8102E'}}>{stats.overdue}</div>
             <div className="text-xs text-as-gray-500 mt-1 font-medium">Zamujene</div>
           </button>
         </div>
