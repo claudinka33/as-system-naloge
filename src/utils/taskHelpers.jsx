@@ -39,14 +39,25 @@ export const isOverdue = (task) => {
   return new Date(task.due_date) < new Date();
 };
 
+// Hex barve za inline style (TaskCard pill badges)
 export const priorityColors = {
-  high: 'bg-as-red-50 text-as-red-700 border-as-red-200',
-  medium: 'bg-amber-50 text-amber-700 border-amber-200',
-  low: 'bg-as-gray-100 text-as-gray-600 border-as-gray-200'
+  urgent: '#DC2626',
+  high: '#C8102E',
+  medium: '#F59E0B',
+  low: '#6B7280'
 };
 
 export const priorityLabels = {
+  urgent: 'Nujno',
   high: 'Visoka',
   medium: 'Srednja',
   low: 'Nizka'
+};
+
+// Vrstni red za sortiranje (manjsa stevilka = visja prioriteta)
+export const priorityRank = {
+  urgent: 0,
+  high: 1,
+  medium: 2,
+  low: 3
 };
