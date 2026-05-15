@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileText, Calendar, Users, ChevronLeft, ChevronRight, Plus, Save, 
   CheckCircle2, Circle, AlertCircle, Edit2, History, Eye, X, Loader2,
-  TableProperties, LayoutGrid, Filter, Download, Building
+  TableProperties, LayoutGrid, Filter, Download, Building, Trash2
 } from 'lucide-react';
 import { supabase } from './supabase.js';
 import { 
@@ -136,6 +136,34 @@ export default function Reports({ currentUser, employees }) {
     }
   };
 
+  // Izbriši poročilo (samo admin ali avtor)
+  const deleteReport = async (report) => {
+    const canDelete = isAdmin || report.author_email === currentUser.email;
+    if (!canDelete) {
+      alert('Nimaš pravice za brisanje tega poročila.');
+      return;
+    }
+
+    const template = REPORT_TEMPLATES[report.department];
+    const confirmMsg = `Ali res želiš izbrisati poročilo?\n\n${template?.icon || ''} ${template?.name || report.department}\nAvtor: ${report.author_name}\nTeden: ${report.week_number}/${report.week_year}\n\nTa akcija je nepovratna.`;
+    
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      // 1. Najprej izbriši zgodovino sprememb
+      await supabase.from('report_history').delete().eq('report_id', report.id);
+      
+      // 2. Nato izbriši poročilo
+      const { error } = await supabase.from('reports').delete().eq('id', report.id);
+      if (error) throw error;
+      
+      loadReports();
+    } catch (e) {
+      console.error('Napaka pri brisanju poročila:', e);
+      alert(`Napaka pri brisanju: ${e.message}`);
+    }
+  };
+
   // Določi katere oddelke prikazati
   const visibleDepartments = isAdmin 
     ? Object.keys(REPORT_TEMPLATES) 
@@ -258,6 +286,7 @@ export default function Reports({ currentUser, employees }) {
           onView={setViewingReport}
           onShowHistory={setShowHistory}
           onCreate={(deptKey) => setEditingReport({ department: deptKey, existingReport: null })}
+          onDelete={deleteReport}
         />
       ) : (
         <ReportTableView
@@ -271,6 +300,7 @@ export default function Reports({ currentUser, employees }) {
           onEdit={(deptKey, report) => setEditingReport({ department: deptKey, existingReport: report })}
           onView={setViewingReport}
           onCreate={(deptKey) => setEditingReport({ department: deptKey, existingReport: null })}
+          onDelete={deleteReport}
         />
       )}
 
@@ -299,6 +329,10 @@ export default function Reports({ currentUser, employees }) {
           }}
           onEdit={(rep) => {
             setEditingReport({ department: rep.department, existingReport: rep });
+            setViewingReport(null);
+          }}
+          onDelete={(rep) => {
+            deleteReport(rep);
             setViewingReport(null);
           }}
         />
