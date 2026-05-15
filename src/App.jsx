@@ -20,6 +20,7 @@ import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
 import Notes from './Notes.jsx';
 import NabavaModule from './NabavaModule.jsx';
+import { canAccessNabava } from './nabavaConfig.js';
 import Racunovodstvo, { RACUNOVODSTVO_KATEGORIJE } from './Racunovodstvo.jsx';
 import OddelekModule from './OddelekModule.jsx';
 import { ShoppingCart, Briefcase, Cog, Phone, ShieldCheck, Package, FileText as FileTextIcon, TrendingUp as TrendingUpIcon, Award as AwardIcon, AlertCircle as AlertCircleIcon } from 'lucide-react';
@@ -977,6 +978,16 @@ export default function App() {
                       <span className="hidden sm:inline">Računovodstvo</span>
                       <ChevronDown className={`w-3 h-3 transition ${racunovodstvoMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
+                    {canAccessNabava(user?.email) && (
+  <button
+    onClick={() => setMainSection('nabava')}
+    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'nabava' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+    style={mainSection === 'nabava' ? {backgroundColor: '#C8102E'} : {}}
+  >
+    <ShoppingCart className="w-4 h-4" />
+    <span className="hidden sm:inline">Nabava</span>
+  </button>
+)}
                     {racunovodstvoMenuOpen && (
                       <>
                         <div className="fixed inset-0 z-30" onClick={() => setRacunovodstvoMenuOpen(false)} />
