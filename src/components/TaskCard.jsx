@@ -49,7 +49,7 @@ export default function TaskCard({
 
   return (
     <div className={`bg-white border rounded-xl transition shadow-sm hover:shadow-md ${isCompleted ? 'border-as-gray-200 opacity-70' : isOverdue ? 'border-as-red-300 ring-1 ring-as-red-100' : isAssignedToMe && !isCompleted ? 'border-as-red-200' : 'border-as-gray-200'}`}>
-      <div className="p-4">
+      <div className="p-3">
         <div className="flex items-start gap-3">
           <button
             onClick={onToggleStatus}
@@ -69,12 +69,15 @@ export default function TaskCard({
                 {task.title}
               </h3>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span
-                  className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
-                  style={{ backgroundColor: priorityColors[task.priority] }}
-                >
-                  {priorityLabels[task.priority]}
-                </span>
+                {task.priority && priorityLabels[task.priority] && (
+                  <span
+                    className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                    style={{ backgroundColor: priorityColors[task.priority] || '#6B7280' }}
+                    title="Prioriteta"
+                  >
+                    {priorityLabels[task.priority]}
+                  </span>
+                )}
                 {task.company && (() => {
                   const s = getCompanyStyle(task.company);
                   return (
