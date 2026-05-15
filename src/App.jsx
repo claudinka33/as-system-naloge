@@ -19,6 +19,7 @@ import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTa
 import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
 import Notes from './Notes.jsx';
+import NabavaModule from './NabavaModule.jsx';
 import Racunovodstvo, { RACUNOVODSTVO_KATEGORIJE } from './Racunovodstvo.jsx';
 import OddelekModule from './OddelekModule.jsx';
 import { ShoppingCart, Briefcase, Cog, Phone, ShieldCheck, Package, FileText as FileTextIcon, TrendingUp as TrendingUpIcon, Award as AwardIcon, AlertCircle as AlertCircleIcon } from 'lucide-react';
