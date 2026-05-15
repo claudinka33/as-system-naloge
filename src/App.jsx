@@ -13,7 +13,7 @@ import TaskCard from './components/TaskCard.jsx';
 import TaskModal from './components/TaskModal.jsx';
 import CalendarView from './components/CalendarView.jsx';
 import QuoteOfTheDay from './components/QuoteOfTheDay.jsx';
-import { getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels } from './utils/taskHelpers.jsx';
+import { getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels, priorityRank } from './utils/taskHelpers.jsx';
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
@@ -789,6 +789,15 @@ export default function App() {
         !task.description?.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !task.company?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
+  }).sort((a, b) => {
+    // 1) Najprej po prioriteti (nujno -> visoka -> srednja -> nizka, neznana na konec)
+    const pa = priorityRank[a.priority] ?? 99;
+    const pb = priorityRank[b.priority] ?? 99;
+    if (pa !== pb) return pa - pb;
+    // 2) Znotraj iste prioritete: prej zapadle naloge prej (zamujene najbolj zgoraj)
+    const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+    const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+    return da - db;
   });
 
   const visibleTasks = isAdmin ? tasks : tasks.filter(t => isAssignedToMe(t) || t.created_by_email === currentUser.email);
@@ -1210,7 +1219,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 items-start">
               {loading && tasks.length === 0 ? (
                 <div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center">
                   <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-as-gray-400" />
