@@ -1097,7 +1097,9 @@ export default function App() {
             isAdmin={isAdmin}
             onNavigate={handleHomeNavigate}
           />
-        ) : mainSection === 'racunovodstvo' ? (
+        ) : mainSection === 'nabava' ? (
+              <NabavaModule user={user} />
+            ) : mainSection === 'racunovodstvo' ? (
           <Racunovodstvo
             currentUser={currentUser}
             isAdmin={isAdmin}
