@@ -75,16 +75,28 @@ export default function TaskCard({
                 >
                   {priorityLabels[task.priority]}
                 </span>
-                {task.company && (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-as-gray-100 text-as-gray-600">
-                    {task.company}
-                  </span>
-                )}
-                {task.area && (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-as-gray-100 text-as-gray-600">
-                    {task.area}
-                  </span>
-                )}
+                {task.company && (() => {
+                  const s = getCompanyStyle(task.company);
+                  return (
+                    <span
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full border"
+                      style={{ backgroundColor: s.bg, color: s.text, borderColor: s.border }}
+                    >
+                      {task.company}
+                    </span>
+                  );
+                })()}
+                {task.area && (() => {
+                  const s = getAreaStyle(task.area);
+                  return (
+                    <span
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full border"
+                      style={{ backgroundColor: s.bg, color: s.text, borderColor: s.border }}
+                    >
+                      {task.area}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
 
