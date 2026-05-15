@@ -23,6 +23,7 @@ import { supabase } from './supabase.js';
 import { getTodayQuote } from './quotes.js';
 import { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
+import MonthlyDepartmentAnalysis from './components/MonthlyDepartmentAnalysis.jsx';
 
 // =====================================
 // Pozdrav po času dneva
@@ -351,6 +352,9 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
           </button>
         </div>
       </div>
+
+      {/* MESEČNA ANALIZA - grafi in KPI iz vnosov */}
+      <MonthlyDepartmentAnalysis currentUser={currentUser} />
 
       {/* GLAVNE SEKCIJE - mesečna poročila po področjih */}
       <div>
