@@ -16,6 +16,37 @@ export default function TaskCard({
   const [editingText, setEditingText] = useState('');
   const isCompleted = task.status === 'completed';
 
+  // Barve za oddelek/področje (task.area)
+  const AREA_COLORS = {
+    'Kakovost': { bg: '#F5F3FF', text: '#6D28D9', border: '#DDD6FE' },
+    'Komerciala': { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+    'Komercialist': { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+    'Komerciala-Prodaja': { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+    'Prodaja': { bg: '#EEF2FF', text: '#4338CA', border: '#C7D2FE' },
+    'Nabava': { bg: '#FFF7ED', text: '#C2410C', border: '#FED7AA' },
+    'Proizvodnja': { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
+    'Montaža': { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
+    'Skladišče': { bg: '#F1F5F9', text: '#334155', border: '#CBD5E1' },
+    'Marketing': { bg: '#FDF2F8', text: '#BE185D', border: '#FBCFE8' },
+    'Tehnolog': { bg: '#F0FDFA', text: '#0F766E', border: '#99F6E4' },
+    'Kadrovska': { bg: '#FEFCE8', text: '#A16207', border: '#FEF08A' },
+    'Računovodstvo': { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D' },
+    'Uprava': { bg: '#F8FAFC', text: '#475569', border: '#E2E8F0' },
+    'Direktor': { bg: '#F8FAFC', text: '#475569', border: '#E2E8F0' },
+    'Splošno': { bg: '#F9FAFB', text: '#4B5563', border: '#E5E7EB' },
+  };
+  const getAreaStyle = (area) => AREA_COLORS[area] || { bg: '#F3F4F6', text: '#4B5563', border: '#E5E7EB' };
+
+  // Barva za podjetje (task.company) – AS System v brand rdeči, ostali nevtralni
+  const getCompanyStyle = (company) => {
+    if (!company) return null;
+    const lower = company.toLowerCase();
+    if (lower.includes('as system') || lower.includes('as-system')) {
+      return { bg: '#FEF2F2', text: '#C8102E', border: '#FECACA' };
+    }
+    return { bg: '#F0F9FF', text: '#0369A1', border: '#BAE6FD' };
+  };
+
   return (
     <div className={`bg-white border rounded-xl transition shadow-sm hover:shadow-md ${isCompleted ? 'border-as-gray-200 opacity-70' : isOverdue ? 'border-as-red-300 ring-1 ring-as-red-100' : isAssignedToMe && !isCompleted ? 'border-as-red-200' : 'border-as-gray-200'}`}>
       <div className="p-4">
