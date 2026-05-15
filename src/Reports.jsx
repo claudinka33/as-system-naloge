@@ -352,7 +352,7 @@ export default function Reports({ currentUser, employees }) {
 // =====================================
 // POGLED: KARTICE
 // =====================================
-function ReportCardsView({ departments, reports, currentUser, isAdmin, employees, getResponsibleForDepartment, getAllReportsForDepartment, onEdit, onView, onShowHistory, onCreate }) {
+function ReportCardsView({ departments, reports, currentUser, isAdmin, employees, getResponsibleForDepartment, getAllReportsForDepartment, onEdit, onView, onShowHistory, onCreate, onDelete }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {departments.map(deptKey => {
@@ -458,14 +458,23 @@ function ReportCardsView({ departments, reports, currentUser, isAdmin, employees
                         Zgodovina
                       </button>
                     </div>
-                    <button
-                      onClick={() => onEdit(deptKey, myReport)}
-                      className="w-full px-3 py-2 text-white rounded-lg text-sm font-semibold transition shadow-sm"
-                      style={{ backgroundColor: template.color }}
-                    >
-                      <Edit2 className="w-3.5 h-3.5 inline mr-1" />
-                      Uredi poročilo
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onEdit(deptKey, myReport)}
+                        className="flex-1 px-3 py-2 text-white rounded-lg text-sm font-semibold transition shadow-sm"
+                        style={{ backgroundColor: template.color }}
+                      >
+                        <Edit2 className="w-3.5 h-3.5 inline mr-1" />
+                        Uredi poročilo
+                      </button>
+                      <button
+                        onClick={() => onDelete(myReport)}
+                        className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-semibold transition"
+                        title="Izbriši poročilo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <button
@@ -498,7 +507,7 @@ function ReportCardsView({ departments, reports, currentUser, isAdmin, employees
 // =====================================
 // POGLED: TABELA (Excel stil)
 // =====================================
-function ReportTableView({ departments, reports, currentUser, isAdmin, employees, getResponsibleForDepartment, getAllReportsForDepartment, onEdit, onView, onCreate }) {
+function ReportTableView({ departments, reports, currentUser, isAdmin, employees, getResponsibleForDepartment, getAllReportsForDepartment, onEdit, onView, onCreate, onDelete }) {
   return (
     <div className="bg-white border border-as-gray-200 rounded-xl shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
@@ -592,13 +601,22 @@ function ReportTableView({ departments, reports, currentUser, isAdmin, employees
                         <Eye className="w-4 h-4" />
                       </button>
                       {(isAdmin || report.author_email === currentUser.email) && (
-                        <button
-                          onClick={() => onEdit(deptKey, report)}
-                          className="p-1.5 hover:bg-as-gray-100 rounded transition text-as-gray-500"
-                          title="Uredi"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => onEdit(deptKey, report)}
+                            className="p-1.5 hover:bg-as-gray-100 rounded transition text-as-gray-500"
+                            title="Uredi"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => onDelete(report)}
+                            className="p-1.5 hover:bg-red-50 rounded transition text-red-500"
+                            title="Izbriši"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -768,7 +786,7 @@ function ReportEditModal({ department, existingReport, weekInfo, currentUser, on
 // =====================================
 // MODAL: PREGLED POROČILA
 // =====================================
-function ReportViewModal({ report, onClose, onShowHistory, onEdit, currentUser, isAdmin }) {
+function ReportViewModal({ report, onClose, onShowHistory, onEdit, onDelete, currentUser, isAdmin }) {
   const canEdit = isAdmin || report.author_email === currentUser?.email;
   const template = REPORT_TEMPLATES[report.department];
 
@@ -818,6 +836,15 @@ function ReportViewModal({ report, onClose, onShowHistory, onEdit, currentUser, 
                 >
                   <Edit2 className="w-3.5 h-3.5" />
                   Uredi
+                </button>
+              )}
+              {canEdit && onDelete && (
+                <button
+                  onClick={() => onDelete(report)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 transition"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Izbriši
                 </button>
               )}
               <button
