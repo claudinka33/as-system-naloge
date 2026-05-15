@@ -150,14 +150,6 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
       bgColor: '#FEE2E2',
     },
     {
-      key: 'daily',
-      title: 'Dnevna opravila',
-      desc: 'Mesečni pregled opravil po dnevih in zaposlenih',
-      icon: CalendarCheck,
-      color: '#0E7490',
-      bgColor: '#CFFAFE',
-    },
-    {
       key: 'reports',
       title: 'Tedenska poročila',
       desc: 'Mesečni pregled oddanih tedenskih poročil',
