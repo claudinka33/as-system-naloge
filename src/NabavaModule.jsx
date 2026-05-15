@@ -8,7 +8,8 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
-import NabavaImport from './components/NabavaImport.jsx';
+import NabavaEntryModal from './components/NabavaEntryModal.jsx';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import {
   formatEUR, formatNum, formatDateSI, MONTH_NAMES_SI,
   canAccessNabava, canManageNabava
@@ -21,7 +22,8 @@ export default function NabavaModule({ user }) {
   const [activeTab, setActiveTab] = useState('pregled');
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showImport, setShowImport] = useState(false);
+  const [showEntry, setShowEntry] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
   const [filterYear, setFilterYear] = useState('all');
   const [filterSupplier, setFilterSupplier] = useState('all');
   const [filterNadsk, setFilterNadsk] = useState('all');
@@ -93,9 +95,9 @@ export default function NabavaModule({ user }) {
         </h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {canManageNabava(user?.email) && (
-            <button onClick={() => setShowImport(true)}
+            <button onClick={() => { setEditEntry(null); setShowEntry(true); }}
               style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: AS_RED, color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500 }}>
-              <Upload size={14} /> Uvozi Excel
+              <Plus size={14} /> Nov vnos
             </button>
           )}
         </div>
@@ -124,23 +126,27 @@ export default function NabavaModule({ user }) {
         <TabButton active={activeTab === 'dobavitelji'} onClick={() => setActiveTab('dobavitelji')} icon={<Users size={14} />}>Dobavitelji</TabButton>
         <TabButton active={activeTab === 'artikli'} onClick={() => setActiveTab('artikli')} icon={<Package size={14} />}>Artikli / skupine</TabButton>
         <TabButton active={activeTab === 'surovi'} onClick={() => setActiveTab('surovi')} icon={<FileSpreadsheet size={14} />}>Surovi podatki</TabButton>
+        {canManageNabava(user?.email) && (
+          <TabButton active={activeTab === 'vnosi'} onClick={() => setActiveTab('vnosi')} icon={<Pencil size={14} />}>Vnosi</TabButton>
+        )}
       </div>
 
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>Nalagam podatke...</div>
       ) : purchases.length === 0 ? (
-        <EmptyState onImport={() => setShowImport(true)} canImport={canManageNabava(user?.email)} />
+        <EmptyState onAdd={() => { setEditEntry(null); setShowEntry(true); }} canAdd={canManageNabava(user?.email)} />
       ) : (
         <>
           {activeTab === 'pregled' && <PregledTab data={filtered} />}
           {activeTab === 'dobavitelji' && <DobaviteljiTab data={filtered} />}
           {activeTab === 'artikli' && <ArtikliTab data={filtered} />}
           {activeTab === 'surovi' && <SuroviTab data={filtered} />}
+          {activeTab === 'vnosi' && <VnosiTab data={purchases} user={user} onEdit={(p) => { setEditEntry(p); setShowEntry(true); }} onDelete={async (id) => { if (!confirm('Resnično izbrišem ta vnos?')) return; await supabase.from('purchases').delete().eq('id', id); loadPurchases(); }} />}
         </>
       )}
 
-      {showImport && (
-        <NabavaImport user={user} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); loadPurchases(); }} />
+      {showEntry && (
+        <NabavaEntryModal user={user} entry={editEntry} onClose={() => { setShowEntry(false); setEditEntry(null); }} onSaved={() => { setShowEntry(false); setEditEntry(null); loadPurchases(); }} />
       )}
     </div>
   );
@@ -155,18 +161,114 @@ function TabButton({ active, onClick, icon, children }) {
   );
 }
 
-function EmptyState({ onImport, canImport }) {
+function EmptyState({ onAdd, canAdd }) {
   return (
     <div style={{ padding: 60, textAlign: 'center', background: '#fafafa', borderRadius: 12 }}>
-      <Upload size={48} style={{ color: '#888', marginBottom: 16 }} />
-      <h3 style={{ margin: '0 0 8px 0' }}>Še ni podatkov o nabavi</h3>
-      <p style={{ color: '#666', fontSize: 14, marginBottom: 20 }}>Uvozi prvi VASCO Excel za začetek.</p>
-      {canImport && (
-        <button onClick={onImport}
-          style={{ padding: '10px 24px', borderRadius: 6, border: 'none', background: AS_RED, color: 'white', cursor: 'pointer', fontWeight: 500 }}>
-          Uvozi Excel
+      <Plus size={48} style={{ color: '#888', marginBottom: 16 }} />
+      <h3 style={{ margin: '0 0 8px 0' }}>Še ni vnosov nabave</h3>
+      <p style={{ color: '#666', fontSize: 14, marginBottom: 20 }}>Dodaj prvi vnos za začetek.</p>
+      {canAdd && (
+        <button onClick={onAdd}
+          style={{ padding: '10px 24px', borderRadius: 6, border: 'none', background: AS_RED, color: 'white', cursor: 'pointer', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Plus size={16} /> Nov vnos
         </button>
       )}
+    </div>
+  );
+}
+
+function VnosiTab({ data, user, onEdit, onDelete }) {
+  const [search, setSearch] = useState('');
+  const [filterSource, setFilterSource] = useState('manual');
+
+  const filtered = useMemo(() => {
+    let list = data;
+    if (filterSource !== 'all') list = list.filter(p => (p.source || 'import') === filterSource);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(p =>
+        (p.dobavitelj || '').toLowerCase().includes(q) ||
+        (p.naziv || '').toLowerCase().includes(q) ||
+        (p.sifra || '').toLowerCase().includes(q)
+      );
+    }
+    return list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  }, [data, search, filterSource]);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#888' }} />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Iskanje po vnosih..."
+            style={{ padding: '8px 12px 8px 32px', borderRadius: 6, border: '1px solid #ddd', width: '100%', fontSize: 13 }} />
+        </div>
+        <select value={filterSource} onChange={(e) => setFilterSource(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13 }}>
+          <option value="manual">Ročni vnosi</option>
+          <option value="import">Uvoženi iz Excela</option>
+          <option value="all">Vsi</option>
+        </select>
+        <span style={{ fontSize: 12, color: '#666', marginLeft: 'auto' }}>{filtered.length} vnosov</span>
+      </div>
+
+      <div style={{ background: 'white', borderRadius: 8, border: '1px solid #eee', overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead style={{ background: '#fafafa' }}>
+            <tr>
+              <th style={th()}>Datum</th>
+              <th style={th()}>Dobavitelj</th>
+              <th style={th()}>Naziv</th>
+              <th style={th('right')}>Količina</th>
+              <th style={th('right')}>NC</th>
+              <th style={th('right')}>Vrednost</th>
+              <th style={th()}>Vir</th>
+              <th style={th()}>Avtor</th>
+              <th style={th('center')}>Akcije</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.slice(0, 200).map((p) => (
+              <tr key={p.id} style={{ borderTop: '1px solid #eee' }}>
+                <td style={td()}>{formatDateSI(p.datum)}</td>
+                <td style={td()}>{p.dobavitelj}</td>
+                <td style={td()}>{p.naziv}</td>
+                <td style={td('right')}>{formatNum(p.nabava, 2)} {p.enota}</td>
+                <td style={td('right')}>{p.zadnja_nc != null ? formatEUR(p.zadnja_nc, 2) : '—'}</td>
+                <td style={{ ...td('right'), fontWeight: 500 }}>{formatEUR(p.nab_vred_odv)}</td>
+                <td style={td()}>
+                  <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 10, background: (p.source === 'manual') ? '#e8f4ff' : '#f0f0f0', color: (p.source === 'manual') ? '#0066cc' : '#666' }}>
+                    {p.source === 'manual' ? 'Ročno' : 'Excel'}
+                  </span>
+                </td>
+                <td style={{ ...td(), fontSize: 11, color: '#666' }}>{p.created_by_name || p.created_by_email || '—'}</td>
+                <td style={td('center')}>
+                  <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                    <button onClick={() => onEdit(p)} title="Uredi"
+                      style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#666', display: 'flex' }}>
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => onDelete(p.id)} title="Izbriši"
+                      style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#c33', display: 'flex' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length > 200 && (
+          <div style={{ padding: 8, fontSize: 11, color: '#888', textAlign: 'center', borderTop: '1px solid #eee' }}>
+            Prikazujem prvih 200 od {filtered.length} vnosov. Uporabi iskanje za ožji izbor.
+          </div>
+        )}
+        {filtered.length === 0 && (
+          <div style={{ padding: 40, textAlign: 'center', color: '#888', fontSize: 13 }}>
+            Ni vnosov za prikaz.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
