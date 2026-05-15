@@ -1210,7 +1210,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3 items-start">
               {loading && tasks.length === 0 ? (
                 <div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center">
                   <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-as-gray-400" />
