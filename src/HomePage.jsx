@@ -143,7 +143,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'tasks',
       title: 'Naloge',
-      desc: 'Pregled, ustvarjanje in dodeljevanje nalog',
+      desc: 'Mesečni pregled nalog: dodeljene, opravljene, zamujene',
       icon: ClipboardList,
       color: '#C8102E',
       bgColor: '#FEE2E2',
@@ -151,7 +151,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'daily',
       title: 'Dnevna opravila',
-      desc: 'Tedenski grid — vnos po dnevih za tvoj oddelek',
+      desc: 'Mesečni pregled opravil po dnevih in zaposlenih',
       icon: CalendarCheck,
       color: '#0E7490',
       bgColor: '#CFFAFE',
@@ -159,7 +159,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'reports',
       title: 'Tedenska poročila',
-      desc: 'Pregled in oddaja tedenskih poročil',
+      desc: 'Mesečni pregled oddanih tedenskih poročil',
       icon: BarChart3,
       color: '#7C2D12',
       bgColor: '#FED7AA',
@@ -167,7 +167,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'production',
       title: 'Proizvodnja',
-      desc: 'Vnos in pregled dnevne ter mesečne proizvodnje',
+      desc: 'Mesečno poročilo: proizvedeno, zastoji, odpadki, plan',
       icon: Factory,
       color: '#1E40AF',
       bgColor: '#DBEAFE',
@@ -176,7 +176,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'assembly',
       title: 'Montaža',
-      desc: 'Vnos in pregled dela montaže',
+      desc: 'Mesečno poročilo montaže za izbrani mesec',
       icon: Wrench,
       color: '#166534',
       bgColor: '#DCFCE7',
@@ -185,7 +185,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'racunovodstvo',
       title: 'Računovodstvo',
-      desc: 'Stroški, plače, kompenzacije, opomini, intrastat',
+      desc: 'Mesečni pregled stroškov, plač, kompenzacij, opominov',
       icon: Wallet,
       color: '#854D0E',
       bgColor: '#FEF3C7',
@@ -194,7 +194,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'nabava',
       title: 'Nabava',
-      desc: 'Naročila, dobavitelji, zaloge, ceniki',
+      desc: 'Mesečno poročilo naročil, dobaviteljev in zalog',
       icon: ShoppingCart,
       color: '#854D0E',
       bgColor: '#FEF3C7',
@@ -203,7 +203,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'prodaja',
       title: 'Prodaja',
-      desc: 'Ponudbe, naročila strank, kupci',
+      desc: 'Mesečno poročilo ponudb, naročil in kupcev',
       icon: TrendingUpIcon,
       color: '#065F46',
       bgColor: '#A7F3D0',
@@ -212,7 +212,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'tehnolog',
       title: 'Tehnolog',
-      desc: 'Risbe, postopki, meritve, orodja',
+      desc: 'Mesečni pregled risb, postopkov, meritev in orodij',
       icon: Cog,
       color: '#1E40AF',
       bgColor: '#DBEAFE',
@@ -221,7 +221,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'komerciala',
       title: 'Komerciala',
-      desc: 'Kontakti, pogajanja, trgi, obiski strank',
+      desc: 'Mesečno poročilo kontaktov, pogajanj in obiskov',
       icon: Phone,
       color: '#5B21B6',
       bgColor: '#DDD6FE',
@@ -230,7 +230,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'kakovost',
       title: 'Kakovost',
-      desc: 'Vstopna, procesna, končna kontrola',
+      desc: 'Mesečno poročilo vhodne, procesne in končne kontrole',
       icon: ShieldCheck,
       color: '#9F1239',
       bgColor: '#FFE4E6',
@@ -250,33 +250,34 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
 
   return (
     <div className="space-y-6">
-      {/* POZDRAV */}
-      <div className="bg-white border border-as-gray-200 rounded-2xl p-6 md:p-8 shadow-sm">
-        <div className="flex items-start justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-as-gray-700">
-              {greeting}, {firstName}! 👋
-            </h1>
-            <p className="text-as-gray-500 mt-1">
-              {new Date().toLocaleDateString('sl-SI', { 
-                weekday: 'long', 
-                day: 'numeric', 
-                month: 'long', 
-                year: 'numeric' 
-              })}
-            </p>
-          </div>
+      {/* HERO - pozdrav + misel dneva + oddelek (3 stolpci) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* Levo: pozdrav + datum */}
+        <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-center">
+          <h1 className="text-xl md:text-2xl font-bold text-as-gray-700">
+            {greeting}, {firstName}! 👋
+          </h1>
+          <p className="text-sm text-as-gray-500 mt-1">
+            {new Date().toLocaleDateString('sl-SI', { 
+              weekday: 'long', 
+              day: 'numeric', 
+              month: 'long', 
+              year: 'numeric' 
+            })}
+          </p>
           {currentUser?.department && (
-            <div className="bg-as-gray-100 px-4 py-2 rounded-lg">
-              <div className="text-xs text-as-gray-500 font-medium uppercase tracking-wider">Oddelek</div>
-              <div className="text-sm font-bold text-as-gray-700">{currentUser.department}</div>
+            <div className="mt-3 inline-flex items-center gap-2">
+              <span className="text-[10px] text-as-gray-400 font-semibold uppercase tracking-wider">Oddelek:</span>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-as-gray-100 text-as-gray-700">{currentUser.department}</span>
             </div>
           )}
         </div>
-      </div>
 
-      {/* MISEL DNEVA */}
-      <HomeQuote />
+        {/* Sredina + desno: misel dneva (2 col span) */}
+        <div className="lg:col-span-2">
+          <HomeQuote />
+        </div>
+      </div>
 
       {/* HITRI PREGLED - statistike */}
       <div>
@@ -351,33 +352,40 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
         </div>
       </div>
 
-      {/* GLAVNE SEKCIJE - kartice */}
+      {/* GLAVNE SEKCIJE - mesečna poročila po področjih */}
       <div>
         <h2 className="text-sm font-bold uppercase tracking-wider text-as-gray-500 mb-3 flex items-center gap-2">
-          <Users className="w-4 h-4" />
-          Kaj želiš narediti?
+          <BarChart3 className="w-4 h-4" />
+          Mesečna poročila po področjih
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {visibleCards.map(card => {
             const Icon = card.icon;
             return (
               <button
                 key={card.key}
                 onClick={() => onNavigate(card.key)}
-                className="bg-white border border-as-gray-200 rounded-xl p-5 text-left hover:shadow-lg hover:border-as-gray-300 transition group flex items-start gap-4"
+                className="bg-white border border-as-gray-200 rounded-xl p-4 text-left hover:shadow-lg transition group relative overflow-hidden"
+                style={{borderLeft: `4px solid ${card.color}`}}
               >
-                <div 
-                  className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{backgroundColor: card.bgColor}}
-                >
-                  <Icon className="w-6 h-6" style={{color: card.color}} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <h3 className="text-lg font-bold text-as-gray-700">{card.title}</h3>
-                    <ArrowRight className="w-5 h-5 text-as-gray-300 group-hover:text-as-gray-600 group-hover:translate-x-1 transition" />
+                <div className="flex items-start gap-3 mb-2">
+                  <div 
+                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{backgroundColor: card.bgColor}}
+                  >
+                    <Icon className="w-5 h-5" style={{color: card.color}} />
                   </div>
-                  <p className="text-sm text-as-gray-500 leading-relaxed">{card.desc}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{color: card.color}}>
+                      Mesečno poročilo
+                    </div>
+                    <h3 className="text-base font-bold text-as-gray-700 leading-tight">{card.title}</h3>
+                  </div>
+                </div>
+                <p className="text-xs text-as-gray-500 leading-relaxed mb-3">{card.desc}</p>
+                <div className="flex items-center gap-1 text-xs font-bold pt-2 border-t border-as-gray-100" style={{color: card.color}}>
+                  Odpri poročilo
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
                 </div>
               </button>
             );
