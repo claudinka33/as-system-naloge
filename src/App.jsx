@@ -1107,7 +1107,7 @@ export default function App() {
             onNavigate={handleHomeNavigate}
           />
         ) : mainSection === 'nabava' ? (
-              <NabavaModule user={user} />
+              <NabavaModule user={currentUser} />
             ) : mainSection === 'racunovodstvo' ? (
           <Racunovodstvo
             currentUser={currentUser}
