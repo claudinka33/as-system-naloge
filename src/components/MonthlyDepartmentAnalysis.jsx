@@ -193,6 +193,7 @@ function DeptDailyChart({ stats, color }) {
   if (typeof data === 'string') {
     try { data = JSON.parse(data); } catch (e) { data = []; }
   }
+  console.log('[DEBUG] DeptDailyChart data:', data, 'typeof:', typeof data, 'isArray:', Array.isArray(data));
   if (!Array.isArray(data) || data.length === 0) {
     return (
       <div style={card()}>
