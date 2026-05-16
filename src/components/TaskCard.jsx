@@ -49,7 +49,17 @@ export default function TaskCard({
   };
 
   return (
-    <div className={`bg-white border rounded-xl transition shadow-sm hover:shadow-md ${isCompleted ? 'border-as-gray-200 opacity-70' : isOverdue ? 'border-as-red-300 ring-1 ring-as-red-100' : isAssignedToMe && !isCompleted ? 'border-as-red-200' : 'border-as-gray-200'}`}>
+    <div className={`bg-white border rounded-xl transition shadow-sm hover:shadow-md relative ${isCompleted ? 'border-as-gray-200 opacity-70' : isOverdue ? 'border-as-red-300 ring-1 ring-as-red-100' : isAssignedToMe && !isCompleted ? 'border-as-red-200' : 'border-as-gray-200'}`}>
+      {unreadCount > 0 && (
+        <div
+          className="absolute -top-2 -right-2 z-10 flex items-center gap-1 px-2 py-1 rounded-full shadow-lg animate-pulse"
+          style={{ backgroundColor: '#C8102E', border: '2px solid white' }}
+          title={`${unreadCount} novih komentarjev`}
+        >
+          <MessageSquare className="w-3 h-3 text-white" />
+          <span className="text-xs font-bold text-white">{unreadCount}</span>
+        </div>
+      )}
       <div className="p-3">
         <div className="flex items-start gap-3">
           <button
@@ -167,18 +177,9 @@ export default function TaskCard({
                 </span>
               )}
               {task.comments?.length > 0 && (
-                <span className="flex items-center gap-1 relative">
+                <span className="flex items-center gap-1">
                   <MessageSquare className="w-3 h-3" />
                   {task.comments.length}
-                  {unreadCount > 0 && (
-                    <span
-                      className="ml-1 px-1.5 py-0.5 text-[10px] font-bold text-white rounded-full animate-pulse"
-                      style={{ backgroundColor: '#C8102E' }}
-                      title={`${unreadCount} novih komentarjev`}
-                    >
-                      {unreadCount} nov{unreadCount === 1 ? '' : (unreadCount < 5 ? 'a' : 'ih')}
-                    </span>
-                  )}
                 </span>
               )}
             </div>
