@@ -215,7 +215,7 @@ function DeptDailyChart({ stats, color }) {
           return (
             <div key={i} title={`${d.day}: ${val.toLocaleString('sl-SI')}`}
               style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 8 }}>
-              <div style={{ width: '100%', height: `${h}%`, background: color, opacity: 0.85, borderRadius: '2px 2px 0 0', minHeight: val > 0 ? 2 : 0 }} />
+              <div style={{ width: '100%', height: `${h}%`, background: color, opacity: 0.85, borderRadius: '2px 2px 0 0', minHeight: val > 0 ? 8 : 0 }} />
               <div style={{ fontSize: 9, color: '#aaa' }}>{day}</div>
             </div>
           );
