@@ -19,6 +19,7 @@ import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTa
 import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
 import Notes from './Notes.jsx';
+import { getMyTaskViews, markTaskAsViewed, countUnreadComments } from './lib/taskViewsApi.js';
 import NabavaModule from './NabavaModule.jsx';
 import { canAccessNabava } from './nabavaConfig.js';
 import Racunovodstvo, { RACUNOVODSTVO_KATEGORIJE } from './Racunovodstvo.jsx';
@@ -113,8 +114,10 @@ export default function App() {
   const [filter, setFilter] = useState('mine');
   const [filterPerson, setFilterPerson] = useState('all');
   const [filterDepartment, setFilterDepartment] = useState('all');
+  const [sortBy, setSortBy] = useState('default'); // default | date_desc | date_asc | priority | comments_new
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedTask, setExpandedTask] = useState(null);
+  const [taskViews, setTaskViews] = useState({}); // { task_id: last_viewed_at }
   
   // Koledar
   const [viewMode, setViewMode] = useState('list'); // 'list' ali 'calendar'
@@ -217,6 +220,9 @@ export default function App() {
   useEffect(() => {
     if (authenticated && currentUser) {
       loadTasks();
+
+      // Naloži task views za current user
+      getMyTaskViews(currentUser.email).then(setTaskViews);
 
       // Real-time subscription za posodobitve
       const channel = supabase
@@ -792,11 +798,33 @@ export default function App() {
         !task.company?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   }).sort((a, b) => {
-    // 1) Najprej po prioriteti (nujno -> visoka -> srednja -> nizka, neznana na konec)
+    // Po izbranem sortBy
+    if (sortBy === 'date_desc') {
+      const da = a.due_date ? new Date(a.due_date).getTime() : -Infinity;
+      const db = b.due_date ? new Date(b.due_date).getTime() : -Infinity;
+      return db - da;
+    }
+    if (sortBy === 'date_asc') {
+      const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+      const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+      return da - db;
+    }
+    if (sortBy === 'priority') {
+      const pa = priorityRank[a.priority] ?? 99;
+      const pb = priorityRank[b.priority] ?? 99;
+      return pa - pb;
+    }
+    if (sortBy === 'comments_new') {
+      const ua = countUnreadComments(a, currentUser?.email, taskViews[a.id]);
+      const ub = countUnreadComments(b, currentUser?.email, taskViews[b.id]);
+      if (ua !== ub) return ub - ua;
+      // tie-break: novejša naloga prej
+      return new Date(b.created_at) - new Date(a.created_at);
+    }
+    // default: prioriteta + rok
     const pa = priorityRank[a.priority] ?? 99;
     const pb = priorityRank[b.priority] ?? 99;
     if (pa !== pb) return pa - pb;
-    // 2) Znotraj iste prioritete: prej zapadle naloge prej (zamujene najbolj zgoraj)
     const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
     const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
     return da - db;
@@ -1219,6 +1247,18 @@ export default function App() {
                     <option key={dept} value={dept}>{dept}</option>
                   ))}
                 </select>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 bg-white"
+                  title="Razvrsti naloge"
+                >
+                  <option value="default">Razvrsti: privzeto</option>
+                  <option value="date_desc">Datum (najnovejše prvo)</option>
+                  <option value="date_asc">Datum (najstarejše prvo)</option>
+                  <option value="priority">Prioriteta (visoka prva)</option>
+                  <option value="comments_new">Novejši komentarji prvi</option>
+                </select>
               </div>
             </div>
 
@@ -1248,7 +1288,15 @@ export default function App() {
                     key={task.id}
                     task={task}
                     isExpanded={expandedTask === task.id}
-                    onToggleExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
+                    onToggleExpand={() => {
+                    const newExpanded = expandedTask === task.id ? null : task.id;
+                    setExpandedTask(newExpanded);
+                    // Ko odpremo nalogo, jo označimo kot videno
+                    if (newExpanded && currentUser) {
+                      markTaskAsViewed(task.id, currentUser.email);
+                      setTaskViews(prev => ({ ...prev, [task.id]: new Date().toISOString() }));
+                    }
+                  }}
                     onToggleStatus={() => toggleTaskStatus(task.id)}
                     onEdit={() => setEditingTask(task)}
                     onDelete={() => deleteTask(task.id)}
@@ -1267,6 +1315,7 @@ export default function App() {
                     isAdmin={isAdmin}
                     isAssignedToMe={isAssignedToMe(task)}
                     assignedNames={getAssignedNames(task)}
+                    unreadCount={countUnreadComments(task, currentUser?.email, taskViews[task.id])}
                   />
                 ))
               )}
