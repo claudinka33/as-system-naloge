@@ -428,33 +428,6 @@ function ScrapForm({ shifrants, currentUser }) {
       })
     : shifrants.products;
 
-  // Trenutno izbran stroj (za prikaz info in avto-normativ)
-  const selectedMachine = form.machine_id
-    ? shifrants.machines.find(m => m.id === Number(form.machine_id))
-    : null;
-
-  // Auto-napolni normativ ob menjavi stroja
-  const handleMachineChange = (e) => {
-    const machineId = e.target.value;
-    const machine = shifrants.machines.find(m => m.id === Number(machineId));
-    setForm({
-      ...form,
-      machine_id: machineId,
-      product_id: '',
-      normativ: machine?.normativ_kos_h || '',
-    });
-  };
-
-  // Izračun % realizacije v živo
-  const realizacija = (() => {
-    if (!form.quantity || !form.normativ || !form.cas) return null;
-    const minutes = hhmmToMin(form.cas);
-    if (!minutes) return null;
-    const target = (Number(form.normativ) * minutes) / 60;
-    if (target <= 0) return null;
-    return Math.round((Number(form.quantity) / target) * 100);
-  })();
-
   const handleSubmit = async () => {
     if (!form.machine_id || !form.weight_kg) {
       alert('Izpolni vsaj stroj in težo.');
