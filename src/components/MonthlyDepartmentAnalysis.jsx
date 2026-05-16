@@ -188,7 +188,11 @@ function DeptKpis({ department, stats, color }) {
 }
 
 function DeptDailyChart({ stats, color }) {
-  const data = stats.daily_chart || [];
+  let data = stats.daily_chart || [];
+  // Supabase lahko vrne JSON kot string — parse-aj če je potrebno
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch (e) { data = []; }
+  }
   if (!Array.isArray(data) || data.length === 0) {
     return (
       <div style={card()}>
