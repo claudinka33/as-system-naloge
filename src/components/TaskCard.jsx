@@ -8,7 +8,8 @@ export default function TaskCard({
   task, isExpanded, onToggleExpand, onToggleStatus, onEdit, onDelete,
   onFileUpload, onDownloadFile, onRemoveAttachment, onAddComment, onEditComment,
   getFileIcon, formatFileSize, formatDate, isOverdue,
-  priorityColors, priorityLabels, currentUser, isAdmin, isAssignedToMe, assignedNames
+  priorityColors, priorityLabels, currentUser, isAdmin, isAssignedToMe, assignedNames,
+  unreadCount = 0
 }) {
   const [commentText, setCommentText] = useState('');
   const [showAssigned, setShowAssigned] = useState(false);
@@ -166,9 +167,18 @@ export default function TaskCard({
                 </span>
               )}
               {task.comments?.length > 0 && (
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1 relative">
                   <MessageSquare className="w-3 h-3" />
                   {task.comments.length}
+                  {unreadCount > 0 && (
+                    <span
+                      className="ml-1 px-1.5 py-0.5 text-[10px] font-bold text-white rounded-full animate-pulse"
+                      style={{ backgroundColor: '#C8102E' }}
+                      title={`${unreadCount} novih komentarjev`}
+                    >
+                      {unreadCount} nov{unreadCount === 1 ? '' : (unreadCount < 5 ? 'a' : 'ih')}
+                    </span>
+                  )}
                 </span>
               )}
             </div>
