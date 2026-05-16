@@ -24,6 +24,7 @@ import { getTodayQuote } from './quotes.js';
 import { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import MonthlyDepartmentAnalysis from './components/MonthlyDepartmentAnalysis.jsx';
+import HomeWeekCalendar from './components/HomeWeekCalendar.jsx';
 
 // =====================================
 // Pozdrav po času dneva
@@ -272,8 +273,11 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
         </div>
       </div>
 
-      {/* HITRI PREGLED - statistike */}
-      <div>
+      {/* TEDENSKI KOLEDAR - moje naloge za teden */}
+      <HomeWeekCalendar currentUser={currentUser} onNavigate={onNavigate} />
+
+      {/* HITRI PREGLED - statistike (SKRITO - zamenjano s tedenskim koledarjem) */}
+      <div style={{display: 'none'}}>
         <h2 className="text-sm font-bold uppercase tracking-wider text-as-gray-500 mb-3 flex items-center gap-2">
           <TrendingUp className="w-4 h-4" />
           Hitri pregled
