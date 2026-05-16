@@ -246,6 +246,10 @@ function DeptTopList({ department, stats, color }) {
     formatVal = (v) => `${v} vnosov`;
   }
 
+  // Supabase lahko vrne JSON kot string — parse-aj če je potrebno
+  if (typeof items === 'string') {
+    try { items = JSON.parse(items); } catch (e) { items = []; }
+  }
   if (!Array.isArray(items) || items.length === 0) {
     return (
       <div style={card()}>
