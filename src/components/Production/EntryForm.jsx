@@ -137,6 +137,33 @@ function ProductionForm({ shifrants, currentUser }) {
       })
     : shifrants.products;
 
+  // Trenutno izbran stroj (za prikaz info in avto-normativ)
+  const selectedMachine = form.machine_id
+    ? shifrants.machines.find(m => m.id === Number(form.machine_id))
+    : null;
+
+  // Auto-napolni normativ ob menjavi stroja
+  const handleMachineChange = (e) => {
+    const machineId = e.target.value;
+    const machine = shifrants.machines.find(m => m.id === Number(machineId));
+    setForm({
+      ...form,
+      machine_id: machineId,
+      product_id: '',
+      normativ: machine?.normativ_kos_h || '',
+    });
+  };
+
+  // Izračun % realizacije v živo
+  const realizacija = (() => {
+    if (!form.quantity || !form.normativ || !form.cas) return null;
+    const minutes = hhmmToMin(form.cas);
+    if (!minutes) return null;
+    const target = (Number(form.normativ) * minutes) / 60;
+    if (target <= 0) return null;
+    return Math.round((Number(form.quantity) / target) * 100);
+  })();
+
   const handleSubmit = async () => {
     if (!form.machine_id || !form.product_id || !form.quantity) {
       alert('Izpolni vsa obvezna polja: stroj, izdelek, količina.');
@@ -185,7 +212,7 @@ function ProductionForm({ shifrants, currentUser }) {
       </div>
 
       <Field label="Stroj *" required>
-        <select value={form.machine_id} onChange={e => setForm({...form, machine_id: e.target.value, product_id: ''})}
+        <select value={form.machine_id} onChange={handleMachineChange}
           className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300">
           <option value="">— Izberi stroj —</option>
           {Object.entries(CATEGORY_LABELS).map(([cat, label]) => {
@@ -199,6 +226,25 @@ function ProductionForm({ shifrants, currentUser }) {
           })}
         </select>
       </Field>
+
+      {selectedMachine && (
+        <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-3 text-xs space-y-1">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {selectedMachine.st_stroja && (
+              <span><strong className="text-cyan-900">Št. stroja:</strong> {selectedMachine.st_stroja}</span>
+            )}
+            {selectedMachine.operacija && (
+              <span><strong className="text-cyan-900">Operacija:</strong> {selectedMachine.operacija}</span>
+            )}
+            {selectedMachine.normativ_kos_h && (
+              <span><strong className="text-cyan-900">Normativ:</strong> {Number(selectedMachine.normativ_kos_h).toLocaleString('sl-SI')} kos/h</span>
+            )}
+          </div>
+          {selectedMachine.tipi_vijakov && (
+            <div><strong className="text-cyan-900">Tipi:</strong> {selectedMachine.tipi_vijakov}</div>
+          )}
+        </div>
+      )}
 
       <Field label="Izdelek *" required>
         <select value={form.product_id} onChange={e => setForm({...form, product_id: e.target.value})}
@@ -226,6 +272,17 @@ function ProductionForm({ shifrants, currentUser }) {
             className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
         </Field>
       </div>
+
+      {realizacija !== null && (
+        <div className={`rounded-lg p-3 text-sm font-semibold border-2 ${
+          realizacija >= 90 ? 'bg-emerald-50 border-emerald-300 text-emerald-800' :
+          realizacija >= 70 ? 'bg-amber-50 border-amber-300 text-amber-800' :
+          'bg-red-50 border-red-300 text-red-800'
+        }`}>
+          📊 Realizacija normativa: <strong>{realizacija}%</strong>
+          {realizacija >= 90 ? ' ✅' : realizacija >= 70 ? ' ⚠️' : ' 🔴'}
+        </div>
+      )}
 
       <Field label="Delavec (neobvezno)">
         <select value={form.worker_id} onChange={e => setForm({...form, worker_id: e.target.value})}
@@ -370,6 +427,33 @@ function ScrapForm({ shifrants, currentUser }) {
         return machine ? p.category === machine.category : true;
       })
     : shifrants.products;
+
+  // Trenutno izbran stroj (za prikaz info in avto-normativ)
+  const selectedMachine = form.machine_id
+    ? shifrants.machines.find(m => m.id === Number(form.machine_id))
+    : null;
+
+  // Auto-napolni normativ ob menjavi stroja
+  const handleMachineChange = (e) => {
+    const machineId = e.target.value;
+    const machine = shifrants.machines.find(m => m.id === Number(machineId));
+    setForm({
+      ...form,
+      machine_id: machineId,
+      product_id: '',
+      normativ: machine?.normativ_kos_h || '',
+    });
+  };
+
+  // Izračun % realizacije v živo
+  const realizacija = (() => {
+    if (!form.quantity || !form.normativ || !form.cas) return null;
+    const minutes = hhmmToMin(form.cas);
+    if (!minutes) return null;
+    const target = (Number(form.normativ) * minutes) / 60;
+    if (target <= 0) return null;
+    return Math.round((Number(form.quantity) / target) * 100);
+  })();
 
   const handleSubmit = async () => {
     if (!form.machine_id || !form.weight_kg) {
