@@ -23,7 +23,7 @@ import { getMyTaskViews, markTaskAsViewed, countUnreadComments } from './lib/tas
 import NabavaModule from './NabavaModule.jsx';
 import { canAccessNabava } from './nabavaConfig.js';
 import Racunovodstvo, { RACUNOVODSTVO_KATEGORIJE } from './Racunovodstvo.jsx';
-import OddelekModule from './OddelekModule.jsx';
+import KomercialaModule from './KomercialaModule.jsx';
 import { ShoppingCart, Briefcase, Cog, Phone, ShieldCheck, Package, FileText as FileTextIcon, TrendingUp as TrendingUpIcon, Award as AwardIcon, AlertCircle as AlertCircleIcon } from 'lucide-react';
 
 // === KONFIGURACIJE 5 ODDELKOV ===
