@@ -1,26 +1,32 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { supabase } from './supabase';
 import {
   Phone, Plus, Save, Edit2, Trash2, X, Calendar as CalendarIcon,
-  Paperclip, TrendingUp, FileText, AlertCircle, Package, Briefcase,
-  Cog, ChevronDown, ChevronUp, Download
+  Paperclip, TrendingUp, FileText, Cog, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 const TABLE = 'komerciala_dnevni';
 const BUCKET = 'komerciala-priponke';
+
+const ALLOWED_EMAILS = [
+  'prodaja.as@as-system.si',
+  'ales.seidl@as-system.si',
+  'claudia.seidl@as-system.si',
+  'sara.jagodic@as-system.si',
+];
 
 function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+  return yyyy + '-' + mm + '-' + dd;
 }
 
 function formatDateSlo(iso) {
   if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}`;
+  const parts = iso.split('-');
+  return parts[2] + '.' + parts[1] + '.' + parts[0];
 }
 
 function emptyForm() {
@@ -38,12 +44,23 @@ function emptyForm() {
   };
 }
 
-const ALLOWED_EMAILS = [
-  'prodaja.as@as-system.si',
-  'ales.seidl@as-system.si',
-  'claudia.seidl@as-system.si',
-  'sara.jagodic@as-system.si',
-];
+function NumberField({ label, value, onChange, color }) {
+  return (
+    <div>
+      <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
+        {label}
+      </label>
+      <input
+        type="number"
+        min="0"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-lg font-bold focus:outline-none focus:border-blue-500"
+        style={{ color: color || '#1E40AF' }}
+      />
+    </div>
+  );
+}
 
 export default function KomercialaModule({ currentUser, isAdmin }) {
   const [entries, setEntries] = useState([]);
@@ -53,7 +70,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
   const [form, setForm] = useState(emptyForm());
   const [pendingFile, setPendingFile] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [view, setView] = useState('dnevno'); // 'dnevno' | 'mesecno'
+  const [view, setView] = useState('dnevno');
   const [expandedRow, setExpandedRow] = useState(null);
 
   useEffect(() => {
@@ -111,7 +128,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
     let priponka_name = null;
 
     if (pendingFile) {
-      const path = `${form.datum}-${Date.now()}-${pendingFile.name}`;
+      const path = form.datum + '-' + Date.now() + '-' + pendingFile.name;
       const { error: upErr } = await supabase.storage
         .from(BUCKET)
         .upload(path, pendingFile, { upsert: false });
@@ -127,7 +144,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
     }
 
     const payload = {
-      ...form,
+      datum: form.datum,
       mn_odprti: Number(form.mn_odprti) || 0,
       mn_zakljuceni: Number(form.mn_zakljuceni) || 0,
       pn_odprti: Number(form.pn_odprti) || 0,
@@ -136,6 +153,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
       reklamacije: Number(form.reklamacije) || 0,
       kooperanti: Number(form.kooperanti) || 0,
       ostalo: Number(form.ostalo) || 0,
+      opomba: form.opomba || '',
       created_by_email: currentUser?.email || '',
       created_by_name: currentUser?.name || '',
       updated_at: new Date().toISOString(),
@@ -153,7 +171,6 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
       const r = await supabase.from(TABLE).insert(payload);
       error = r.error;
       if (error && error.code === '23505') {
-        // unique violation on datum -> update obstoječi
         const { data: existing } = await supabase
           .from(TABLE).select('id').eq('datum', form.datum).maybeSingle();
         if (existing) {
@@ -185,11 +202,10 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
     await loadEntries();
   }
 
-  // Mesečni agregat
   const mesecniData = (() => {
     const map = {};
     for (const e of entries) {
-      const mk = e.datum.slice(0, 7); // YYYY-MM
+      const mk = e.datum.slice(0, 7);
       if (!map[mk]) {
         map[mk] = {
           mesec: mk, mn_odprti: 0, mn_zakljuceni: 0, pn_odprti: 0,
@@ -210,24 +226,6 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
     return Object.values(map).sort((a, b) => b.mesec.localeCompare(a.mesec));
   })();
 
-  function NumberField({ label, value, onChange, color = '#1E40AF' }) {
-    return (
-      <div>
-        <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
-          {label}
-        </label>
-        <input
-          type="number"
-          min="0"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-lg font-bold focus:outline-none focus:border-blue-500"
-          style={{ color }}
-        />
-      </div>
-    );
-  }
-
   const userEmail = (currentUser?.email || '').toLowerCase();
   const hasAccess = ALLOWED_EMAILS.includes(userEmail);
 
@@ -244,9 +242,9 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
       </div>
     );
   }
+
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border p-4 sm:p-6 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
@@ -265,27 +263,21 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
         </button>
       </div>
 
-      {/* View toggle */}
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => setView('dnevno')}
-          className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${
-            view === 'dnevno' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 border'
-          }`}
+          className={'px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ' + (view === 'dnevno' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 border')}
         >
           <CalendarIcon className="w-4 h-4" /> Dnevno
         </button>
         <button
           onClick={() => setView('mesecno')}
-          className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${
-            view === 'mesecno' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 border'
-          }`}
+          className={'px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ' + (view === 'mesecno' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 border')}
         >
           <TrendingUp className="w-4 h-4" /> Mesečno
         </button>
       </div>
 
-      {/* DNEVNO */}
       {view === 'dnevno' && (
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
           {loading ? (
@@ -313,8 +305,8 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                 </thead>
                 <tbody>
                   {entries.map((e) => (
-                    <>
-                      <tr key={e.id} className="border-b hover:bg-gray-50">
+                    <Fragment key={e.id}>
+                      <tr className="border-b hover:bg-gray-50">
                         <td className="px-3 py-3 font-bold text-gray-900">{formatDateSlo(e.datum)}</td>
                         <td className="px-3 py-3 text-center font-bold text-blue-700">{e.mn_odprti}</td>
                         <td className="px-3 py-3 text-center font-bold text-blue-700">{e.mn_zakljuceni}</td>
@@ -324,30 +316,32 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                         <td className="px-3 py-3 text-center font-bold text-red-700">{e.reklamacije}</td>
                         <td className="px-3 py-3 text-center font-bold text-purple-700">{e.kooperanti}</td>
                         <td className="px-3 py-3 text-center font-bold text-gray-700">{e.ostalo}</td>
-                        <td className="px-3 py-3 flex gap-1 justify-end">
-                          <button
-                            onClick={() => setExpandedRow(expandedRow === e.id ? null : e.id)}
-                            className="p-1.5 hover:bg-gray-200 rounded"
-                            title="Podrobnosti"
-                          >
-                            {expandedRow === e.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </button>
-                          <button
-                            onClick={() => openEdit(e)}
-                            className="p-1.5 hover:bg-blue-100 text-blue-600 rounded"
-                            title="Uredi"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          {isAdmin && (
+                        <td className="px-3 py-3">
+                          <div className="flex gap-1 justify-end">
                             <button
-                              onClick={() => handleDelete(e.id)}
-                              className="p-1.5 hover:bg-red-100 text-red-600 rounded"
-                              title="Izbriši"
+                              onClick={() => setExpandedRow(expandedRow === e.id ? null : e.id)}
+                              className="p-1.5 hover:bg-gray-200 rounded"
+                              title="Podrobnosti"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              {expandedRow === e.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </button>
-                          )}
+                            <button
+                              onClick={() => openEdit(e)}
+                              className="p-1.5 hover:bg-blue-100 text-blue-600 rounded"
+                              title="Uredi"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleDelete(e.id)}
+                                className="p-1.5 hover:bg-red-100 text-red-600 rounded"
+                                title="Izbriši"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                       {expandedRow === e.id && (
@@ -385,7 +379,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -394,7 +388,6 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
         </div>
       )}
 
-      {/* MESEČNO */}
       {view === 'mesecno' && (
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
           {mesecniData.length === 0 ? (
@@ -438,7 +431,6 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
         </div>
       )}
 
-      {/* MODAL */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl my-8">
@@ -452,7 +444,6 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Datum */}
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
                   Datum *
@@ -466,47 +457,35 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                 <p className="text-xs text-gray-500 mt-1">Če za ta datum že obstaja vnos, ga bo prepisalo.</p>
               </div>
 
-              {/* Montažni nalogi */}
               <div className="border-2 border-blue-200 rounded-lg p-3 bg-blue-50">
                 <div className="flex items-center gap-2 mb-2">
                   <FileText className="w-5 h-5 text-blue-700" />
                   <h3 className="font-bold text-blue-700">Montažni nalogi</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <NumberField label="Odprti" value={form.mn_odprti}
-                    onChange={(v) => setForm({ ...form, mn_odprti: v })} color="#1E40AF" />
-                  <NumberField label="Zaključeni" value={form.mn_zakljuceni}
-                    onChange={(v) => setForm({ ...form, mn_zakljuceni: v })} color="#1E40AF" />
+                  <NumberField label="Odprti" value={form.mn_odprti} onChange={(v) => setForm({ ...form, mn_odprti: v })} color="#1E40AF" />
+                  <NumberField label="Zaključeni" value={form.mn_zakljuceni} onChange={(v) => setForm({ ...form, mn_zakljuceni: v })} color="#1E40AF" />
                 </div>
               </div>
 
-              {/* Proizvodnji nalogi */}
               <div className="border-2 border-amber-200 rounded-lg p-3 bg-amber-50">
                 <div className="flex items-center gap-2 mb-2">
                   <Cog className="w-5 h-5 text-amber-700" />
                   <h3 className="font-bold text-amber-700">Proizvodnji nalogi</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <NumberField label="Odprti" value={form.pn_odprti}
-                    onChange={(v) => setForm({ ...form, pn_odprti: v })} color="#854D0E" />
-                  <NumberField label="Zaključeni" value={form.pn_zakljuceni}
-                    onChange={(v) => setForm({ ...form, pn_zakljuceni: v })} color="#854D0E" />
+                  <NumberField label="Odprti" value={form.pn_odprti} onChange={(v) => setForm({ ...form, pn_odprti: v })} color="#854D0E" />
+                  <NumberField label="Zaključeni" value={form.pn_zakljuceni} onChange={(v) => setForm({ ...form, pn_zakljuceni: v })} color="#854D0E" />
                 </div>
               </div>
 
-              {/* Ostala polja */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <NumberField label="Prevzemnice" value={form.prevzemnice}
-                  onChange={(v) => setForm({ ...form, prevzemnice: v })} color="#065F46" />
-                <NumberField label="Reklamacije" value={form.reklamacije}
-                  onChange={(v) => setForm({ ...form, reklamacije: v })} color="#B91C1C" />
-                <NumberField label="Kooperanti" value={form.kooperanti}
-                  onChange={(v) => setForm({ ...form, kooperanti: v })} color="#5B21B6" />
-                <NumberField label="Ostalo" value={form.ostalo}
-                  onChange={(v) => setForm({ ...form, ostalo: v })} color="#374151" />
+                <NumberField label="Prevzemnice" value={form.prevzemnice} onChange={(v) => setForm({ ...form, prevzemnice: v })} color="#065F46" />
+                <NumberField label="Reklamacije" value={form.reklamacije} onChange={(v) => setForm({ ...form, reklamacije: v })} color="#B91C1C" />
+                <NumberField label="Kooperanti" value={form.kooperanti} onChange={(v) => setForm({ ...form, kooperanti: v })} color="#5B21B6" />
+                <NumberField label="Ostalo" value={form.ostalo} onChange={(v) => setForm({ ...form, ostalo: v })} color="#374151" />
               </div>
 
-              {/* Opomba */}
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
                   Opomba
@@ -520,7 +499,6 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                 />
               </div>
 
-              {/* Priponka */}
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
                   Priponka (neobvezno)
