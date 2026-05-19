@@ -38,6 +38,13 @@ function emptyForm() {
   };
 }
 
+const ALLOWED_EMAILS = [
+  'prodaja.as@as-system.si',
+  'ales.seidl@as-system.si',
+  'claudia.seidl@as-system.si',
+  'sara.jagodic@as-system.si',
+];
+
 export default function KomercialaModule({ currentUser, isAdmin }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -221,6 +228,22 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
     );
   }
 
+  const userEmail = (currentUser?.email || '').toLowerCase();
+  const hasAccess = ALLOWED_EMAILS.includes(userEmail);
+
+  if (!hasAccess) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <div className="bg-white rounded-xl shadow-sm border p-8 text-center">
+          <div className="text-5xl mb-3">🔒</div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Nimaš dostopa</h2>
+          <p className="text-gray-600">
+            Modul Komerciala je dostopen samo Matiji in administratorjem.
+          </p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       {/* Header */}
