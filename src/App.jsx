@@ -55,10 +55,11 @@ const TEHNOLOG_KATEGORIJE = {
 };
 
 const KOMERCIALA_KATEGORIJE = {
-  kontakti: { name: 'Kontakti / klici', icon: Phone, color: '#1E40AF', bgColor: '#DBEAFE', desc: 'Klici in komunikacija', subKategorije: ['Odhodni klic', 'Vhodni klic', 'Sestanek', 'Email'] },
-  pogajanja: { name: 'Pogajanja / pogodbe', icon: FileTextIcon, color: '#854D0E', bgColor: '#FEF3C7', desc: 'Pogajanja in dolgoročne pogodbe', subKategorije: ['Nova pogodba', 'Podaljšanje', 'Spremembe pogojev'] },
-  trgi: { name: 'Trgi / razvoj', icon: TrendingUpIcon, color: '#065F46', bgColor: '#A7F3D0', desc: 'Razvoj trgov in novih kupcev', subKategorije: ['Nov trg', 'Novi kupec', 'Raziskava'] },
-  obiski: { name: 'Obiski strank', icon: Briefcase, color: '#5B21B6', bgColor: '#DDD6FE', desc: 'Načrtovani in opravljeni obiski', subKategorije: ['Sestanek', 'Predstavitev', 'Servis'] },
+  montazni: { name: 'Montažni nalogi', icon: FileTextIcon, color: '#1E40AF', bgColor: '#DBEAFE', desc: 'Odprti in zaključeni montažni nalogi', subKategorije: ['Št. odprtih', 'Št. zaključenih'] },
+  proizvodnji: { name: 'Proizvodnji nalogi', icon: Cog, color: '#854D0E', bgColor: '#FEF3C7', desc: 'Odprti in zaključeni proizvodnji nalogi', subKategorije: ['Št. odprtih', 'Št. zaključenih'] },
+  prevzemnice: { name: 'Prevzemnice', icon: Package, color: '#065F46', bgColor: '#A7F3D0', desc: 'Prevzemnice materiala in blaga', subKategorije: ['Nova prevzemnica'] },
+  reklamacije: { name: 'Reklamacije', icon: AlertCircleIcon, color: '#B91C1C', bgColor: '#FEE2E2', desc: 'Reklamacije in nepravilnosti', subKategorije: ['Notranja', 'Od stranke', 'Dobavitelju'] },
+  kooperanti: { name: 'Priprava kooperantov', icon: Briefcase, color: '#5B21B6', bgColor: '#DDD6FE', desc: 'Priprava in koordinacija kooperantov', subKategorije: ['Nova priprava', 'Sledenje'] },
   drugo: { name: 'Ostalo', icon: FileTextIcon, color: '#374151', bgColor: '#E5E7EB', desc: 'Ostali komercialni vnosi', subKategorije: ['Drugo'] },
 };
 
