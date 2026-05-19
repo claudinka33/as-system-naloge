@@ -139,7 +139,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
         return;
       }
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
-      priponka_url = pub?.publicUrl || null;
+      priponka_url = pub && pub.publicUrl ? pub.publicUrl : null;
       priponka_name = pendingFile.name;
     }
 
@@ -154,8 +154,8 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
       kooperanti: Number(form.kooperanti) || 0,
       ostalo: Number(form.ostalo) || 0,
       opomba: form.opomba || '',
-      created_by_email: currentUser?.email || '',
-      created_by_name: currentUser?.name || '',
+      created_by_email: (currentUser && currentUser.email) || '',
+      created_by_name: (currentUser && currentUser.name) || '',
       updated_at: new Date().toISOString(),
     };
     if (priponka_url) {
@@ -202,7 +202,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
     await loadEntries();
   }
 
-  const mesecniData = (() => {
+  const mesecniData = (function() {
     const map = {};
     for (const e of entries) {
       const mk = e.datum.slice(0, 7);
@@ -210,7 +210,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
         map[mk] = {
           mesec: mk, mn_odprti: 0, mn_zakljuceni: 0, pn_odprti: 0,
           pn_zakljuceni: 0, prevzemnice: 0, reklamacije: 0,
-          kooperanti: 0, ostalo: 0, count: 0,
+          kooperanti: 0, ostalo: 0, count: 0
         };
       }
       map[mk].mn_odprti += e.mn_odprti || 0;
@@ -223,11 +223,11 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
       map[mk].ostalo += e.ostalo || 0;
       map[mk].count += 1;
     }
-    return Object.values(map).sort((a, b) => b.mesec.localeCompare(a.mesec));
+    return Object.values(map).sort(function(a, b) { return b.mesec.localeCompare(a.mesec); });
   })();
 
-  const userEmail = (currentUser?.email || '').toLowerCase();
-  const hasAccess = ALLOWED_EMAILS.includes(userEmail);
+  const userEmail = ((currentUser && currentUser.email) || '').toLowerCase();
+  const hasAccess = ALLOWED_EMAILS.indexOf(userEmail) !== -1;
 
   if (!hasAccess) {
     return (
@@ -255,25 +255,16 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
             <p className="text-sm text-gray-500">Dnevna evidenca odprtih in zaključenih nalogov</p>
           </div>
         </div>
-        <button
-          onClick={openNew}
-          className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2"
-        >
+        <button onClick={openNew} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2">
           <Plus className="w-5 h-5" /> Nov dnevni vnos
         </button>
       </div>
 
       <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setView('dnevno')}
-          className={'px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ' + (view === 'dnevno' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 border')}
-        >
+        <button onClick={() => setView('dnevno')} className={'px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ' + (view === 'dnevno' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 border')}>
           <CalendarIcon className="w-4 h-4" /> Dnevno
         </button>
-        <button
-          onClick={() => setView('mesecno')}
-          className={'px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ' + (view === 'mesecno' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 border')}
-        >
+        <button onClick={() => setView('mesecno')} className={'px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ' + (view === 'mesecno' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 border')}>
           <TrendingUp className="w-4 h-4" /> Mesečno
         </button>
       </div>
@@ -318,67 +309,50 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                         <td className="px-3 py-3 text-center font-bold text-gray-700">{e.ostalo}</td>
                         <td className="px-3 py-3">
                           <div className="flex gap-1 justify-end">
-                            <button
-                              onClick={() => setExpandedRow(expandedRow === e.id ? null : e.id)}
-                              className="p-1.5 hover:bg-gray-200 rounded"
-                              title="Podrobnosti"
-                            >
+                            <button onClick={() => setExpandedRow(expandedRow === e.id ? null : e.id)} className="p-1.5 hover:bg-gray-200 rounded" title="Podrobnosti">
                               {expandedRow === e.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </button>
-                            <button
-                              onClick={() => openEdit(e)}
-                              className="p-1.5 hover:bg-blue-100 text-blue-600 rounded"
-                              title="Uredi"
-                            >
+                            <button onClick={() => openEdit(e)} className="p-1.5 hover:bg-blue-100 text-blue-600 rounded" title="Uredi">
                               <Edit2 className="w-4 h-4" />
                             </button>
-                            {isAdmin && (
-                              <button
-                                onClick={() => handleDelete(e.id)}
-                                className="p-1.5 hover:bg-red-100 text-red-600 rounded"
-                                title="Izbriši"
-                              >
+                            {isAdmin ? (
+                              <button onClick={() => handleDelete(e.id)} className="p-1.5 hover:bg-red-100 text-red-600 rounded" title="Izbrisi">
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         </td>
                       </tr>
-                      {expandedRow === e.id && (
+                      {expandedRow === e.id ? (
                         <tr className="bg-gray-50 border-b">
                           <td colSpan={10} className="px-4 py-4">
                             <div className="space-y-2 text-sm">
-                              {e.opomba && (
+                              {e.opomba ? (
                                 <div>
                                   <span className="font-bold text-gray-700">Opomba: </span>
                                   <span className="text-gray-800 whitespace-pre-wrap">{e.opomba}</span>
                                 </div>
-                              )}
-                              {e.priponka_url && (
+                              ) : null}
+                              {e.priponka_url ? (
                                 <div>
-                                  
-                                    href={e.priponka_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 text-blue-600 hover:underline"
-                                  >
+                                  <a href={e.priponka_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-blue-600 hover:underline">
                                     <Paperclip className="w-4 h-4" />
-                                    {e.priponka_name || 'priponka'}
+                                    <span>{e.priponka_name || 'priponka'}</span>
                                   </a>
                                 </div>
-                              )}
-                              {e.created_by_name && (
+                              ) : null}
+                              {e.created_by_name ? (
                                 <div className="text-xs text-gray-500">
-                                  Vnesel: {e.created_by_name} ({new Date(e.created_at).toLocaleString('sl-SI')})
+                                  Vnesel: {e.created_by_name}
                                 </div>
-                              )}
-                              {!e.opomba && !e.priponka_url && (
+                              ) : null}
+                              {!e.opomba && !e.priponka_url ? (
                                 <div className="text-gray-400 italic">Brez opombe ali priponke.</div>
-                              )}
+                              ) : null}
                             </div>
                           </td>
                         </tr>
-                      )}
+                      ) : null}
                     </Fragment>
                   ))}
                 </tbody>
@@ -445,15 +419,8 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
 
             <div className="p-4 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
-                  Datum *
-                </label>
-                <input
-                  type="date"
-                  value={form.datum}
-                  onChange={(e) => setForm({ ...form, datum: e.target.value })}
-                  className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
-                />
+                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Datum *</label>
+                <input type="date" value={form.datum} onChange={(e) => setForm({ ...form, datum: e.target.value })} className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
                 <p className="text-xs text-gray-500 mt-1">Če za ta datum že obstaja vnos, ga bo prepisalo.</p>
               </div>
 
@@ -487,47 +454,24 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
-                  Opomba
-                </label>
-                <textarea
-                  value={form.opomba}
-                  onChange={(e) => setForm({ ...form, opomba: e.target.value })}
-                  rows={3}
-                  placeholder="Opombe ..."
-                  className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
-                />
+                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Opomba</label>
+                <textarea value={form.opomba} onChange={(e) => setForm({ ...form, opomba: e.target.value })} rows={3} placeholder="Opombe ..." className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
-                  Priponka (neobvezno)
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) => setPendingFile(e.target.files?.[0] || null)}
-                  className="w-full text-sm"
-                />
-                {pendingFile && (
+                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Priponka (neobvezno)</label>
+                <input type="file" onChange={(e) => setPendingFile((e.target.files && e.target.files[0]) || null)} className="w-full text-sm" />
+                {pendingFile ? (
                   <p className="text-xs text-gray-600 mt-1">
-                    📎 {pendingFile.name} ({Math.round(pendingFile.size / 1024)} KB)
+                    Priloga: {pendingFile.name} ({Math.round(pendingFile.size / 1024)} KB)
                   </p>
-                )}
+                ) : null}
               </div>
             </div>
 
             <div className="flex gap-2 p-4 border-t sticky bottom-0 bg-white rounded-b-xl">
-              <button
-                onClick={() => setShowForm(false)}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg"
-              >
-                Prekliči
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
-              >
+              <button onClick={() => setShowForm(false)} className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg">Prekliči</button>
+              <button onClick={handleSave} disabled={saving} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50">
                 <Save className="w-4 h-4" />
                 {saving ? 'Shranjujem ...' : 'Shrani'}
               </button>
