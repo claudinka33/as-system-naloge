@@ -1146,7 +1146,7 @@ export default function App() {
         ) : mainSection === 'tehnolog' ? (
           <OddelekModule config={ODDELKI_CONFIG.tehnolog} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.tehnolog || 0} />
         ) : mainSection === 'komerciala' ? (
-          <OddelekModule config={ODDELKI_CONFIG.komerciala} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.komerciala || 0} />
+          <KomercialaModule currentUser={currentUser} isAdmin={isAdmin} />
         ) : mainSection === 'kakovost' ? (
           <OddelekModule config={ODDELKI_CONFIG.kakovost} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.kakovost || 0} />
         ) : mainSection === 'reports' ? (
