@@ -9,7 +9,7 @@ const TABLE = 'komerciala_dnevni';
 const BUCKET = 'komerciala-priponke';
 
 const ALLOWED_EMAILS = [
-  'prodaja.as@as-system.si',
+  'prodaja@as-system.si',
   'ales.seidl@as-system.si',
   'claudia.seidl@as-system.si',
   'sara.jagodic@as-system.si',
