@@ -6,14 +6,8 @@ import {
   formatNumber, formatDate, WORK_TYPE_LABELS, canEditEntry, EDIT_LOCK_DAYS
 } from '../../lib/assemblyApi.js';
 
-// Aktivnosti, ki se štejejo v "Ročno skupaj"
-// Vijačenje + pakiranje (vij_pak) + Pakiranje (pakiranje) sta isti artikel
-// Vrečke (vrecke) = en artikel
-// Titus (titus) = en artikel
-// Stiskanje (stiskanje) NE šteje
 const MANUAL_COUNT_CODES = ['vij_pak', 'pakiranje', 'vrecke', 'titus'];
 
-// Helper za parse zastojev
 function parseBreakdowns(raw) {
   if (!raw) return null;
   if (typeof raw === 'string' && raw.trim().startsWith('{')) {
@@ -80,12 +74,15 @@ export default function AssemblyDailyReport({ onEditEntry }) {
   };
 
   const mqKos = v => (v && typeof v === 'object') ? Number(v.kos || 0) : Number(v || 0);
+  const mqNormativ = v => (v && typeof v === 'object') ? Number(v.normativ || 0) : 0;
 
   const totalAutomatKos = entries.reduce((sum, e) => {
     return sum + Object.values(e.machine_quantities || {}).reduce((s, v) => s + mqKos(v), 0);
   }, 0);
+  const totalAutomatNormativ = entries.reduce((sum, e) => {
+    return sum + Object.values(e.machine_quantities || {}).reduce((s, v) => s + mqNormativ(v), 0);
+  }, 0);
 
-  // Ročno skupaj: samo vij_pak + pakiranje + vrecke + titus (stiskanje NE!)
   const totalManualKos = entries.reduce((sum, e) => {
     let s = 0;
     Object.entries(e.activity_data || {}).forEach(([code, val]) => {
@@ -94,9 +91,17 @@ export default function AssemblyDailyReport({ onEditEntry }) {
     });
     return sum + s;
   }, 0);
+  const totalManualNormativ = entries.reduce((sum, e) => {
+    let s = 0;
+    Object.entries(e.activity_data || {}).forEach(([code, val]) => {
+      if (!MANUAL_COUNT_CODES.includes(code)) return;
+      if (val && typeof val === 'object' && val.normativ) s += Number(val.normativ);
+    });
+    return sum + s;
+  }, 0);
 
   const totalHours = entries.reduce((s, e) => s + Number(e.total_hours || 0), 0);
-  const totalNormativ = entries.reduce((s, e) => s + Number(e.normativ || 0), 0);
+  const totalRelevantNormativ = totalAutomatNormativ + totalManualNormativ;
 
   const byMachine = {};
   machines.forEach(m => byMachine[m.name] = 0);
@@ -106,7 +111,6 @@ export default function AssemblyDailyReport({ onEditEntry }) {
     });
   });
 
-  // Ročno po aktivnostih (za prikaz spodaj)
   const byActivity = {};
   activities.forEach(a => byActivity[a.code] = 0);
   entries.forEach(e => {
@@ -119,7 +123,6 @@ export default function AssemblyDailyReport({ onEditEntry }) {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Date picker + export */}
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm">
         <div className="flex items-center gap-3">
           <Calendar className="w-5 h-5 text-as-gray-400" />
@@ -142,7 +145,6 @@ export default function AssemblyDailyReport({ onEditEntry }) {
         </div>
       ) : (
         <>
-          {/* Skupne statistike — zdaj 4 kartice */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard icon="🤖" label="Avtomati skupaj" value={formatNumber(totalAutomatKos)} unit="kos"
               color="#0E7490" bgColor="#CFFAFE" />
@@ -150,11 +152,10 @@ export default function AssemblyDailyReport({ onEditEntry }) {
               color="#7E22CE" bgColor="#E9D5FF" />
             <StatCard icon="⏱️" label="Skupne ure" value={totalHours.toFixed(1)} unit="h"
               color="#7C2D12" bgColor="#FED7AA" />
-            <StatCard icon="🎯" label="Normativ" value={formatNumber(totalNormativ)} unit="kos"
+            <StatCard icon="🎯" label="Normativ" value={formatNumber(totalRelevantNormativ)} unit="kos"
               color="#065F46" bgColor="#A7F3D0" />
           </div>
 
-          {/* Avtomati po strojih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-3">🤖 Avtomati po strojih</h3>
             {Object.values(byMachine).every(v => v === 0) ? (
@@ -173,26 +174,30 @@ export default function AssemblyDailyReport({ onEditEntry }) {
             )}
           </div>
 
-          {/* Ročno po aktivnostih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-3">👐 Ročna montaža po aktivnostih</h3>
             {Object.values(byActivity).every(v => v === 0) ? (
               <div className="text-center py-6 text-as-gray-400 text-sm">Ni ročnih vnosov.</div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {activities.filter(a => a.unit !== 'opis').map(a => (
-                  <div key={a.id} className="border border-as-gray-100 rounded-lg p-3">
-                    <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">{a.name}</div>
-                    <div className="text-2xl font-bold text-as-gray-700 mt-1">
-                      {formatNumber(byActivity[a.code] || 0)}
+                {activities.filter(a => a.unit !== 'opis').map(a => {
+                  const isExcluded = !MANUAL_COUNT_CODES.includes(a.code);
+                  return (
+                    <div key={a.id} className="border border-as-gray-100 rounded-lg p-3">
+                      <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">
+                        {a.name}
+                        {isExcluded && <span className="text-as-gray-400 ml-1 normal-case">(ni v skupaj)</span>}
+                      </div>
+                      <div className="text-2xl font-bold text-as-gray-700 mt-1">
+                        {formatNumber(byActivity[a.code] || 0)}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Po delavkah */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-3">👷 Delavke</h3>
             {entries.length === 0 ? (
