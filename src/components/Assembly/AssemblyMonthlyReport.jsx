@@ -6,6 +6,9 @@ import {
   formatNumber, formatDate, SLOVENIAN_MONTHS, WORK_TYPE_LABELS, canEditEntry, EDIT_LOCK_DAYS
 } from '../../lib/assemblyApi.js';
 
+// Ročno skupaj: vij_pak + pakiranje + vrecke + titus (stiskanje NE)
+const MANUAL_COUNT_CODES = ['vij_pak', 'pakiranje', 'vrecke', 'titus'];
+
 export default function AssemblyMonthlyReport({ onEditEntry }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -53,17 +56,25 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
     }
   };
 
-  // Helper: iz vrednosti machine_quantities[name] vrne število kosov (kompat. star/nov format)
   const mqKos = v => (v && typeof v === 'object') ? Number(v.kos || 0) : Number(v || 0);
 
-  // Skupne vsote
   const totalAutomatKos = entries.reduce((sum, e) => {
     return sum + Object.values(e.machine_quantities || {}).reduce((s, v) => s + mqKos(v), 0);
   }, 0);
+
+  const totalManualKos = entries.reduce((sum, e) => {
+    let s = 0;
+    Object.entries(e.activity_data || {}).forEach(([code, val]) => {
+      if (!MANUAL_COUNT_CODES.includes(code)) return;
+      if (val && typeof val === 'object' && val.kos) s += Number(val.kos);
+    });
+    return sum + s;
+  }, 0);
+
   const totalHours = entries.reduce((s, e) => s + Number(e.total_hours || 0), 0);
   const totalNormativ = entries.reduce((s, e) => s + Number(e.normativ || 0), 0);
 
-  // Po stroju
+  // Po stroju (avtomati)
   const byMachine = {};
   machines.forEach(m => byMachine[m.name] = 0);
   entries.forEach(e => {
@@ -72,12 +83,24 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
     });
   });
 
-  // Po delavki: skupna proizvodnja + ure + doseganje
+  // Po aktivnosti (ročna): vključi VSE (stiskanje + vij_pak + pakiranje + vrecke + titus)
+  const byActivity = {};
+  activities.filter(a => a.unit !== 'opis').forEach(a => byActivity[a.code] = 0);
+  entries.forEach(e => {
+    Object.entries(e.activity_data || {}).forEach(([code, val]) => {
+      if (val && typeof val === 'object' && val.kos) {
+        byActivity[code] = (byActivity[code] || 0) + Number(val.kos);
+      }
+    });
+  });
+
+  // Po delavki
   const byWorker = {};
   workers.forEach(w => {
     byWorker[w.id] = {
       worker: w,
       automatKos: 0,
+      manualKos: 0,
       hours: 0,
       normativ: 0,
       days: 0
@@ -87,6 +110,12 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
     const wid = e.worker_id;
     if (!byWorker[wid]) return;
     byWorker[wid].automatKos += Object.values(e.machine_quantities || {}).reduce((s, v) => s + mqKos(v), 0);
+    let manualSum = 0;
+    Object.entries(e.activity_data || {}).forEach(([code, val]) => {
+      if (!MANUAL_COUNT_CODES.includes(code)) return;
+      if (val && typeof val === 'object' && val.kos) manualSum += Number(val.kos);
+    });
+    byWorker[wid].manualKos += manualSum;
     byWorker[wid].hours += Number(e.total_hours || 0);
     byWorker[wid].normativ += Number(e.normativ || 0);
     byWorker[wid].days += 1;
@@ -109,7 +138,7 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
           </select>
         </div>
         <button
-          onClick={() => exportMonthlyToCSV(year, month, workerRows, byMachine)}
+          onClick={() => exportMonthlyToCSV(year, month, workerRows, byMachine, byActivity, activities)}
           className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
         >
           <Download className="w-4 h-4" /> Izvoz v Excel
@@ -123,10 +152,12 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
         </div>
       ) : (
         <>
-          {/* Skupne stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Skupne stats — 4 kartice */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <BigStat icon="🤖" label="Avtomati skupaj" value={formatNumber(totalAutomatKos)} unit="kos"
               color="#0E7490" bgColor="#CFFAFE" />
+            <BigStat icon="👐" label="Ročno skupaj" value={formatNumber(totalManualKos)} unit="kos"
+              color="#7E22CE" bgColor="#E9D5FF" />
             <BigStat icon="⏱️" label="Skupne ure" value={totalHours.toFixed(1)} unit="h"
               color="#7C2D12" bgColor="#FED7AA" />
             <BigStat icon="🎯" label="Normativ" value={formatNumber(totalNormativ)} unit="kos"
@@ -147,6 +178,7 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
                       <th className="text-left p-2">Tip</th>
                       <th className="text-right p-2">Dni</th>
                       <th className="text-right p-2">Avtomati (kos)</th>
+                      <th className="text-right p-2">Ročno (kos)</th>
                       <th className="text-right p-2">Normativ</th>
                       <th className="text-right p-2">Doseganje</th>
                       <th className="text-right p-2">Ure</th>
@@ -154,7 +186,8 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
                   </thead>
                   <tbody>
                     {workerRows.map(r => {
-                      const pct = r.normativ > 0 ? (r.automatKos / r.normativ) * 100 : 0;
+                      const totalKos = r.automatKos + r.manualKos;
+                      const pct = r.normativ > 0 ? (totalKos / r.normativ) * 100 : 0;
                       const color = pct >= 100 ? '#16A34A' : pct >= 75 ? '#0E7490' : pct >= 50 ? '#D97706' : '#DC2626';
                       const isExpanded = expandedWorkerId === r.worker.id;
                       const workerEntries = entries.filter(e => e.worker_id === r.worker.id).sort((a, b) => a.date.localeCompare(b.date));
@@ -173,6 +206,7 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
                             <td className="p-2 text-xs text-as-gray-500">{WORK_TYPE_LABELS[r.worker.work_type]}</td>
                             <td className="p-2 text-right">{r.days}</td>
                             <td className="p-2 text-right font-semibold">{formatNumber(r.automatKos)}</td>
+                            <td className="p-2 text-right font-semibold">{formatNumber(r.manualKos)}</td>
                             <td className="p-2 text-right">{formatNumber(r.normativ)}</td>
                             <td className="p-2 text-right font-bold" style={{ color: r.normativ > 0 ? color : '#9CA3AF' }}>
                               {r.normativ > 0 ? `${pct.toFixed(0)}%` : '—'}
@@ -181,7 +215,7 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
                           </tr>
                           {isExpanded && (
                             <tr className="bg-as-gray-50">
-                              <td colSpan={7} className="p-3">
+                              <td colSpan={8} className="p-3">
                                 <div className="space-y-2">
                                   <div className="text-xs uppercase font-semibold text-as-gray-500 tracking-wider mb-2">Dnevni vnosi</div>
                                   {workerEntries.length === 0 ? (
@@ -241,7 +275,7 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
             )}
           </div>
 
-          {/* Po strojih (avtomati) */}
+          {/* Avtomati po strojih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-4">🤖 Avtomati po strojih</h3>
             {Object.values(byMachine).every(v => v === 0) ? (
@@ -257,6 +291,35 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
                       <div className="col-span-3 text-as-gray-700">{m.name}</div>
                       <div className="col-span-7 bg-as-gray-100 rounded h-5 overflow-hidden">
                         <div className="h-full" style={{ width: `${pct}%`, backgroundColor: '#0E7490' }} />
+                      </div>
+                      <div className="col-span-2 text-right font-semibold text-as-gray-700">{formatNumber(v)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Ročna montaža po aktivnostih */}
+          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+            <h3 className="font-bold text-as-gray-700 mb-4">👐 Ročna montaža po aktivnostih</h3>
+            {Object.values(byActivity).every(v => v === 0) ? (
+              <div className="text-center py-6 text-as-gray-400 text-sm">Ni ročnih vnosov.</div>
+            ) : (
+              <div className="space-y-2">
+                {activities.filter(a => a.unit !== 'opis').map(a => {
+                  const v = byActivity[a.code] || 0;
+                  const max = Math.max(...Object.values(byActivity), 1);
+                  const pct = max > 0 ? (v / max) * 100 : 0;
+                  const isExcluded = !MANUAL_COUNT_CODES.includes(a.code);
+                  return (
+                    <div key={a.id} className="grid grid-cols-12 gap-2 items-center text-sm">
+                      <div className="col-span-3 text-as-gray-700">
+                        {a.name}
+                        {isExcluded && <span className="text-xs text-as-gray-400 ml-1">(ni v skupaj)</span>}
+                      </div>
+                      <div className="col-span-7 bg-as-gray-100 rounded h-5 overflow-hidden">
+                        <div className="h-full" style={{ width: `${pct}%`, backgroundColor: isExcluded ? '#9CA3AF' : '#7E22CE' }} />
                       </div>
                       <div className="col-span-2 text-right font-semibold text-as-gray-700">{formatNumber(v)}</div>
                     </div>
@@ -287,16 +350,17 @@ function BigStat({ icon, label, value, unit, color, bgColor }) {
   );
 }
 
-function exportMonthlyToCSV(year, month, workerRows, byMachine) {
+function exportMonthlyToCSV(year, month, workerRows, byMachine, byActivity, activities) {
   const lines = [];
   lines.push(`Mesečno poročilo MONTAŽA - ${SLOVENIAN_MONTHS[month - 1]} ${year}`);
   lines.push('');
 
   lines.push('PO DELAVKAH');
-  lines.push('Delavka;Tip;Dni;Avtomati (kos);Normativ;Doseganje (%);Ure');
+  lines.push('Delavka;Tip;Dni;Avtomati (kos);Ročno (kos);Normativ;Doseganje (%);Ure');
   workerRows.forEach(r => {
-    const pct = r.normativ > 0 ? ((r.automatKos / r.normativ) * 100).toFixed(1) : '';
-    lines.push([r.worker.name, WORK_TYPE_LABELS[r.worker.work_type], r.days, r.automatKos, r.normativ, pct, r.hours.toFixed(1)].join(';'));
+    const totalKos = r.automatKos + r.manualKos;
+    const pct = r.normativ > 0 ? ((totalKos / r.normativ) * 100).toFixed(1) : '';
+    lines.push([r.worker.name, WORK_TYPE_LABELS[r.worker.work_type], r.days, r.automatKos, r.manualKos, r.normativ, pct, r.hours.toFixed(1)].join(';'));
   });
   lines.push('');
 
@@ -304,6 +368,13 @@ function exportMonthlyToCSV(year, month, workerRows, byMachine) {
   lines.push('Stroj;Količina');
   Object.entries(byMachine).forEach(([n, v]) => {
     lines.push(`${n};${v}`);
+  });
+  lines.push('');
+
+  lines.push('ROČNA MONTAŽA PO AKTIVNOSTIH');
+  lines.push('Aktivnost;Količina');
+  activities.filter(a => a.unit !== 'opis').forEach(a => {
+    lines.push(`${a.name};${byActivity[a.code] || 0}`);
   });
 
   const csv = '\uFEFF' + lines.join('\n');
