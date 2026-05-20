@@ -6,6 +6,39 @@ import {
   formatNumber, formatDate, WORK_TYPE_LABELS, canEditEntry, EDIT_LOCK_DAYS
 } from '../../lib/assemblyApi.js';
 
+// Aktivnosti, ki se štejejo v "Ročno skupaj"
+// Vijačenje + pakiranje (vij_pak) + Pakiranje (pakiranje) sta isti artikel
+// Vrečke (vrecke) = en artikel
+// Titus (titus) = en artikel
+// Stiskanje (stiskanje) NE šteje
+const MANUAL_COUNT_CODES = ['vij_pak', 'pakiranje', 'vrecke', 'titus'];
+
+// Helper za parse zastojev
+function parseBreakdowns(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+    try {
+      const obj = JSON.parse(raw);
+      return {
+        zastoj: obj.zastoj || '',
+        vzrok: obj.vzrok || '',
+        cas: obj.cas || '',
+      };
+    } catch (e) {}
+  }
+  return { zastoj: String(raw), vzrok: '', cas: '' };
+}
+
+function formatBreakdowns(raw) {
+  const b = parseBreakdowns(raw);
+  if (!b) return '';
+  const parts = [];
+  if (b.zastoj) parts.push(b.zastoj);
+  if (b.vzrok) parts.push(b.vzrok);
+  if (b.cas) parts.push(b.cas);
+  return parts.join(' — ');
+}
+
 export default function AssemblyDailyReport({ onEditEntry }) {
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
@@ -46,22 +79,41 @@ export default function AssemblyDailyReport({ onEditEntry }) {
     }
   };
 
-  // Računi
-  // Helper: iz vrednosti machine_quantities[name] vrne število kosov (kompat. star/nov format)
   const mqKos = v => (v && typeof v === 'object') ? Number(v.kos || 0) : Number(v || 0);
 
   const totalAutomatKos = entries.reduce((sum, e) => {
     return sum + Object.values(e.machine_quantities || {}).reduce((s, v) => s + mqKos(v), 0);
   }, 0);
+
+  // Ročno skupaj: samo vij_pak + pakiranje + vrecke + titus (stiskanje NE!)
+  const totalManualKos = entries.reduce((sum, e) => {
+    let s = 0;
+    Object.entries(e.activity_data || {}).forEach(([code, val]) => {
+      if (!MANUAL_COUNT_CODES.includes(code)) return;
+      if (val && typeof val === 'object' && val.kos) s += Number(val.kos);
+    });
+    return sum + s;
+  }, 0);
+
   const totalHours = entries.reduce((s, e) => s + Number(e.total_hours || 0), 0);
   const totalNormativ = entries.reduce((s, e) => s + Number(e.normativ || 0), 0);
 
-  // Po stroju
   const byMachine = {};
   machines.forEach(m => byMachine[m.name] = 0);
   entries.forEach(e => {
     Object.entries(e.machine_quantities || {}).forEach(([machineName, qty]) => {
       byMachine[machineName] = (byMachine[machineName] || 0) + mqKos(qty);
+    });
+  });
+
+  // Ročno po aktivnostih (za prikaz spodaj)
+  const byActivity = {};
+  activities.forEach(a => byActivity[a.code] = 0);
+  entries.forEach(e => {
+    Object.entries(e.activity_data || {}).forEach(([code, val]) => {
+      if (val && typeof val === 'object' && val.kos) {
+        byActivity[code] = (byActivity[code] || 0) + Number(val.kos);
+      }
     });
   });
 
@@ -90,17 +142,19 @@ export default function AssemblyDailyReport({ onEditEntry }) {
         </div>
       ) : (
         <>
-          {/* Skupne statistike */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard icon="🤖" label="Avtomati skupaj" value={formatNumber(totalAutomatKos)} unit="kosov"
+          {/* Skupne statistike — zdaj 4 kartice */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard icon="🤖" label="Avtomati skupaj" value={formatNumber(totalAutomatKos)} unit="kos"
               color="#0E7490" bgColor="#CFFAFE" />
+            <StatCard icon="👐" label="Ročno skupaj" value={formatNumber(totalManualKos)} unit="kos"
+              color="#7E22CE" bgColor="#E9D5FF" />
             <StatCard icon="⏱️" label="Skupne ure" value={totalHours.toFixed(1)} unit="h"
               color="#7C2D12" bgColor="#FED7AA" />
             <StatCard icon="🎯" label="Normativ" value={formatNumber(totalNormativ)} unit="kos"
               color="#065F46" bgColor="#A7F3D0" />
           </div>
 
-          {/* Po strojih */}
+          {/* Avtomati po strojih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-3">🤖 Avtomati po strojih</h3>
             {Object.values(byMachine).every(v => v === 0) ? (
@@ -112,6 +166,25 @@ export default function AssemblyDailyReport({ onEditEntry }) {
                     <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">{m.name}</div>
                     <div className="text-2xl font-bold text-as-gray-700 mt-1">
                       {formatNumber(byMachine[m.name] || 0)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Ročno po aktivnostih */}
+          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+            <h3 className="font-bold text-as-gray-700 mb-3">👐 Ročna montaža po aktivnostih</h3>
+            {Object.values(byActivity).every(v => v === 0) ? (
+              <div className="text-center py-6 text-as-gray-400 text-sm">Ni ročnih vnosov.</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {activities.filter(a => a.unit !== 'opis').map(a => (
+                  <div key={a.id} className="border border-as-gray-100 rounded-lg p-3">
+                    <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">{a.name}</div>
+                    <div className="text-2xl font-bold text-as-gray-700 mt-1">
+                      {formatNumber(byActivity[a.code] || 0)}
                     </div>
                   </div>
                 ))}
@@ -132,7 +205,6 @@ export default function AssemblyDailyReport({ onEditEntry }) {
                     .map(([code, val]) => {
                       const act = activities.find(a => a.code === code);
                       if (!act) return null;
-                      // Nov format: { kos, cas, normativ }
                       if (val && typeof val === 'object') {
                         const parts = [];
                         if (val.kos != null) parts.push(`${formatNumber(val.kos)} kos`);
@@ -140,12 +212,12 @@ export default function AssemblyDailyReport({ onEditEntry }) {
                         if (val.normativ != null) parts.push(`norm. ${formatNumber(val.normativ)}`);
                         return `${act.name}: ${parts.join(', ')}`;
                       }
-                      // Star format: string
                       return `${act.name}: ${val}`;
                     })
                     .filter(Boolean)
                     .join(' · ');
                   const editable = canEditEntry(e.date);
+                  const breakdownText = formatBreakdowns(e.breakdowns);
                   return (
                     <div key={e.id} className="border border-as-gray-100 rounded-lg p-3">
                       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
@@ -201,9 +273,9 @@ export default function AssemblyDailyReport({ onEditEntry }) {
                           <strong>Ročna:</strong> {activitySummary}
                         </div>
                       )}
-                      {e.breakdowns && (
+                      {breakdownText && (
                         <div className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1">
-                          🛑 {e.breakdowns}
+                          🛑 {breakdownText}
                         </div>
                       )}
                       {e.notes && (
@@ -242,10 +314,9 @@ function exportToCSV(date, entries, machines, activities) {
   lines.push(`Dnevno poročilo MONTAŽA - ${date}`);
   lines.push('');
 
-  // Header z dinamičnimi stolpci
   const machineCols = machines.map(m => m.name);
   const activityCols = activities.map(a => a.name);
-  lines.push(['DELAVKA', ...machineCols, ...activityCols, 'NORMATIV', 'URE', 'ZASTOJI', 'OPOMBE'].join(';'));
+  lines.push(['DELAVKA', ...machineCols, ...activityCols, 'NORMATIV', 'URE', 'ZASTOJ', 'VZROK', 'ČAS ZASTOJA', 'OPOMBE'].join(';'));
 
   entries.forEach(e => {
     const row = [e.assembly_workers?.name || ''];
@@ -273,7 +344,15 @@ function exportToCSV(date, entries, machines, activities) {
         row.push(val || '');
       }
     });
-    row.push(e.normativ || '', e.total_hours || '', e.breakdowns || '', e.notes || '');
+    const b = (function() {
+      const raw = e.breakdowns;
+      if (!raw) return { zastoj: '', vzrok: '', cas: '' };
+      if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+        try { const o = JSON.parse(raw); return { zastoj: o.zastoj || '', vzrok: o.vzrok || '', cas: o.cas || '' }; } catch {}
+      }
+      return { zastoj: String(raw), vzrok: '', cas: '' };
+    })();
+    row.push(e.normativ || '', e.total_hours || '', b.zastoj, b.vzrok, b.cas, e.notes || '');
     lines.push(row.join(';'));
   });
 
