@@ -8,6 +8,35 @@ import {
 
 const AS_RED = '#C8102E';
 
+// Helper: parse breakdowns iz baze v {zastoj, vzrok, cas}
+function parseBreakdowns(raw) {
+  if (!raw) return { zastoj: '', vzrok: '', cas: '' };
+  // Nov JSON format
+  if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+    try {
+      const obj = JSON.parse(raw);
+      return {
+        zastoj: obj.zastoj || '',
+        vzrok: obj.vzrok || '',
+        cas: obj.cas || '',
+      };
+    } catch (e) {
+      // fallback na star format
+    }
+  }
+  // Star format: cel tekst gre v "zastoj"
+  return { zastoj: String(raw), vzrok: '', cas: '' };
+}
+
+// Helper: serialize breakdowns v JSON string za bazo
+function serializeBreakdowns({ zastoj, vzrok, cas }) {
+  const z = (zastoj || '').trim();
+  const v = (vzrok || '').trim();
+  const c = (cas || '').trim();
+  if (!z && !v && !c) return null;
+  return JSON.stringify({ zastoj: z, vzrok: v, cas: c });
+}
+
 export default function AssemblyEntry({ currentUser, initialDate, initialWorkerId, onConsumed }) {
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(initialDate || today);
@@ -18,18 +47,19 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
   const [loading, setLoading] = useState(true);
 
   // Form state
-  const [machineQty, setMachineQty] = useState({});  // { "HORMEC": 5000, ... }
-  const [activityData, setActivityData] = useState({});  // { "stiskanje": "2.5", "pakiranje": "1500", ... }
+  const [machineQty, setMachineQty] = useState({});
+  const [activityData, setActivityData] = useState({});
   const [normativ, setNormativ] = useState('');
   const [totalHours, setTotalHours] = useState('');
-  const [breakdowns, setBreakdowns] = useState('');
+  const [breakdownZastoj, setBreakdownZastoj] = useState('');
+  const [breakdownVzrok, setBreakdownVzrok] = useState('');
+  const [breakdownCas, setBreakdownCas] = useState('');
   const [notes, setNotes] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [existingId, setExistingId] = useState(null);
 
-  // Ko spremenimo prikaz iz poročila (preusmeritev), uporabi tiste vrednosti
   useEffect(() => {
     if (initialDate) setDate(initialDate);
     if (initialWorkerId) setSelectedWorkerId(String(initialWorkerId));
@@ -37,7 +67,6 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDate, initialWorkerId]);
 
-  // Load šifranti
   useEffect(() => {
     (async () => {
       try {
@@ -55,7 +84,6 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
     })();
   }, []);
 
-  // Ko izbereš delavca + datum, naloži obstoječi vnos (če obstaja)
   useEffect(() => {
     if (!selectedWorkerId || !date) return;
     (async () => {
@@ -67,7 +95,10 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
           setActivityData(entry.activity_data || {});
           setNormativ(entry.normativ || '');
           setTotalHours(entry.total_hours || '');
-          setBreakdowns(entry.breakdowns || '');
+          const b = parseBreakdowns(entry.breakdowns);
+          setBreakdownZastoj(b.zastoj);
+          setBreakdownVzrok(b.vzrok);
+          setBreakdownCas(b.cas);
           setNotes(entry.notes || '');
         } else {
           setExistingId(null);
@@ -75,7 +106,9 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
           setActivityData({});
           setNormativ('');
           setTotalHours('');
-          setBreakdowns('');
+          setBreakdownZastoj('');
+          setBreakdownVzrok('');
+          setBreakdownCas('');
           setNotes('');
         }
       } catch (e) {
@@ -93,10 +126,8 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
     }
     setSaving(true);
     try {
-      // Filter prazne vrednosti
       const cleanMachineQty = {};
       Object.entries(machineQty).forEach(([k, v]) => {
-        // Nov format: { kos, cas, normativ }
         if (v && typeof v === 'object') {
           const obj = {};
           if (v.kos && Number(v.kos) > 0) obj.kos = Number(v.kos);
@@ -104,13 +135,11 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
           if (v.normativ && Number(v.normativ) > 0) obj.normativ = Number(v.normativ);
           if (Object.keys(obj).length > 0) cleanMachineQty[k] = obj;
         } else if (v && Number(v) > 0) {
-          // Backward compat: star format (samo število)
           cleanMachineQty[k] = Number(v);
         }
       });
       const cleanActivityData = {};
       Object.entries(activityData).forEach(([k, v]) => {
-        // Nov format: { kos, cas, normativ } za aktivnosti z enotami; string za 'opis'
         if (v && typeof v === 'object') {
           const obj = {};
           if (v.kos && String(v.kos).trim() !== '') obj.kos = Number(v.kos);
@@ -163,7 +192,11 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
           const total = sumActivity + sumMachines;
           return total > 0 ? total : null;
         })(),
-        breakdowns: breakdowns || null,
+        breakdowns: serializeBreakdowns({
+          zastoj: breakdownZastoj,
+          vzrok: breakdownVzrok,
+          cas: breakdownCas,
+        }),
         notes: notes || null,
         entered_by_email: currentUser.email,
         entered_by_name: currentUser.name,
@@ -186,7 +219,6 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
     );
   }
 
-  // Ali delavec dela z avtomati / ročno / oboje
   const showAutomats = selectedWorker && (selectedWorker.work_type === 'avtomat' || selectedWorker.work_type === 'oba');
   const showManual = selectedWorker && (selectedWorker.work_type === 'rocna' || selectedWorker.work_type === 'oba');
 
@@ -228,7 +260,6 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
         )}
       </div>
 
-      {/* Če ni izbran delavec - end */}
       {!selectedWorker && (
         <div className="bg-white border-2 border-dashed border-as-gray-200 rounded-xl p-12 text-center">
           <User className="w-12 h-12 text-as-gray-300 mx-auto mb-3" />
@@ -236,7 +267,7 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
         </div>
       )}
 
-      {/* AVTOMATI - NAIDE stroji */}
+      {/* AVTOMATI */}
       {showAutomats && (
         <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
           <h3 className="font-bold text-as-gray-700 mb-3 flex items-center gap-2">
@@ -244,7 +275,6 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
           </h3>
           <div className="space-y-4">
             {machines.map(m => {
-              // Backward-compat: če je star format (število), ga obravnavaj kot kos
               let cur = machineQty[m.name];
               if (typeof cur === 'number' || (typeof cur === 'string' && cur !== '')) {
                 cur = { kos: cur };
@@ -297,7 +327,6 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
           </h3>
           <div className="space-y-4">
             {activities.map(a => {
-              // 'opis' aktivnost (npr. Ostalo) – samo 1 input
               if (a.unit === 'opis') {
                 return (
                   <div key={a.id}>
@@ -311,8 +340,6 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
                   </div>
                 );
               }
-              // Ostale aktivnosti: 3 inputi KOS + ČAS + NORMATIV
-              // Backward-compat: če je string (star format), ga obravnavaj kot kos ali cas glede na unit
               let cur = activityData[a.code];
               if (typeof cur === 'string') {
                 cur = a.unit === 'h' ? { cas: cur } : { kos: cur };
@@ -418,10 +445,27 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
             </div>
           </div>
           <div className="mt-3">
-            <label className="block text-sm font-semibold text-as-gray-600 mb-1">Zastoji + vzrok</label>
-            <textarea rows={2} placeholder="npr. Zastoj NAIDE 12 - menjava orodja, 30 min"
-              value={breakdowns} onChange={e => setBreakdowns(e.target.value)}
-              className="w-full px-3 py-2 border border-as-gray-200 rounded-lg" />
+            <label className="block text-sm font-semibold text-as-gray-600 mb-2">Zastoji</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs text-as-gray-500 mb-1">Zastoj</label>
+                <input type="text" placeholder="npr. NAIDE 12"
+                  value={breakdownZastoj} onChange={e => setBreakdownZastoj(e.target.value)}
+                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+              </div>
+              <div>
+                <label className="block text-xs text-as-gray-500 mb-1">Vzrok</label>
+                <input type="text" placeholder="npr. menjava orodja"
+                  value={breakdownVzrok} onChange={e => setBreakdownVzrok(e.target.value)}
+                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+              </div>
+              <div>
+                <label className="block text-xs text-as-gray-500 mb-1">Čas</label>
+                <input type="text" placeholder="npr. 30 min"
+                  value={breakdownCas} onChange={e => setBreakdownCas(e.target.value)}
+                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+              </div>
+            </div>
           </div>
           <div className="mt-3">
             <label className="block text-sm font-semibold text-as-gray-600 mb-1">Opombe</label>
@@ -432,7 +476,6 @@ export default function AssemblyEntry({ currentUser, initialDate, initialWorkerI
         </div>
       )}
 
-      {/* Submit */}
       {selectedWorker && (
         <button
           onClick={handleSubmit}
