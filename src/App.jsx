@@ -129,6 +129,31 @@ export default function App() {
   
   // Glavni razdelek (Domov / Naloge / Dnevna / Poročila / Proizvodnja / Montaža / Računovodstvo / Oddelki)
   const [mainSection, setMainSection] = useState('home');
+  // Header auto-hide on scroll down, show on scroll up
+  const [headerVisible, setHeaderVisible] = useState(true);
+  useEffect(() => {
+    let lastScrollY = window.scrollY;
+    let ticking = false;
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const currentScrollY = window.scrollY;
+          if (currentScrollY < 80) {
+            setHeaderVisible(true);
+          } else if (currentScrollY > lastScrollY + 5) {
+            setHeaderVisible(false);
+          } else if (currentScrollY < lastScrollY - 5) {
+            setHeaderVisible(true);
+          }
+          lastScrollY = currentScrollY;
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
   // Računovodstvo: dropdown kategorija iz headerja
   const [racunovodstvoCategory, setRacunovodstvoCategory] = useState(null);
   const [racunovodstvoMenuOpen, setRacunovodstvoMenuOpen] = useState(false);
@@ -873,7 +898,7 @@ export default function App() {
   return (
     <div className="min-h-screen" style={{fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#F5F5F5'}}>
       {/* Header */}
-      <header className="bg-white border-b border-as-gray-200 sticky top-0 z-40 shadow-sm">
+      <header className={`bg-white border-b border-as-gray-200 sticky top-0 z-40 shadow-sm transition-transform duration-300 ${headerVisible ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12 py-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
