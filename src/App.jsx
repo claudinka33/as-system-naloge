@@ -808,7 +808,7 @@ export default function App() {
 
     if (filter === 'pending' && task.status !== 'pending') return false;
     if (filter === 'completed' && task.status !== 'completed') return false;
-    if (filter === 'mine' && !isAssignedToMe(task)) return false;
+    if (filter === 'mine' && (!isAssignedToMe(task) || task.status !== 'pending')) return false;
     if (filter === 'created' && task.created_by_email !== currentUser.email) return false;
     if (filter === 'overdue') {
       if (task.status === 'completed') return false;
