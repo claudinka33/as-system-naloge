@@ -1167,7 +1167,6 @@ export default function App() {
             ) : mainSection === 'proizvodnja-v2' ? (
               <ProductionV2Tab
                 currentUser={currentUser}
-                currentUserName={currentUserName}
                 isAdmin={isAdmin}
               />
             ) : mainSection === 'assembly' ? (
