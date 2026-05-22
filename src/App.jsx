@@ -24,6 +24,7 @@ import { getMyTaskViews, markTaskAsViewed, countUnreadComments } from './lib/tas
 import NabavaModule from './NabavaModule.jsx';
 import { canAccessNabava } from './nabavaConfig.js';
 import Racunovodstvo, { RACUNOVODSTVO_KATEGORIJE } from './Racunovodstvo.jsx';
+import Gradiva from './Gradiva.jsx';
 import KomercialaModule from './KomercialaModule.jsx';
 import { ShoppingCart, Briefcase, Cog, Phone, ShieldCheck, Package, FileText as FileTextIcon, TrendingUp as TrendingUpIcon, Award as AwardIcon, AlertCircle as AlertCircleIcon } from 'lucide-react';
 
@@ -183,7 +184,7 @@ export default function App() {
     // poslušaj brskalniškov gumb "nazaj"
     const handlePopState = (event) => {
       const target = event.state?.section || (window.location.hash.replace('#', '') || 'home');
-      if (['home','tasks','daily','reports','production','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost','notes'].includes(target)) {
+      if (['home','tasks','daily','reports','production','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost','notes','gradiva','prodaja-v2'].includes(target)) {
         setMainSection(target);
       } else {
         setMainSection('home');
@@ -1085,6 +1086,16 @@ export default function App() {
                     )}
                   </div>
                 )}
+                {(isAdmin || ['alen.drofenik@as-system.si','tjasa.mihevc@as-system.si','prodaja.as@as-system.si','zan.seidl@as-system.si'].includes(currentUser?.email)) && (
+                  <button
+                    onClick={() => handleModuleClick('gradiva')}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'gradiva' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    style={mainSection === 'gradiva' ? {backgroundColor: '#C8102E'} : {}}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span className="hidden sm:inline">Gradiva</span>
+                  </button>
+                )}
               </div>
 
               {/* Stikalo Seznam / Koledar - SAMO ZA NALOGE */}
@@ -1196,8 +1207,10 @@ export default function App() {
               />
             ) : mainSection === 'assembly' ? (
           <AssemblyTab currentUser={currentUser} resetSignal={moduleResetCounters.assembly || 0} />
-        ) : mainSection === 'notes' ? (
+       ) : mainSection === 'notes' ? (
           <Notes currentUser={currentUser} />
+        ) : mainSection === 'gradiva' ? (
+          <Gradiva currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'chat' ? (
           <Chat currentUser={currentUser} employees={EMPLOYEES} />
         ) : (
