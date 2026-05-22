@@ -15,6 +15,7 @@ import CalendarView from './components/CalendarView.jsx';
 import QuoteOfTheDay from './components/QuoteOfTheDay.jsx';
 import { getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels, priorityRank } from './utils/taskHelpers.jsx';
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
+import ProductionV2Tab from './components/Production/ProductionV2Tab';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
@@ -952,6 +953,16 @@ export default function App() {
                     <span className="hidden sm:inline">Proizvodnja</span>
                   </button>
                 )}
+                {canAccessProduction(currentUser?.email) && (
+              <button
+                onClick={() => handleModuleClick('proizvodnja-v2')}
+                className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 border-2 ${mainSection === 'proizvodnja-v2' ? 'text-white' : 'text-yellow-700'}`}
+                style={mainSection === 'proizvodnja-v2' ? {backgroundColor: '#C8102E', borderColor: '#C8102E'} : {backgroundColor: '#fff3cd', borderColor: '#ffc107'}}
+              >
+                <Factory className="w-4 h-4" />
+                <span className="hidden sm:inline">🧪 Proizvodnja v2</span>
+              </button>
+            )}
                 {canAccessAssembly(currentUser?.email) && (
                   <button
                     onClick={() => handleModuleClick('assembly')}
@@ -1151,9 +1162,15 @@ export default function App() {
           <OddelekModule config={ODDELKI_CONFIG.kakovost} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.kakovost || 0} />
         ) : mainSection === 'reports' ? (
           <Reports currentUser={currentUser} employees={EMPLOYEES} />
-        ) : mainSection === 'production' ? (
-          <ProductionTab currentUser={currentUser} resetSignal={moduleResetCounters.production || 0} />
-        ) : mainSection === 'assembly' ? (
+     ) : mainSection === 'production' ? (
+              <ProductionTab currentUser={currentUser} resetSignal={moduleResetCounters.production || 0} />
+            ) : mainSection === 'proizvodnja-v2' ? (
+              <ProductionV2Tab
+                currentUser={currentUser}
+                currentUserName={currentUserName}
+                isAdmin={isAdmin}
+              />
+            ) : mainSection === 'assembly' ? (
           <AssemblyTab currentUser={currentUser} resetSignal={moduleResetCounters.assembly || 0} />
         ) : mainSection === 'notes' ? (
           <Notes currentUser={currentUser} />
