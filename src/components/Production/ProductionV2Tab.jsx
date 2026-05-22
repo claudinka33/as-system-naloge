@@ -424,13 +424,13 @@ export default function ProductionV2Tab({ currentUser, currentUserName, isAdmin 
                     <td style={tdStyle}><strong>{row.machine_id}</strong></td>
                     <td style={tdStyle}>{row.machine_name}</td>
                     <td style={tdStyle}>{row.operacija}</td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>{row.total_kosi.toLocaleString('sl-SI')}</td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>{hoursToTimeString(row.total_ur)}</td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>{Number(row.normativ_kos_h).toLocaleString('sl-SI')}</td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <td style={{ ...tdStyle }}>{row.total_kosi.toLocaleString('sl-SI')}</td>
+                    <td style={{ ...tdStyle }}>{hoursToTimeString(row.total_ur)}</td>
+                    <td style={{ ...tdStyle }}>{Number(row.normativ_kos_h).toLocaleString('sl-SI')}</td>
+                    <td style={{ ...tdStyle }}>
                       <EfficiencyBadge value={row.ucinkovitost} />
                     </td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>{row.vnosov}</td>
+                    <td style={{ ...tdStyle }}>{row.vnosov}</td>
                   </tr>
                 ))}
               </tbody>
@@ -465,9 +465,9 @@ function EntryTable({ entries, onEdit, onDelete, isAdmin, currentUser }) {
             <tr key={e.id}>
               <td style={tdStyle}><strong>{e.machine_id}</strong><br /><span style={{ fontSize: 11, color: '#666' }}>{e.machine_name}</span></td>
               <td style={tdStyle}>{e.operacija}</td>
-              <td style={{ ...tdStyle, textAlign: 'right' }}>{Number(e.kosi).toLocaleString('sl-SI')}</td>
-              <td style={{ ...tdStyle, textAlign: 'right' }}>{hoursToTimeString(e.cas_ur)}</td>
-              <td style={{ ...tdStyle, textAlign: 'right' }}><EfficiencyBadge value={e.ucinkovitost_pct} /></td>
+              <td style={{ ...tdStyle }}>{Number(e.kosi).toLocaleString('sl-SI')}</td>
+              <td style={{ ...tdStyle }}>{hoursToTimeString(e.cas_ur)}</td>
+              <td style={{ ...tdStyle }}><EfficiencyBadge value={e.ucinkovitost_pct} /></td>
               <td style={tdStyle}>{e.operater || '-'}</td>
               <td style={tdStyle}>{e.tip_vijaka || '-'}</td>
               <td style={tdStyle}>{e.opombe || '-'}</td>
