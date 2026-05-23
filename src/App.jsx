@@ -994,13 +994,13 @@ export default function App() {
                 )}
                 {canAccessProduction(currentUser?.email) && (
               <button
-                onClick={() => handleModuleClick('proizvodnja-v2')}
-                className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 border-2 ${mainSection === 'proizvodnja-v2' ? 'text-white' : 'text-yellow-700'}`}
-                style={mainSection === 'proizvodnja-v2' ? {backgroundColor: '#C8102E', borderColor: '#C8102E'} : {backgroundColor: '#fff3cd', borderColor: '#ffc107'}}
-              >
-                <Factory className="w-4 h-4" />
-                <span className="hidden sm:inline">🧪 Proizvodnja v2</span>
-              </button>
+  onClick={() => handleModuleClick('proizvodnja-v2')}
+  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'proizvodnja-v2' ? 'text-white' : ''}`}
+  style={mainSection === 'proizvodnja-v2' ? {backgroundColor: '#C8102E'} : {}}
+>
+  <Factory className="w-4 h-4" />
+  <span className="hidden sm:inline">Proizvodnja</span>
+</button>
             )}
                 {canAccessAssembly(currentUser?.email) && (
                   <button
