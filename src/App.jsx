@@ -982,7 +982,7 @@ export default function App() {
                   <BarChart3 className="w-4 h-4" />
                   <span className="hidden sm:inline">Poročila</span>
                 </button>
-                {canAccessProduction(currentUser?.email) && (
+                {false && canAccessProduction(currentUser?.email) && (
                   <button
                     onClick={() => handleModuleClick('production')}
                     className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'production' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
