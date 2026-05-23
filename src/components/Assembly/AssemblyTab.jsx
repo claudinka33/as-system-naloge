@@ -43,13 +43,18 @@ export default function AssemblyTab({ currentUser }) {
 
   return (
     <div>
-      <div className="flex gap-1 mb-6 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200 max-w-md">
-        <SubTab active={view === 'monthly'} onClick={() => setView('monthly')}
-          icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
-        <SubTab active={view === 'daily'} onClick={() => setView('daily')}
-          icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
-        <SubTab active={view === 'entry'} onClick={() => setView('entry')}
-          icon={<Plus className="w-4 h-4" />} label="Vnos" />
+      {/* Glavna vrstica: tabe levo, kontrole (mesec/dan + Excel) desno preko portala */}
+      <div className="flex flex-wrap items-center gap-3 mb-6 justify-between">
+        <div className="flex gap-1 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200">
+          <SubTab active={view === 'entry'} onClick={() => setView('entry')}
+            icon={<Plus className="w-4 h-4" />} label="Vnos" />
+          <SubTab active={view === 'daily'} onClick={() => setView('daily')}
+            icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
+          <SubTab active={view === 'monthly'} onClick={() => setView('monthly')}
+            icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+        </div>
+        {/* Portal slot za kontrole iz otroških komponent */}
+        <div id="assembly-controls-slot" className="flex flex-wrap items-center gap-3 ml-auto"></div>
       </div>
 
       {view === 'entry' && <AssemblyEntry currentUser={currentUser} initialDate={initialDate} initialWorkerId={initialWorkerId} onConsumed={() => { setInitialDate(null); setInitialWorkerId(null); }} />}
@@ -62,7 +67,7 @@ export default function AssemblyTab({ currentUser }) {
 function SubTab({ active, onClick, icon, label }) {
   return (
     <button onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold rounded transition ${
+      className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold rounded transition ${
         active ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'
       }`}
       style={active ? { backgroundColor: '#C8102E' } : {}}>
