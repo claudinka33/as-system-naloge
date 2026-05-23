@@ -18,7 +18,7 @@ export function canAccessAssembly(email) {
 }
 
 export default function AssemblyTab({ currentUser }) {
-  const [view, setView] = useState('entry');
+  const [view, setView] = useState('monthly');
   const [initialDate, setInitialDate] = useState(null);
   const [initialWorkerId, setInitialWorkerId] = useState(null);
 
@@ -44,12 +44,12 @@ export default function AssemblyTab({ currentUser }) {
   return (
     <div>
       <div className="flex gap-1 mb-6 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200 max-w-md">
-        <SubTab active={view === 'entry'} onClick={() => setView('entry')}
-          icon={<Plus className="w-4 h-4" />} label="Vnos" />
-        <SubTab active={view === 'daily'} onClick={() => setView('daily')}
-          icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
         <SubTab active={view === 'monthly'} onClick={() => setView('monthly')}
           icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+        <SubTab active={view === 'daily'} onClick={() => setView('daily')}
+          icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
+        <SubTab active={view === 'entry'} onClick={() => setView('entry')}
+          icon={<Plus className="w-4 h-4" />} label="Vnos" />
       </div>
 
       {view === 'entry' && <AssemblyEntry currentUser={currentUser} initialDate={initialDate} initialWorkerId={initialWorkerId} onConsumed={() => { setInitialDate(null); setInitialWorkerId(null); }} />}
