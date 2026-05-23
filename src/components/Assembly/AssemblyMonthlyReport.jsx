@@ -1,5 +1,6 @@
 // AssemblyMonthlyReport.jsx — Mesečno poročilo montaže
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, Loader2, Download, Edit2, Trash2, Lock, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   getMonthlyAssembly, loadAssemblyMachines, loadAssemblyActivities, loadAssemblyWorkers, deleteAssemblyEntry,
@@ -19,6 +20,11 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedWorkerId, setExpandedWorkerId] = useState(null);
+  const [slotEl, setSlotEl] = useState(null);
+
+  useEffect(() => {
+    setSlotEl(document.getElementById('assembly-controls-slot'));
+  }, []);
 
   const reload = async () => {
     setLoading(true);
@@ -85,10 +91,8 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
   }, 0);
 
   const totalHours = entries.reduce((s, e) => s + Number(e.total_hours || 0), 0);
-  // RELEVANT normativ = avtomati + samo štete ročne aktivnosti
   const totalRelevantNormativ = totalAutomatNormativ + totalManualNormativ;
 
-  // Po stroju (avtomati)
   const byMachine = {};
   machines.forEach(m => byMachine[m.name] = 0);
   entries.forEach(e => {
@@ -97,7 +101,6 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
     });
   });
 
-  // Po aktivnosti (ročna): vključi VSE za prikaz
   const byActivity = {};
   activities.filter(a => a.unit !== 'opis').forEach(a => byActivity[a.code] = 0);
   entries.forEach(e => {
@@ -108,7 +111,6 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
     });
   });
 
-  // Po delavki
   const byWorker = {};
   workers.forEach(w => {
     byWorker[w.id] = {
@@ -124,12 +126,10 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
   entries.forEach(e => {
     const wid = e.worker_id;
     if (!byWorker[wid]) return;
-    // Avtomati
     Object.values(e.machine_quantities || {}).forEach(v => {
       byWorker[wid].automatKos += mqKos(v);
       byWorker[wid].automatNormativ += mqNormativ(v);
     });
-    // Ročno — samo relevantne aktivnosti
     Object.entries(e.activity_data || {}).forEach(([code, val]) => {
       if (!MANUAL_COUNT_CODES.includes(code)) return;
       if (val && typeof val === 'object') {
@@ -142,28 +142,33 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
   });
   const workerRows = Object.values(byWorker).filter(r => r.days > 0);
 
+  // Kontrole, ki gredo v portal (mesec/leto + Excel gumb)
+  const controls = (
+    <>
+      <div className="flex items-center gap-2">
+        <Calendar className="w-5 h-5 text-as-gray-400" />
+        <select value={month} onChange={e => setMonth(Number(e.target.value))}
+          className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white">
+          {SLOVENIAN_MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <select value={year} onChange={e => setYear(Number(e.target.value))}
+          className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white">
+          {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+      <button
+        onClick={() => exportMonthlyToCSV(year, month, workerRows, byMachine, byActivity, activities)}
+        className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
+      >
+        <Download className="w-4 h-4" /> Izvoz v Excel
+      </button>
+    </>
+  );
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Izbira meseca */}
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <Calendar className="w-5 h-5 text-as-gray-400" />
-          <select value={month} onChange={e => setMonth(Number(e.target.value))}
-            className="px-3 py-2 border border-as-gray-200 rounded-lg">
-            {SLOVENIAN_MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <select value={year} onChange={e => setYear(Number(e.target.value))}
-            className="px-3 py-2 border border-as-gray-200 rounded-lg">
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <button
-          onClick={() => exportMonthlyToCSV(year, month, workerRows, byMachine, byActivity, activities)}
-          className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
-        >
-          <Download className="w-4 h-4" /> Izvoz v Excel
-        </button>
-      </div>
+      {/* Kontrole se prikažejo v glavni vrstici (poleg sub-tabov) */}
+      {slotEl && createPortal(controls, slotEl)}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
@@ -172,7 +177,6 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
         </div>
       ) : (
         <>
-          {/* Skupne stats — 4 kartice */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <BigStat icon="🤖" label="Avtomati skupaj" value={formatNumber(totalAutomatKos)} unit="kos"
               color="#0E7490" bgColor="#CFFAFE" />
@@ -184,7 +188,6 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
               color="#065F46" bgColor="#A7F3D0" />
           </div>
 
-          {/* Po delavkah */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-4">👷 Po delavkah — {SLOVENIAN_MONTHS[month - 1]} {year}</h3>
             {workerRows.length === 0 ? (
@@ -296,7 +299,6 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
             )}
           </div>
 
-          {/* Avtomati po strojih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-4">🤖 Avtomati po strojih</h3>
             {Object.values(byMachine).every(v => v === 0) ? (
@@ -321,7 +323,6 @@ export default function AssemblyMonthlyReport({ onEditEntry }) {
             )}
           </div>
 
-          {/* Ročna montaža po aktivnostih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-4">👐 Ročna montaža po aktivnostih</h3>
             {Object.values(byActivity).every(v => v === 0) ? (
