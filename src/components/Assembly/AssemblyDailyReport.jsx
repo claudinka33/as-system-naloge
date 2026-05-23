@@ -1,5 +1,6 @@
 // AssemblyDailyReport.jsx — Dnevno poročilo montaže
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, Loader2, Download, Edit2, Trash2, Lock } from 'lucide-react';
 import {
   getDailyAssembly, loadAssemblyMachines, loadAssemblyActivities, deleteAssemblyEntry,
@@ -40,6 +41,11 @@ export default function AssemblyDailyReport({ onEditEntry }) {
   const [machines, setMachines] = useState([]);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [slotEl, setSlotEl] = useState(null);
+
+  useEffect(() => {
+    setSlotEl(document.getElementById('assembly-controls-slot'));
+  }, []);
 
   const reload = async () => {
     setLoading(true);
@@ -121,22 +127,27 @@ export default function AssemblyDailyReport({ onEditEntry }) {
     });
   });
 
+  // Kontrole, ki gredo v portal (datum + Excel gumb)
+  const controls = (
+    <>
+      <div className="flex items-center gap-2">
+        <Calendar className="w-5 h-5 text-as-gray-400" />
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white" />
+        <span className="text-sm text-as-gray-500 hidden sm:inline">{formatDate(date)}</span>
+      </div>
+      <button
+        onClick={() => exportToCSV(date, entries, machines, activities)}
+        className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
+      >
+        <Download className="w-4 h-4" /> Izvoz v Excel
+      </button>
+    </>
+  );
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <Calendar className="w-5 h-5 text-as-gray-400" />
-          <input type="date" value={date} onChange={e => setDate(e.target.value)}
-            className="px-3 py-2 border border-as-gray-200 rounded-lg" />
-          <span className="text-sm text-as-gray-500 hidden sm:inline">{formatDate(date)}</span>
-        </div>
-        <button
-          onClick={() => exportToCSV(date, entries, machines, activities)}
-          className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
-        >
-          <Download className="w-4 h-4" /> Izvoz v Excel
-        </button>
-      </div>
+      {slotEl && createPortal(controls, slotEl)}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
