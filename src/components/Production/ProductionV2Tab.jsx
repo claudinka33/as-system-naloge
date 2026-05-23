@@ -579,12 +579,20 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
   const totalWasteKg = dayWastes.reduce((s, e) => s + Number(e.weight_kg || 0), 0);
 
   const controls = (
-    <div className="flex items-center gap-2">
-      <Calendar className="w-5 h-5 text-as-gray-400" />
-      <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
-        className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm" />
-      <span className="text-sm text-as-gray-500">{formatDate(filterDate)}</span>
-    </div>
+    <>
+      <div className="flex items-center gap-2">
+        <Calendar className="w-5 h-5 text-as-gray-400" />
+        <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
+          className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm" />
+        <span className="text-sm text-as-gray-500 hidden sm:inline">{formatDate(filterDate)}</span>
+      </div>
+      <button
+        onClick={() => exportDailyCSV(filterDate, dayEntries, dayStops, dayWastes)}
+        className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
+      >
+        <Download className="w-4 h-4" /> Izvoz v Excel
+      </button>
+    </>
   );
 
   return (
@@ -602,15 +610,94 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
             <BigStat icon="🗑️" label="Odpadek" value={formatNumber(totalWasteKg)} unit="kg" color="#991B1B" bgColor="#FECACA" />
           </div>
 
-          <SectionCard title="📦 Proizvodnja" count={dayEntries.length} defaultOpen>
+          {/* Po strojih - mini kartoni */}
+          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+            <h3 className="font-bold text-as-gray-700 mb-3">🏭 Proizvodnja po strojih</h3>
+            {dayEntries.length === 0 ? (
+              <div className="text-center py-6 text-as-gray-400 text-sm">Ni vnosov za stroje.</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {(() => {
+                  const byMachine = {};
+                  dayEntries.forEach((e) => {
+                    if (!byMachine[e.machine_id]) byMachine[e.machine_id] = { id: e.machine_id, name: e.machine_name, kosi: 0, normativ: 0 };
+                    byMachine[e.machine_id].kosi += Number(e.kosi || 0);
+                    byMachine[e.machine_id].normativ += Number(e.normativ_kos_h || 0) * Number(e.cas_ur || 0);
+                  });
+                  return Object.values(byMachine).map((m) => {
+                    const pct = m.normativ > 0 ? Math.round((m.kosi / m.normativ) * 100) : null;
+                    const color = pct === null ? '#9CA3AF' : pct >= 95 ? '#16A34A' : pct >= 75 ? '#D97706' : '#DC2626';
+                    return (
+                      <div key={m.id} className="border border-as-gray-100 rounded-lg p-3">
+                        <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">{m.id} · {m.name}</div>
+                        <div className="text-2xl font-bold text-as-gray-700 mt-1">{formatNumber(m.kosi)}</div>
+                        {pct !== null && <div className="text-xs font-bold mt-1" style={{ color }}>📈 {pct}% normativa</div>}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Zastoji - mini kartoni po razlogih */}
+          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+            <h3 className="font-bold text-as-gray-700 mb-3">⚠️ Zastoji po razlogih</h3>
+            {dayStops.length === 0 ? (
+              <div className="text-center py-6 text-as-gray-400 text-sm">Ni zastojev.</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {(() => {
+                  const byReason = {};
+                  dayStops.forEach((s) => {
+                    const r = s.reason_category || 'Drugo';
+                    byReason[r] = (byReason[r] || 0) + Number(s.duration_hours || 0);
+                  });
+                  return Object.entries(byReason).map(([reason, hours]) => (
+                    <div key={reason} className="border border-as-gray-100 rounded-lg p-3">
+                      <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">{reason}</div>
+                      <div className="text-2xl font-bold text-as-gray-700 mt-1">{hours.toFixed(1)} h</div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Odpadek - mini kartoni po razlogih */}
+          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+            <h3 className="font-bold text-as-gray-700 mb-3">🗑️ Odpadek po razlogih</h3>
+            {dayWastes.length === 0 ? (
+              <div className="text-center py-6 text-as-gray-400 text-sm">Ni odpadka.</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {(() => {
+                  const byReason = {};
+                  dayWastes.forEach((w) => {
+                    const r = w.reason_category || 'Drugo';
+                    byReason[r] = (byReason[r] || 0) + Number(w.weight_kg || 0);
+                  });
+                  return Object.entries(byReason).map(([reason, kg]) => (
+                    <div key={reason} className="border border-as-gray-100 rounded-lg p-3">
+                      <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">{reason}</div>
+                      <div className="text-2xl font-bold text-as-gray-700 mt-1">{formatNumber(kg)} kg</div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Podrobni dnevni vnosi */}
+          <SectionCard title="📋 Vsi vnosi - proizvodnja" count={dayEntries.length} defaultOpen>
             {dayEntries.length === 0 ? <Empty /> : <EntryTable entries={dayEntries} isAdmin={isAdmin} currentUser={currentUser} onReload={onReload} />}
           </SectionCard>
 
-          <SectionCard title="⚠️ Zastoji" count={dayStops.length}>
+          <SectionCard title="📋 Vsi vnosi - zastoji" count={dayStops.length}>
             {dayStops.length === 0 ? <Empty /> : <StopsTable rows={dayStops} isAdmin={isAdmin} currentUser={currentUser} onReload={onReload} />}
           </SectionCard>
 
-          <SectionCard title="🗑️ Odpadek" count={dayWastes.length}>
+          <SectionCard title="📋 Vsi vnosi - odpadek" count={dayWastes.length}>
             {dayWastes.length === 0 ? <Empty /> : <WasteTable rows={dayWastes} isAdmin={isAdmin} currentUser={currentUser} onReload={onReload} />}
           </SectionCard>
         </>
@@ -1077,6 +1164,43 @@ function LoadingBox() {
 const inputCls = "w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:border-as-red-600";
 
 // ─── EXCEL EXPORT ───
+function exportDailyCSV(date, entries, stops, wastes) {
+  const lines = [];
+  lines.push(`Dnevno poročilo PROIZVODNJA v2 - ${date}`);
+  lines.push('');
+
+  lines.push('PROIZVODNJA');
+  lines.push('Stroj;Naziv;Operacija;Kosi;Čas (h);Doseganje (%);Delavec;Tip;Opombe');
+  entries.forEach((e) => {
+    lines.push([e.machine_id, e.machine_name, e.operacija, e.kosi, Number(e.cas_ur).toFixed(2), e.ucinkovitost_pct ?? '', e.operater || '', e.tip_vijaka || '', e.opombe || ''].join(';'));
+  });
+  lines.push('');
+
+  lines.push('ZASTOJI');
+  lines.push('Stroj;Trajanje (h);Razlog;Opis;Popravilo;Pogostost;Odpravil;Delavec');
+  stops.forEach((s) => {
+    lines.push([s.machine_id, Number(s.duration_hours).toFixed(2), s.reason_category || '', s.description || '', s.repair_done || '', s.frequency || 1, s.fixed_by || '', s.operater || ''].join(';'));
+  });
+  lines.push('');
+
+  lines.push('ODPADEK');
+  lines.push('Stroj;Teža (kg);Izdelek;Žica;Razlog;LOT;Nalog;Delavec;Opombe');
+  wastes.forEach((w) => {
+    lines.push([w.machine_id, w.weight_kg, w.product || '', w.wire_type || '', w.reason_category || '', w.lot_zice || '', w.nalog || '', w.operater || '', w.notes || ''].join(';'));
+  });
+
+  const csv = '\uFEFF' + lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `proizvodnja-v2-${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason) {
   const lines = [];
   lines.push(`Mesečno poročilo PROIZVODNJA v2 - ${SLOVENIAN_MONTHS[month - 1]} ${year}`);
