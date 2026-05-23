@@ -99,9 +99,6 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
             <SubTab active={view === 'daily'} onClick={() => setView('daily')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
             <SubTab active={view === 'monthly'} onClick={() => setView('monthly')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
           </div>
-          <span className="text-xs px-2 py-1 rounded-full font-semibold" style={{ background: '#fff3cd', color: '#856404' }}>
-            BETA - testna verzija
-          </span>
         </div>
         <div id="productionv2-controls-slot" className="flex flex-wrap items-center gap-3 ml-auto"></div>
       </div>
