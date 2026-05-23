@@ -918,19 +918,42 @@ export default function App() {
                 <p className="text-xs text-as-gray-400 font-medium uppercase tracking-wider">Interno orodje</p>
                 <p className="text-sm text-as-gray-600 font-semibold">Upravljanje nalog</p>
               </button>
+
+              {/* Uporabnik + zamuda + odjava — premaknjeno k logotipu */}
+              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-as-gray-200">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-as-gray-100 rounded-lg text-sm">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{backgroundColor: '#C8102E'}}>
+                    {currentUser.name.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <div className="hidden sm:block">
+                    <div className="font-semibold text-as-gray-700 leading-tight">{currentUser.name}</div>
+                    <div className="text-xs text-as-gray-400 leading-tight">
+                      {currentUser.department}
+                      {isAdmin && <span className="ml-1 text-as-red-600 font-bold">• Admin</span>}
+                    </div>
+                  </div>
+                </div>
+
+                {stats.mineOverdue > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-as-red-50 border border-as-red-200 rounded-lg text-xs text-as-red-700 font-semibold">
+                    <Bell className="w-3.5 h-3.5" />
+                    {stats.mineOverdue} zamuda
+                  </div>
+                )}
+
+                <button
+                  onClick={handleLogout}
+                  className="p-2 hover:bg-as-gray-100 rounded-lg transition text-as-gray-400 hover:text-as-gray-600"
+                  title="Odjava"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* GLAVNO Stikalo: Domov / Naloge / Dnevna / Poročila / Proizvodnja / Montaža / Računovodstvo */}
+              {/* GLAVNO Stikalo: Naloge / Gradiva / Poročila / Proizvodnja / Montaža / Računovodstvo */}
               <div className="bg-as-gray-100 rounded-lg p-1 flex border border-as-gray-200 flex-wrap">
-                <button
-                  onClick={() => setMainSection('home')}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'home' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
-                  style={mainSection === 'home' ? {backgroundColor: '#C8102E'} : {}}
-                >
-                  <Home className="w-4 h-4" />
-                  <span className="hidden sm:inline">Domov</span>
-                </button>
                 <button
                   onClick={() => handleModuleClick('tasks')}
                   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'tasks' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
@@ -939,27 +962,17 @@ export default function App() {
                   <ClipboardList className="w-4 h-4" />
                   <span className="hidden sm:inline">Naloge</span>
                 </button>
-                <button
-                  onClick={() => handleModuleClick('notes')}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'notes' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
-                  style={mainSection === 'notes' ? {backgroundColor: '#C8102E'} : {}}
-                >
-                  <NotebookPen className="w-4 h-4" />
-                  <span className="hidden sm:inline">Beležnica</span>
-                </button>
-                <button
-                  onClick={() => handleModuleClick('chat')}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 relative ${mainSection === 'chat' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
-                  style={mainSection === 'chat' ? {backgroundColor: '#C8102E'} : {}}
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  <span className="hidden sm:inline">Klepet</span>
-                  {chatUnread > 0 && mainSection !== 'chat' && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white rounded-full flex items-center justify-center animate-pulse" style={{ backgroundColor: '#C8102E', boxShadow: '0 0 0 2px white' }}>
-                      {chatUnread > 99 ? '99+' : chatUnread}
-                    </span>
-                  )}
-                </button>
+                {(isAdmin || ['alen.drofenik@as-system.si','tjasa.mihevc@as-system.si','prodaja.as@as-system.si','zan.seidl@as-system.si'].includes(currentUser?.email)) && (
+                  <button
+                    onClick={() => handleModuleClick('gradiva')}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'gradiva' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    style={mainSection === 'gradiva' ? {backgroundColor: '#C8102E'} : {}}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span className="hidden sm:inline">Gradiva</span>
+                  </button>
+                )}
+                {/* Beležnica in Klepet — premaknjena med floating ikone spodaj desno */}
                 {/* Dnevna opravila modul skrit (Faza 1) */}
                 <button
                   onClick={() => handleModuleClick('reports')}
@@ -1037,14 +1050,6 @@ export default function App() {
                       <span className="hidden sm:inline">Računovodstvo</span>
                       <ChevronDown className={`w-3 h-3 transition ${racunovodstvoMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
-                    <button
-  onClick={() => setMainSection('nabava')}
-  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'nabava' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
-  style={mainSection === 'nabava' ? {backgroundColor: '#C8102E'} : {}}
->
-  <ShoppingCart className="w-4 h-4" />
-  <span className="hidden sm:inline">Nabava</span>
-</button>
                     {racunovodstvoMenuOpen && (
                       <>
                         <div className="fixed inset-0 z-30" onClick={() => setRacunovodstvoMenuOpen(false)} />
@@ -1086,16 +1091,6 @@ export default function App() {
                     )}
                   </div>
                 )}
-                {(isAdmin || ['alen.drofenik@as-system.si','tjasa.mihevc@as-system.si','prodaja.as@as-system.si','zan.seidl@as-system.si'].includes(currentUser?.email)) && (
-                  <button
-                    onClick={() => handleModuleClick('gradiva')}
-                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'gradiva' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
-                    style={mainSection === 'gradiva' ? {backgroundColor: '#C8102E'} : {}}
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span className="hidden sm:inline">Gradiva</span>
-                  </button>
-                )}
               </div>
 
               {/* Stikalo Seznam / Koledar - SAMO ZA NALOGE */}
@@ -1123,34 +1118,6 @@ export default function App() {
                   Sinhroniziram...
                 </div>
               )}
-
-              {stats.mineOverdue > 0 && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-as-red-50 border border-as-red-200 rounded-lg text-xs text-as-red-700 font-semibold">
-                  <Bell className="w-3.5 h-3.5" />
-                  {stats.mineOverdue} zamuda
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 px-3 py-2 bg-as-gray-100 rounded-lg text-sm">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{backgroundColor: '#C8102E'}}>
-                  {currentUser.name.split(' ').map(n => n[0]).join('')}
-                </div>
-                <div className="hidden sm:block">
-                  <div className="font-semibold text-as-gray-700 leading-tight">{currentUser.name}</div>
-                  <div className="text-xs text-as-gray-400 leading-tight">
-                    {currentUser.department}
-                    {isAdmin && <span className="ml-1 text-as-red-600 font-bold">• Admin</span>}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={handleLogout}
-                className="p-2 hover:bg-as-gray-100 rounded-lg transition text-as-gray-400 hover:text-as-gray-600"
-                title="Odjava"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
 
               <button
                 onClick={() => setShowNewTask(true)}
@@ -1406,6 +1373,18 @@ export default function App() {
 
       {/* Plavajoči klepet — vedno spodaj desno (skrije se na strani Klepet) */}
       {mainSection !== 'chat' && <FloatingChat currentUser={currentUser} employees={EMPLOYEES} />}
+
+      {/* Plavajoča Beležnica ikona — levo od Klepet ikone (skrije se na strani Beležnica) */}
+      {mainSection !== 'notes' && (
+        <button
+          onClick={() => setMainSection('notes')}
+          className="fixed bottom-4 right-24 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-white transition hover:scale-105"
+          style={{ backgroundColor: '#C8102E' }}
+          title="Beležnica"
+        >
+          <NotebookPen className="w-6 h-6" />
+        </button>
+      )}
 
       {(showNewTask || editingTask) && (
         <TaskModal
