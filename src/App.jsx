@@ -18,6 +18,7 @@ import ProductionTab, { canAccessProduction } from './components/Production/Prod
 import ProductionV2Tab from './components/Production/ProductionV2Tab';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import TechnologTab from './components/Technolog/TechnologTab.jsx';
+import CRMTab, { canAccessCRM } from './components/CRM/CRMTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
 import Notes from './Notes.jsx';
@@ -185,7 +186,7 @@ export default function App() {
     // poslušaj brskalniškov gumb "nazaj"
     const handlePopState = (event) => {
       const target = event.state?.section || (window.location.hash.replace('#', '') || 'home');
-      if (['home','tasks','daily','reports','production','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost','notes','gradiva','prodaja-v2'].includes(target)) {
+      if (['home','tasks','daily','reports','production','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost','notes','gradiva','prodaja-v2','crm'].includes(target)) {
         setMainSection(target);
       } else {
         setMainSection('home');
@@ -1013,6 +1014,16 @@ export default function App() {
                     <span className="hidden sm:inline">Montaža</span>
                   </button>
                 )}
+                {canAccessCRM(currentUser?.email) && (
+                  <button
+                    onClick={() => handleModuleClick('crm')}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'crm' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    style={mainSection === 'crm' ? {backgroundColor: '#C8102E'} : {}}
+                  >
+                    <Briefcase className="w-4 h-4" />
+                    <span className="hidden sm:inline">CRM</span>
+                  </button>
+                )}
                 {Object.entries(ODDELKI_CONFIG).map(([key, oddelek]) => {
                   const Icon = oddelek.icon;
                   const allowed = isAdmin || (oddelek.allowedEmails && oddelek.allowedEmails.includes(currentUser?.email));
@@ -1175,6 +1186,8 @@ export default function App() {
               />
             ) : mainSection === 'assembly' ? (
           <AssemblyTab currentUser={currentUser} resetSignal={moduleResetCounters.assembly || 0} />
+      ) : mainSection === 'crm' ? (
+          <CRMTab currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
        ) : mainSection === 'notes' ? (
           <Notes currentUser={currentUser} />
         ) : mainSection === 'gradiva' ? (
