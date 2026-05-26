@@ -17,6 +17,7 @@ import { getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, pri
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import ProductionV2Tab from './components/Production/ProductionV2Tab';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
+import TechnologTab from './components/Technolog/TechnologTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
 import Notes from './Notes.jsx';
@@ -1157,8 +1158,8 @@ export default function App() {
           <OddelekModule config={ODDELKI_CONFIG.nabava} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.nabava || 0} />
         ) : mainSection === 'prodaja' ? (
           <OddelekModule config={ODDELKI_CONFIG.prodaja} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.prodaja || 0} />
-        ) : mainSection === 'tehnolog' ? (
-          <OddelekModule config={ODDELKI_CONFIG.tehnolog} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.tehnolog || 0} />
+       ) : mainSection === 'tehnolog' ? (
+          <TechnologTab currentUser={currentUser} isAdmin={isAdmin} />
         ) : mainSection === 'komerciala' ? (
           <KomercialaModule currentUser={currentUser} isAdmin={isAdmin} />
         ) : mainSection === 'kakovost' ? (
