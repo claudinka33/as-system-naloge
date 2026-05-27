@@ -877,8 +877,17 @@ export default function App() {
       if (t.status === 'completed') return false;
       if (!t.due_date) return false;
       return new Date(t.due_date) < new Date();
-    }).length
-  };
+}).length,
+mineUnseen: tasks.filter(t => {
+  if (!isAssignedToMe(t)) return false;
+  if (t.status === 'completed') return false;
+  if (isHiddenRecurringInstance(t)) return false;
+  const viewedBy = t.viewed_by || [];
+  return !viewedBy.includes(currentUser.email);
+}).length
+};
+
+const getEmployeeName
 
   const getEmployeeName = (email) => {
     if (!email) return null;
@@ -936,6 +945,13 @@ export default function App() {
                   </div>
                 </div>
 
+               {stats.mineUnseen > 0 && (
+  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 font-semibold">
+    <Bell className="w-3.5 h-3.5" />
+    {stats.mineUnseen} {stats.mineUnseen === 1 ? 'nova' : 'novi'}
+  </div>
+)}
+                
                 {stats.mineOverdue > 0 && (
                   <div className="flex items-center gap-1.5 px-3 py-1.5 bg-as-red-50 border border-as-red-200 rounded-lg text-xs text-as-red-700 font-semibold">
                     <Bell className="w-3.5 h-3.5" />
