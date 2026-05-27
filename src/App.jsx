@@ -887,8 +887,6 @@ mineUnseen: tasks.filter(t => {
 }).length
 };
 
-const getEmployeeName
-
   const getEmployeeName = (email) => {
     if (!email) return null;
     const emp = EMPLOYEES.find(e => e.email === email);
