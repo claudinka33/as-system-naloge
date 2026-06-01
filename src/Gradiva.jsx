@@ -300,7 +300,7 @@ function Gradiva({ currentUser, employees }) {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {filteredItems.map(item => {
             const cat = CATEGORIES.find(c => c.id === item.category);
             const Icon = cat?.icon || FileText;
@@ -308,27 +308,28 @@ function Gradiva({ currentUser, employees }) {
             const thumbnail = isYoutube ? getYoutubeThumbnail(item.youtube_url) : null;
 
             return (
-              <div key={item.id} className="bg-white border border-as-gray-200 rounded-xl overflow-hidden hover:shadow-md transition group">
+              <div key={item.id} className="bg-white border border-as-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition group" style={{borderTop: `3px solid ${cat?.color || '#C8102E'}`}}>
                 {/* Thumbnail / preview */}
                 {isYoutube && thumbnail ? (
-                  <a href={item.youtube_url} target="_blank" rel="noopener noreferrer" className="block relative aspect-video bg-as-gray-100">
+                  <a href={item.youtube_url} target="_blank" rel="noopener noreferrer" className="block relative h-28 bg-as-gray-100">
                     <img src={thumbnail} alt={item.title} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition">
-                      <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center">
-                        <div className="w-0 h-0 border-l-[14px] border-l-as-gray-800 border-y-[10px] border-y-transparent ml-1" />
+                      <div className="w-11 h-11 rounded-full bg-white/90 flex items-center justify-center">
+                        <div className="w-0 h-0 border-l-[11px] border-l-as-gray-800 border-y-[8px] border-y-transparent ml-1" />
                       </div>
                     </div>
                   </a>
                 ) : (
-                  <div className="aspect-video flex items-center justify-center" style={{backgroundColor: (cat?.color || '#C8102E') + '15'}}>
-                    <Icon className="w-12 h-12" style={{color: cat?.color || '#C8102E'}} />
+                  <div className="h-28 flex items-center justify-center relative" style={{background: `linear-gradient(135deg, ${cat?.color || '#C8102E'}, ${(cat?.color || '#C8102E')}b3)`}}>
+                    <Icon className="w-10 h-10 text-white" />
+                    <span className="absolute bottom-1.5 right-2 text-[10px] font-bold uppercase tracking-wider text-white/80">{item.type}</span>
                   </div>
                 )}
 
                 {/* Info */}
-                <div className="p-4">
+                <div className="p-3">
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <h3 className="font-semibold text-as-gray-800 line-clamp-2 flex-1">{item.title}</h3>
+                    <h3 className="font-semibold text-sm text-as-gray-800 line-clamp-2 flex-1">{item.title}</h3>
                     <button
                       onClick={() => handleDelete(item)}
                       className="text-as-gray-300 hover:text-red-500 transition p-1 -m-1"
