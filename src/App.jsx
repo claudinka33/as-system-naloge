@@ -944,17 +944,17 @@ mineUnseen: tasks.filter(t => {
                 </div>
 
                {stats.mineUnseen > 0 && (
-  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 font-semibold">
+  <button onClick={() => handleHomeNavigate('tasks', { filter: 'mine' })} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 font-semibold hover:bg-blue-100 transition cursor-pointer">
     <Bell className="w-3.5 h-3.5" />
     {stats.mineUnseen} {stats.mineUnseen === 1 ? 'nova' : 'novi'}
-  </div>
+  </button>
 )}
                 
                 {stats.mineOverdue > 0 && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-as-red-50 border border-as-red-200 rounded-lg text-xs text-as-red-700 font-semibold">
+                  <button onClick={() => handleHomeNavigate('tasks', { filter: 'overdue' })} className="flex items-center gap-1.5 px-3 py-1.5 bg-as-red-50 border border-as-red-200 rounded-lg text-xs text-as-red-700 font-semibold hover:bg-as-red-100 transition cursor-pointer">
                     <Bell className="w-3.5 h-3.5" />
                     {stats.mineOverdue} zamuda
-                  </div>
+                  </button>
                 )}
 
                 <button
@@ -1220,11 +1220,12 @@ mineUnseen: tasks.filter(t => {
             <div className="text-xs text-as-gray-500 mt-1 font-medium">Moje naloge</div>
           </button>
           <button
-            onClick={() => { setFilter(filter === 'created' && viewMode === 'list' ? 'all' : 'created'); setViewMode('list'); }}
-            className={`bg-white border rounded-xl p-4 text-left transition hover:shadow-md ${filter === 'created' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
+            onClick={() => { if (stats.overdue === 0) return; setFilter(filter === 'overdue' && viewMode === 'list' ? 'all' : 'overdue'); setViewMode('list'); }}
+            disabled={stats.overdue === 0}
+            className={`bg-white border rounded-xl p-4 text-left transition ${stats.overdue === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md cursor-pointer'} ${filter === 'overdue' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
           >
-            <div className="text-2xl font-bold text-as-gray-700">{stats.created}</div>
-            <div className="text-xs text-as-gray-500 mt-1 font-medium">Sem dodelil</div>
+            <div className="text-2xl font-bold" style={{color: stats.overdue === 0 ? '#9CA3AF' : '#C8102E'}}>{stats.overdue}</div>
+            <div className="text-xs text-as-gray-500 mt-1 font-medium">Zamujene</div>
           </button>
           <button
             onClick={() => { setFilter(filter === 'pending' && viewMode === 'list' ? 'all' : 'pending'); setViewMode('list'); }}
@@ -1241,12 +1242,11 @@ mineUnseen: tasks.filter(t => {
             <div className="text-xs text-as-gray-500 mt-1 font-medium">Opravljene</div>
           </button>
           <button
-            onClick={() => { if (stats.overdue === 0) return; setFilter(filter === 'overdue' && viewMode === 'list' ? 'all' : 'overdue'); setViewMode('list'); }}
-            disabled={stats.overdue === 0}
-            className={`bg-white border rounded-xl p-4 text-left transition ${stats.overdue === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md cursor-pointer'} ${filter === 'overdue' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
+            onClick={() => { setFilter(filter === 'created' && viewMode === 'list' ? 'all' : 'created'); setViewMode('list'); }}
+            className={`bg-white border rounded-xl p-4 text-left transition hover:shadow-md ${filter === 'created' && viewMode === 'list' ? 'border-as-red-400 ring-2 ring-as-red-100' : 'border-as-gray-200'}`}
           >
-            <div className="text-2xl font-bold" style={{color: stats.overdue === 0 ? '#9CA3AF' : '#C8102E'}}>{stats.overdue}</div>
-            <div className="text-xs text-as-gray-500 mt-1 font-medium">Zamujene</div>
+            <div className="text-2xl font-bold text-as-gray-700">{stats.created}</div>
+            <div className="text-xs text-as-gray-500 mt-1 font-medium">Sem dodelil</div>
           </button>
         </div>
 
