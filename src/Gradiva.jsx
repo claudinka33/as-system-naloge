@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   FileText, Video, DollarSign, BookOpen, Image as ImageIcon, Award,
-  Upload, Trash2, Download, ExternalLink, Search, X, Plus, Loader2,
+  Upload, Trash2, Edit2, Download, ExternalLink, Search, X, Plus, Loader2,
   Calendar, User, Globe
 } from 'lucide-react';
 import { supabase } from './supabase.js';
@@ -23,6 +23,7 @@ function Gradiva({ currentUser, employees }) {
   const [activeCategory, setActiveCategory] = useState('predstavitve');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [uploading, setUploading] = useState(false);
 
   // Form state za nov material
@@ -69,6 +70,7 @@ function Gradiva({ currentUser, employees }) {
       file: null,
       cover: null
     });
+    setEditingId(null);
   };
 
   const handleAdd = async () => {
@@ -76,7 +78,7 @@ function Gradiva({ currentUser, employees }) {
       alert('Vnesi naslov');
       return;
     }
-    if (form.type === 'pdf' && !form.file) {
+    if (form.type === 'pdf' && !form.file && !editingId) {
       alert('Izberi PDF datoteko');
       return;
     }
@@ -127,26 +129,34 @@ function Gradiva({ currentUser, employees }) {
         cover_url = coverUrlData.publicUrl;
       }
 
-      // Vstavi v gradiva tabelo
-      const { error: insertError } = await supabase
-        .from('gradiva')
-        .insert({
-          title: form.title.trim(),
-          description: form.description.trim() || null,
-          category: form.category,
-          type: form.type,
-          file_url,
-          file_name,
-          file_size,
-          cover_url,
-          youtube_url: form.type === 'youtube' ? form.youtube_url.trim() : null,
-          external_url: form.type === 'link' ? form.external_url.trim() : null,
-          language: form.language,
-          created_by_email: currentUser.email,
-          created_by_name: currentUser.name || currentUser.email
-        });
+      // Skupna polja
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        category: form.category,
+        type: form.type,
+        youtube_url: form.type === 'youtube' ? form.youtube_url.trim() : null,
+        external_url: form.type === 'link' ? form.external_url.trim() : null,
+        language: form.language
+      };
+      // Datoteko/cover dodamo le ce je bila nova nalozena
+      if (file_url) { payload.file_url = file_url; payload.file_name = file_name; payload.file_size = file_size; }
+      if (cover_url) { payload.cover_url = cover_url; }
 
-      if (insertError) throw insertError;
+      if (editingId) {
+        const { error: updErr } = await supabase
+          .from('gradiva')
+          .update(payload)
+          .eq('id', editingId);
+        if (updErr) throw updErr;
+      } else {
+        payload.created_by_email = currentUser.email;
+        payload.created_by_name = currentUser.name || currentUser.email;
+        const { error: insertError } = await supabase
+          .from('gradiva')
+          .insert(payload);
+        if (insertError) throw insertError;
+      }
 
       await loadItems();
       resetForm();
@@ -157,6 +167,22 @@ function Gradiva({ currentUser, employees }) {
     } finally {
       setUploading(false);
     }
+  };
+
+  const openEdit = (item) => {
+    setEditingId(item.id);
+    setForm({
+      title: item.title || '',
+      description: item.description || '',
+      category: item.category || 'predstavitve',
+      type: item.type || 'pdf',
+      youtube_url: item.youtube_url || '',
+      external_url: item.external_url || '',
+      language: item.language || 'SI',
+      file: null,
+      cover: null
+    });
+    setShowAddModal(true);
   };
 
   const handleDelete = async (item) => {
@@ -236,7 +262,7 @@ function Gradiva({ currentUser, employees }) {
           </div>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => { resetForm(); setShowAddModal(true); }}
           className="px-4 py-2 text-white font-semibold rounded-lg flex items-center gap-2 hover:opacity-90 transition shadow-sm"
           style={{backgroundColor: '#C8102E'}}
         >
@@ -296,7 +322,7 @@ function Gradiva({ currentUser, employees }) {
           </p>
           {!searchQuery && (
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => { resetForm(); setShowAddModal(true); }}
               className="mt-4 text-sm font-semibold hover:underline"
               style={{color: '#C8102E'}}
             >
@@ -346,13 +372,22 @@ function Gradiva({ currentUser, employees }) {
                 <div className="p-3">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <h3 className="font-semibold text-sm text-as-gray-800 line-clamp-2 flex-1">{item.title}</h3>
-                    <button
-                      onClick={() => handleDelete(item)}
-                      className="text-as-gray-300 hover:text-red-500 transition p-1 -m-1"
-                      title="Izbriši"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        onClick={() => openEdit(item)}
+                        className="text-as-gray-300 hover:text-as-red-600 transition p-1 -m-1"
+                        title="Uredi"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item)}
+                        className="text-as-gray-300 hover:text-red-500 transition p-1 -m-1"
+                        title="Izbriši"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   {item.description && (
@@ -455,7 +490,7 @@ function Gradiva({ currentUser, employees }) {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-as-gray-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-as-gray-800">Dodaj gradivo</h2>
+              <h2 className="text-lg font-bold text-as-gray-800">{editingId ? 'Uredi gradivo' : 'Dodaj gradivo'}</h2>
               <button
                 onClick={() => { setShowAddModal(false); resetForm(); }}
                 className="text-as-gray-400 hover:text-as-gray-600 transition"
@@ -549,6 +584,7 @@ function Gradiva({ currentUser, employees }) {
                 <div>
                   <label className="block text-sm font-semibold text-as-gray-700 mb-1">
                     {form.type === 'pdf' ? 'PDF datoteka *' : 'Slika *'}
+                    {editingId && <span className="font-normal text-as-gray-400"> — pusti prazno za obstojeco</span>}
                   </label>
                   <input
                     type="file"
