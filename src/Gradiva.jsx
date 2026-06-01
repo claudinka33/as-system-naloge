@@ -34,7 +34,8 @@ function Gradiva({ currentUser, employees }) {
     youtube_url: '',
     external_url: '',
     language: 'SI',
-    file: null
+    file: null,
+    cover: null
   });
 
   useEffect(() => {
@@ -65,7 +66,8 @@ function Gradiva({ currentUser, employees }) {
       youtube_url: '',
       external_url: '',
       language: 'SI',
-      file: null
+      file: null,
+      cover: null
     });
   };
 
@@ -114,6 +116,17 @@ function Gradiva({ currentUser, employees }) {
         file_size = form.file.size;
       }
 
+      // Upload naslovne slike (cover) ce obstaja
+      let cover_url = null;
+      if (form.cover) {
+        const safeCover = form.cover.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const coverPath = `covers/${Date.now()}_${safeCover}`;
+        const { error: coverErr } = await supabase.storage.from('gradiva').upload(coverPath, form.cover);
+        if (coverErr) throw coverErr;
+        const { data: coverUrlData } = supabase.storage.from('gradiva').getPublicUrl(coverPath);
+        cover_url = coverUrlData.publicUrl;
+      }
+
       // Vstavi v gradiva tabelo
       const { error: insertError } = await supabase
         .from('gradiva')
@@ -125,6 +138,7 @@ function Gradiva({ currentUser, employees }) {
           file_url,
           file_name,
           file_size,
+          cover_url,
           youtube_url: form.type === 'youtube' ? form.youtube_url.trim() : null,
           external_url: form.type === 'link' ? form.external_url.trim() : null,
           language: form.language,
@@ -154,6 +168,13 @@ function Gradiva({ currentUser, employees }) {
         const path = item.file_url.split('/storage/v1/object/public/gradiva/')[1];
         if (path) {
           await supabase.storage.from('gradiva').remove([path]);
+        }
+      }
+
+      if (item.cover_url && item.cover_url.includes('/storage/v1/object/public/gradiva/')) {
+        const cpath = item.cover_url.split('/storage/v1/object/public/gradiva/')[1];
+        if (cpath) {
+          await supabase.storage.from('gradiva').remove([cpath]);
         }
       }
 
@@ -284,7 +305,7 @@ function Gradiva({ currentUser, employees }) {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredItems.map(item => {
             const cat = CATEGORIES.find(c => c.id === item.category);
             const Icon = cat?.icon || FileText;
@@ -293,9 +314,20 @@ function Gradiva({ currentUser, employees }) {
 
             return (
               <div key={item.id} className="bg-white border border-as-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition group" style={{borderTop: `3px solid ${cat?.color || '#C8102E'}`}}>
-                {/* Thumbnail / preview */}
-                {isYoutube && thumbnail ? (
-                  <a href={item.youtube_url} target="_blank" rel="noopener noreferrer" className="block relative h-28 bg-as-gray-100">
+                {/* Thumbnail / preview (A4 portret) */}
+                {item.cover_url ? (
+                  <div className="relative w-full bg-as-gray-100 aspect-[210/297]">
+                    <img src={item.cover_url} alt={item.title} className="w-full h-full object-cover" />
+                    {isYoutube && (
+                      <a href={item.youtube_url} target="_blank" rel="noopener noreferrer" className="absolute inset-0 flex items-center justify-center bg-black/15 group-hover:bg-black/30 transition">
+                        <div className="w-11 h-11 rounded-full bg-white/90 flex items-center justify-center">
+                          <div className="w-0 h-0 border-l-[11px] border-l-as-gray-800 border-y-[8px] border-y-transparent ml-1" />
+                        </div>
+                      </a>
+                    )}
+                  </div>
+                ) : isYoutube && thumbnail ? (
+                  <a href={item.youtube_url} target="_blank" rel="noopener noreferrer" className="block relative w-full bg-as-gray-100 aspect-[210/297]">
                     <img src={thumbnail} alt={item.title} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition">
                       <div className="w-11 h-11 rounded-full bg-white/90 flex items-center justify-center">
@@ -304,9 +336,9 @@ function Gradiva({ currentUser, employees }) {
                     </div>
                   </a>
                 ) : (
-                  <div className="h-28 flex items-center justify-center relative" style={{background: `linear-gradient(135deg, ${cat?.color || '#C8102E'}, ${(cat?.color || '#C8102E')}b3)`}}>
-                    <Icon className="w-10 h-10 text-white" />
-                    <span className="absolute bottom-1.5 right-2 text-[10px] font-bold uppercase tracking-wider text-white/80">{item.type}</span>
+                  <div className="aspect-[210/297] w-full flex items-center justify-center relative" style={{background: `linear-gradient(135deg, ${cat?.color || '#C8102E'}, ${(cat?.color || '#C8102E')}b3)`}}>
+                    <Icon className="w-14 h-14 text-white" />
+                    <span className="absolute bottom-2 right-2 text-[10px] font-bold uppercase tracking-wider text-white/80">{item.type}</span>
                   </div>
                 )}
 
@@ -531,6 +563,21 @@ function Gradiva({ currentUser, employees }) {
                   )}
                 </div>
               )}
+
+              {/* Naslovna slika (cover) — neobvezno */}
+              <div>
+                <label className="block text-sm font-semibold text-as-gray-700 mb-1">Naslovna slika (neobvezno)</label>
+                <p className="text-xs text-as-gray-400 mb-1">Ce jo nalozis, se prikaze na kartici (A4). Sicer barvni blok.</p>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setForm({...form, cover: e.target.files[0] || null})}
+                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg file:mr-3 file:px-3 file:py-1 file:rounded file:border-0 file:bg-as-gray-100 file:text-as-gray-700 file:font-semibold file:cursor-pointer file:text-sm"
+                />
+                {form.cover && (
+                  <p className="text-xs text-as-gray-500 mt-1">{form.cover.name} ({formatFileSize(form.cover.size)})</p>
+                )}
+              </div>
 
               {/* YouTube URL */}
               {form.type === 'youtube' && (
