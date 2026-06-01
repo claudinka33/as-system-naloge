@@ -20,7 +20,7 @@ const LANGUAGES = ['SI', 'EN', 'DE', 'HR', 'IT'];
 function Gradiva({ currentUser, employees }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [activeCategory, setActiveCategory] = useState('predstavitve');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -240,20 +240,6 @@ function Gradiva({ currentUser, employees }) {
 
       {/* Kategorije */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        <button
-          onClick={() => setActiveCategory('all')}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 border ${
-            activeCategory === 'all'
-              ? 'text-white border-transparent shadow-sm'
-              : 'bg-white text-as-gray-600 border-as-gray-200 hover:bg-as-gray-50'
-          }`}
-          style={activeCategory === 'all' ? {backgroundColor: '#C8102E'} : {}}
-        >
-          Vse
-          <span className={`text-xs px-2 py-0.5 rounded-full ${activeCategory === 'all' ? 'bg-white/20' : 'bg-as-gray-100'}`}>
-            {counts.all}
-          </span>
-        </button>
         {CATEGORIES.map(cat => {
           const Icon = cat.icon;
           const active = activeCategory === cat.id;
@@ -261,16 +247,14 @@ function Gradiva({ currentUser, employees }) {
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 border ${
-                active
-                  ? 'text-white border-transparent shadow-sm'
-                  : 'bg-white text-as-gray-600 border-as-gray-200 hover:bg-as-gray-50'
-              }`}
-              style={active ? {backgroundColor: cat.color} : {}}
+              className="px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 border shadow-sm hover:opacity-90"
+              style={active
+                ? {backgroundColor: cat.color, color: '#fff', borderColor: 'transparent'}
+                : {backgroundColor: cat.color + '12', color: cat.color, borderColor: cat.color + '40'}}
             >
               <Icon className="w-4 h-4" />
               {cat.label}
-              <span className={`text-xs px-2 py-0.5 rounded-full ${active ? 'bg-white/20' : 'bg-as-gray-100'}`}>
+              <span className="text-xs px-2 py-0.5 rounded-full" style={active ? {backgroundColor: 'rgba(255,255,255,0.25)'} : {backgroundColor: cat.color + '22'}}>
                 {counts[cat.id] || 0}
               </span>
             </button>
