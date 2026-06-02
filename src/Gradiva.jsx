@@ -10,7 +10,7 @@ const CATEGORIES = [
   { id: 'predstavitve', label: 'Predstavitve', icon: FileText, color: '#C8102E' },
   { id: 'video', label: 'Video', icon: Video, color: '#DC2626' },
   { id: 'ceniki', label: 'Ceniki', icon: DollarSign, color: '#059669' },
-  { id: 'katalogi', label: 'Katalogi', icon: BookOpen, color: '#7C3AED' },
+  { id: 'katalogi', label: 'Katalogi in letaki', icon: BookOpen, color: '#7C3AED' },
   { id: 'logotipi', label: 'Logotipi & branding', icon: ImageIcon, color: '#EA580C' },
   { id: 'certifikati', label: 'Certifikati', icon: Award, color: '#0891B2' }
 ];
