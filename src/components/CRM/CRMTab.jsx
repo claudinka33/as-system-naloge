@@ -13,6 +13,7 @@ export const CRM_ALLOWED_EMAILS = [
   'ales.seidl@as-system.si',
   'claudia.seidl@as-system.si',
   'sara.jagodic@as-system.si',
+  'hermina.leskovec@as-system.si',
 ];
 
 export function canAccessCRM(email) {
