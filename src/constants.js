@@ -18,6 +18,8 @@ export const EMPLOYEES = [
   { email: 'kakovost@as-system.si', username: 'kakovost', name: 'Mitja Babič', department: 'Kakovost', password: 'Babic-kakovo8' },
   { email: 'zan.seidl@as-system.si', username: 'zan.seidl', name: 'Žan Seidl', department: 'Komercialist', password: 'ZanS-komerc15' },
   { email: 'feliks.zekar@as-system.si', username: 'feliks.zekar', name: 'Feliks Žekar', department: 'Skladišče', password: 'Zekar-skladi77' },
+  { email: 'hermina.leskovec@as-system.si', username: 'hermina.leskovec', name: 'Hermina Leskovec', department: 'Komerciala', password: 'Leskovec-crm27' },
+  { email: 'gregor.hauc@projektna-sola.eu', username: 'gregor.hauc', name: 'Gregor Hauc', department: 'Zunanji sodelavec', password: 'Hauc-sola38' },
 ];
 
 export const DEPARTMENTS = [...new Set(EMPLOYEES.map(e => e.department))];
