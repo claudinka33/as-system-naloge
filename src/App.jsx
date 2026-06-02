@@ -978,7 +978,7 @@ mineUnseen: tasks.filter(t => {
                   <ClipboardList className="w-4 h-4" />
                   <span className="hidden sm:inline">Naloge</span>
                 </button>
-                {(isAdmin || ['alen.drofenik@as-system.si','tjasa.mihevc@as-system.si','prodaja.as@as-system.si','zan.seidl@as-system.si'].includes(currentUser?.email)) && (
+                {(isAdmin || ['alen.drofenik@as-system.si','tjasa.mihevc@as-system.si','prodaja.as@as-system.si','zan.seidl@as-system.si','hermina.leskovec@as-system.si'].includes(currentUser?.email)) && (
                   <button
                     onClick={() => handleModuleClick('gradiva')}
                     className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'gradiva' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
