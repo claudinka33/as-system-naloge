@@ -153,6 +153,7 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
     {
       key: 'reports',
       title: 'Tedenska poročila',
+      access: () => false,
       desc: 'Mesečni pregled oddanih tedenskih poročil',
       icon: BarChart3,
       color: '#7C2D12',
