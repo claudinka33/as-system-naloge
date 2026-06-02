@@ -990,6 +990,7 @@ mineUnseen: tasks.filter(t => {
                 )}
                 {/* Beležnica in Klepet — premaknjena med floating ikone spodaj desno */}
                 {/* Dnevna opravila modul skrit (Faza 1) */}
+                {false && (
                 <button
                   onClick={() => handleModuleClick('reports')}
                   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'reports' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
@@ -998,6 +999,7 @@ mineUnseen: tasks.filter(t => {
                   <BarChart3 className="w-4 h-4" />
                   <span className="hidden sm:inline">Poročila</span>
                 </button>
+                )}
                 {false && canAccessProduction(currentUser?.email) && (
                   <button
                     onClick={() => handleModuleClick('production')}
