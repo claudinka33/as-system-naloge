@@ -574,6 +574,8 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
   const totalHours = dayEntries.reduce((s, e) => s + Number(e.cas_ur || 0), 0);
   const totalStopHours = dayStops.reduce((s, e) => s + Number(e.duration_hours || 0), 0);
   const totalWasteKg = dayWastes.reduce((s, e) => s + Number(e.weight_kg || 0), 0);
+  const totalExpected = dayEntries.reduce((s, e) => s + Number(e.normativ_kos_h || 0) * Number(e.cas_ur || 0), 0);
+  const overallEfficiency = totalExpected > 0 ? Math.round((totalPieces / totalExpected) * 100) : null;
 
   const controls = (
     <>
@@ -606,6 +608,20 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
             <BigStat icon="⚠️" label="Zastoji" value={hoursToTimeString(totalStopHours)} unit="h" color="#854D0E" bgColor="#FEF08A" />
             <BigStat icon="🗑️" label="Odpadek" value={formatNumber(totalWasteKg)} unit="kg" color="#991B1B" bgColor="#FECACA" />
           </div>
+
+          {overallEfficiency !== null && (
+            <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-as-gray-700">🎯 Skupno doseganje normativa</span>
+                <span className="text-2xl font-bold" style={{
+                  color: overallEfficiency >= 95 ? '#16A34A' : overallEfficiency >= 75 ? '#D97706' : '#DC2626',
+                }}>{overallEfficiency}%</span>
+              </div>
+              <div className="text-xs text-as-gray-500">
+                Doseženo: <strong>{formatNumber(totalPieces)} kos</strong> · Pričakovano po normativu: <strong>{formatNumber(Math.round(totalExpected))} kos</strong>
+              </div>
+            </div>
+          )}
 
           {/* Po strojih - mini kartoni */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
@@ -913,7 +929,7 @@ function MonthlyView({ entries, stops, wastes, loading }) {
 
           {/* Po segmentih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
-            <h3 className="font-bold text-as-gray-700 mb-4">📊 Proizvodnja po segmentih</h3>
+            <h3 className="font-bold text-as-gray-700 mb-4">🏷️ Proizvodnja po skupinah</h3>
             {bySegment.every((s) => s.kosi === 0) ? <Empty /> : (
               <div className="space-y-2">
                 {bySegment.map((s) => {
