@@ -2,35 +2,38 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileText, Video, DollarSign, BookOpen, Image as ImageIcon, Award,
   Upload, Trash2, Edit2, Download, ExternalLink, Search, X, Plus, Loader2,
-  Calendar, User, Globe
+  Calendar, User, Globe, Folder, Settings, Users, Check, Lock
 } from 'lucide-react';
 import { supabase } from './supabase.js';
+import { ADMIN_EMAILS } from './constants.js';
 
-const CATEGORIES = [
-  { id: 'predstavitve', label: 'Predstavitve', icon: FileText, color: '#C8102E' },
-  { id: 'video', label: 'Video', icon: Video, color: '#DC2626' },
-  { id: 'ceniki', label: 'Ceniki', icon: DollarSign, color: '#059669' },
-  { id: 'katalogi', label: 'Katalogi in letaki', icon: BookOpen, color: '#7C3AED' },
-  { id: 'logotipi', label: 'Logotipi & branding', icon: ImageIcon, color: '#EA580C' },
-  { id: 'certifikati', label: 'Certifikati', icon: Award, color: '#0891B2' }
-];
+const FOLDER_COLORS = ['#C8102E', '#DC2626', '#EA580C', '#059669', '#0891B2', '#7C3AED', '#1E40AF', '#854D0E', '#475569'];
 
 const LANGUAGES = ['SI', 'EN', 'DE', 'HR', 'IT'];
 
 function Gradiva({ currentUser, employees }) {
+  const isAdmin = ADMIN_EMAILS.includes(currentUser?.email);
+
+  const [folders, setFolders] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState('predstavitve');
+  const [activeFolder, setActiveFolder] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [uploading, setUploading] = useState(false);
 
+  // Mape (folder) modal
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [editingFolder, setEditingFolder] = useState(null);
+  const [folderForm, setFolderForm] = useState({ name: '', color: FOLDER_COLORS[0], visible_to_all: true, allowed_emails: [] });
+  const [savingFolder, setSavingFolder] = useState(false);
+
   // Form state za nov material
   const [form, setForm] = useState({
     title: '',
     description: '',
-    category: 'predstavitve',
+    folder_id: null,
     type: 'pdf',
     youtube_url: '',
     external_url: '',
@@ -45,11 +48,12 @@ function Gradiva({ currentUser, employees }) {
 
   const loadItems = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('gradiva')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
+    const [{ data: fData, error: fErr }, { data, error }] = await Promise.all([
+      supabase.from('gradiva_folders').select('*').order('created_at', { ascending: true }),
+      supabase.from('gradiva').select('*').order('created_at', { ascending: false }),
+    ]);
+    if (fErr) console.error('Napaka pri nalaganju map:', fErr);
+    else setFolders(fData || []);
     if (error) {
       console.error('Napaka pri nalaganju:', error);
     } else {
@@ -62,7 +66,7 @@ function Gradiva({ currentUser, employees }) {
     setForm({
       title: '',
       description: '',
-      category: 'predstavitve',
+      folder_id: (activeFolder !== 'all' ? activeFolder : (visibleFolders[0]?.id ?? null)),
       type: 'pdf',
       youtube_url: '',
       external_url: '',
@@ -76,6 +80,10 @@ function Gradiva({ currentUser, employees }) {
   const handleAdd = async () => {
     if (!form.title.trim()) {
       alert('Vnesi naslov');
+      return;
+    }
+    if (!form.folder_id) {
+      alert('Izberi mapo');
       return;
     }
     if (form.type === 'pdf' && !form.file && !editingId) {
@@ -101,7 +109,7 @@ function Gradiva({ currentUser, employees }) {
       // Upload PDF/image v Supabase Storage
       if ((form.type === 'pdf' || form.type === 'image') && form.file) {
         const safeName = form.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const path = `${form.category}/${Date.now()}_${safeName}`;
+        const path = `${form.folder_id}/${Date.now()}_${safeName}`;
         
         const { error: uploadError } = await supabase.storage
           .from('gradiva')
@@ -133,7 +141,7 @@ function Gradiva({ currentUser, employees }) {
       const payload = {
         title: form.title.trim(),
         description: form.description.trim() || null,
-        category: form.category,
+        folder_id: form.folder_id,
         type: form.type,
         youtube_url: form.type === 'youtube' ? form.youtube_url.trim() : null,
         external_url: form.type === 'link' ? form.external_url.trim() : null,
@@ -174,7 +182,7 @@ function Gradiva({ currentUser, employees }) {
     setForm({
       title: item.title || '',
       description: item.description || '',
-      category: item.category || 'predstavitve',
+      folder_id: item.folder_id || null,
       type: item.type || 'pdf',
       youtube_url: item.youtube_url || '',
       external_url: item.external_url || '',
@@ -218,9 +226,82 @@ function Gradiva({ currentUser, employees }) {
     }
   };
 
-  // Filter items
+  // === Vidnost map ===
+  const canSeeFolder = (f) => {
+    if (!f) return false;
+    if (isAdmin) return true;
+    if (f.visible_to_all) return true;
+    if (f.created_by_email && f.created_by_email === currentUser?.email) return true;
+    return (f.allowed_emails || []).includes(currentUser?.email);
+  };
+  const canEditFolder = (f) => !!f && (isAdmin || (f.created_by_email && f.created_by_email === currentUser?.email));
+  const visibleFolders = folders.filter(canSeeFolder);
+  const visibleFolderIds = new Set(visibleFolders.map(f => f.id));
+  const getFolder = (id) => folders.find(f => f.id === id) || null;
+
+  // === Mape: ustvari / uredi / izbriši ===
+  const openNewFolder = () => {
+    setEditingFolder(null);
+    setFolderForm({ name: '', color: FOLDER_COLORS[0], visible_to_all: true, allowed_emails: [] });
+    setShowFolderModal(true);
+  };
+  const openEditFolder = (f) => {
+    setEditingFolder(f);
+    setFolderForm({ name: f.name || '', color: f.color || FOLDER_COLORS[0], visible_to_all: !!f.visible_to_all, allowed_emails: f.allowed_emails || [] });
+    setShowFolderModal(true);
+  };
+  const toggleAllowed = (email) => {
+    setFolderForm(prev => ({
+      ...prev,
+      allowed_emails: prev.allowed_emails.includes(email)
+        ? prev.allowed_emails.filter(e => e !== email)
+        : [...prev.allowed_emails, email]
+    }));
+  };
+  const saveFolder = async () => {
+    if (!folderForm.name.trim()) { alert('Vnesi ime mape'); return; }
+    setSavingFolder(true);
+    try {
+      const payload = {
+        name: folderForm.name.trim(),
+        color: folderForm.color,
+        visible_to_all: folderForm.visible_to_all,
+        allowed_emails: folderForm.visible_to_all ? [] : folderForm.allowed_emails,
+      };
+      if (editingFolder) {
+        const { error } = await supabase.from('gradiva_folders').update(payload).eq('id', editingFolder.id);
+        if (error) throw error;
+      } else {
+        payload.created_by_email = currentUser.email;
+        payload.created_by_name = currentUser.name || currentUser.email;
+        const { error } = await supabase.from('gradiva_folders').insert(payload);
+        if (error) throw error;
+      }
+      await loadItems();
+      setShowFolderModal(false);
+      setEditingFolder(null);
+    } catch (e) {
+      alert('Napaka pri shranjevanju mape: ' + e.message);
+    } finally {
+      setSavingFolder(false);
+    }
+  };
+  const deleteFolder = async (f) => {
+    const cnt = items.filter(i => i.folder_id === f.id).length;
+    if (cnt > 0) { alert(`Mapa "${f.name}" ni prazna (${cnt} gradiv). Najprej premakni ali izbriši gradiva.`); return; }
+    if (!confirm(`Izbrišem mapo "${f.name}"?`)) return;
+    const { error } = await supabase.from('gradiva_folders').delete().eq('id', f.id);
+    if (error) { alert('Napaka pri brisanju mape: ' + error.message); return; }
+    if (activeFolder === f.id) setActiveFolder('all');
+    setShowFolderModal(false);
+    setEditingFolder(null);
+    await loadItems();
+  };
+
+  // Filter items (samo iz vidnih map)
   const filteredItems = items.filter(item => {
-    if (activeCategory !== 'all' && item.category !== activeCategory) return false;
+    if (!isAdmin && !visibleFolderIds.has(item.folder_id)) return false;
+    if (activeFolder !== 'all' && item.folder_id !== activeFolder) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       if (!item.title.toLowerCase().includes(q) && 
@@ -229,11 +310,11 @@ function Gradiva({ currentUser, employees }) {
     return true;
   });
 
-  // Count po kategorijah
-  const counts = CATEGORIES.reduce((acc, cat) => {
-    acc[cat.id] = items.filter(i => i.category === cat.id).length;
+  // Count po mapah
+  const counts = visibleFolders.reduce((acc, f) => {
+    acc[f.id] = items.filter(i => i.folder_id === f.id).length;
     return acc;
-  }, { all: items.length });
+  }, { all: items.filter(i => isAdmin || visibleFolderIds.has(i.folder_id)).length });
 
   const formatFileSize = (bytes) => {
     if (!bytes) return '';
@@ -285,28 +366,57 @@ function Gradiva({ currentUser, employees }) {
         </div>
       </div>
 
-      {/* Kategorije */}
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {CATEGORIES.map(cat => {
-          const Icon = cat.icon;
-          const active = activeCategory === cat.id;
+      {/* Mape */}
+      <div className="flex gap-2 mb-6 flex-wrap items-center">
+        <button
+          onClick={() => setActiveFolder('all')}
+          className="px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 border shadow-sm hover:opacity-90"
+          style={activeFolder === 'all'
+            ? {backgroundColor: '#374151', color: '#fff', borderColor: 'transparent'}
+            : {backgroundColor: '#37415112', color: '#374151', borderColor: '#37415140'}}
+        >
+          <Folder className="w-4 h-4" />
+          Vse
+          <span className="text-xs px-2 py-0.5 rounded-full" style={activeFolder === 'all' ? {backgroundColor: 'rgba(255,255,255,0.25)'} : {backgroundColor: '#37415122'}}>
+            {counts.all || 0}
+          </span>
+        </button>
+        {visibleFolders.map(f => {
+          const active = activeFolder === f.id;
+          const col = f.color || '#C8102E';
           return (
             <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
+              key={f.id}
+              onClick={() => setActiveFolder(f.id)}
               className="px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 border shadow-sm hover:opacity-90"
               style={active
-                ? {backgroundColor: cat.color, color: '#fff', borderColor: 'transparent'}
-                : {backgroundColor: cat.color + '12', color: cat.color, borderColor: cat.color + '40'}}
+                ? {backgroundColor: col, color: '#fff', borderColor: 'transparent'}
+                : {backgroundColor: col + '12', color: col, borderColor: col + '40'}}
             >
-              <Icon className="w-4 h-4" />
-              {cat.label}
-              <span className="text-xs px-2 py-0.5 rounded-full" style={active ? {backgroundColor: 'rgba(255,255,255,0.25)'} : {backgroundColor: cat.color + '22'}}>
-                {counts[cat.id] || 0}
+              <Folder className="w-4 h-4" />
+              {f.name}
+              {!f.visible_to_all && <Lock className="w-3 h-3 opacity-70" />}
+              <span className="text-xs px-2 py-0.5 rounded-full" style={active ? {backgroundColor: 'rgba(255,255,255,0.25)'} : {backgroundColor: col + '22'}}>
+                {counts[f.id] || 0}
               </span>
+              {canEditFolder(f) && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); openEditFolder(f); }}
+                  className="ml-1 -mr-1 p-0.5 rounded hover:bg-black/10 cursor-pointer"
+                  title="Uredi mapo / vidnost"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                </span>
+              )}
             </button>
           );
         })}
+        <button
+          onClick={openNewFolder}
+          className="px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-1.5 border border-dashed border-as-gray-300 text-as-gray-500 hover:bg-as-gray-50"
+        >
+          <Plus className="w-4 h-4" /> Nova mapa
+        </button>
       </div>
 
       {/* Vsebina */}
@@ -333,8 +443,9 @@ function Gradiva({ currentUser, employees }) {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {filteredItems.map(item => {
-            const cat = CATEGORIES.find(c => c.id === item.category);
-            const Icon = cat?.icon || FileText;
+            const folder = getFolder(item.folder_id);
+            const cat = folder ? { color: folder.color, label: folder.name } : { color: '#C8102E', label: '—' };
+            const Icon = Folder;
             const isYoutube = item.type === 'youtube';
             const thumbnail = isYoutube ? getYoutubeThumbnail(item.youtube_url) : null;
 
@@ -524,29 +635,33 @@ function Gradiva({ currentUser, employees }) {
                 />
               </div>
 
-              {/* Kategorija */}
+              {/* Mapa */}
               <div>
-                <label className="block text-sm font-semibold text-as-gray-700 mb-1">Kategorija *</label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {CATEGORIES.map(cat => {
-                    const Icon = cat.icon;
-                    const active = form.category === cat.id;
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => setForm({...form, category: cat.id})}
-                        className={`px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 border ${
-                          active ? 'text-white border-transparent' : 'bg-white text-as-gray-600 border-as-gray-200 hover:bg-as-gray-50'
-                        }`}
-                        style={active ? {backgroundColor: cat.color} : {}}
-                      >
-                        <Icon className="w-4 h-4" />
-                        <span className="text-xs">{cat.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <label className="block text-sm font-semibold text-as-gray-700 mb-1">Mapa *</label>
+                {visibleFolders.length === 0 ? (
+                  <p className="text-sm text-as-gray-500">Najprej ustvari mapo (gumb „Nova mapa").</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {visibleFolders.map(f => {
+                      const active = form.folder_id === f.id;
+                      const col = f.color || '#C8102E';
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setForm({...form, folder_id: f.id})}
+                          className={`px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 border ${
+                            active ? 'text-white border-transparent' : 'bg-white text-as-gray-600 border-as-gray-200 hover:bg-as-gray-50'
+                          }`}
+                          style={active ? {backgroundColor: col} : {}}
+                        >
+                          <Folder className="w-4 h-4" />
+                          <span className="text-xs">{f.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Tip */}
@@ -691,6 +806,106 @@ function Gradiva({ currentUser, employees }) {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL — Mapa */}
+      {showFolderModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-as-gray-200 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-as-gray-800">{editingFolder ? 'Uredi mapo' : 'Nova mapa'}</h2>
+              <button onClick={() => { setShowFolderModal(false); setEditingFolder(null); }} className="text-as-gray-400 hover:text-as-gray-600 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Ime */}
+              <div>
+                <label className="block text-sm font-semibold text-as-gray-700 mb-1">Ime mape *</label>
+                <input
+                  type="text"
+                  value={folderForm.name}
+                  onChange={(e) => setFolderForm({...folderForm, name: e.target.value})}
+                  placeholder="npr. Interni dokumenti"
+                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-200 focus:border-as-red-400"
+                />
+              </div>
+
+              {/* Barva */}
+              <div>
+                <label className="block text-sm font-semibold text-as-gray-700 mb-1">Barva</label>
+                <div className="flex gap-2 flex-wrap">
+                  {FOLDER_COLORS.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setFolderForm({...folderForm, color: c})}
+                      className="w-8 h-8 rounded-lg border-2 transition"
+                      style={{ backgroundColor: c, borderColor: folderForm.color === c ? '#111827' : 'transparent' }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Vidnost */}
+              <div>
+                <label className="block text-sm font-semibold text-as-gray-700 mb-1">Kdo vidi mapo</label>
+                <div className="flex gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setFolderForm({...folderForm, visible_to_all: true})}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border flex items-center justify-center gap-2 ${folderForm.visible_to_all ? 'text-white border-transparent' : 'bg-white text-as-gray-600 border-as-gray-200'}`}
+                    style={folderForm.visible_to_all ? {backgroundColor: '#059669'} : {}}
+                  >
+                    <Users className="w-4 h-4" /> Vsi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFolderForm({...folderForm, visible_to_all: false})}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border flex items-center justify-center gap-2 ${!folderForm.visible_to_all ? 'text-white border-transparent' : 'bg-white text-as-gray-600 border-as-gray-200'}`}
+                    style={!folderForm.visible_to_all ? {backgroundColor: '#C8102E'} : {}}
+                  >
+                    <Lock className="w-4 h-4" /> Izbrani
+                  </button>
+                </div>
+                {!folderForm.visible_to_all && (
+                  <div className="border border-as-gray-200 rounded-lg p-2 max-h-52 overflow-y-auto space-y-1">
+                    {(employees || []).map(emp => {
+                      const checked = folderForm.allowed_emails.includes(emp.email);
+                      return (
+                        <label key={emp.email} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-as-gray-50 cursor-pointer text-sm">
+                          <input type="checkbox" checked={checked} onChange={() => toggleAllowed(emp.email)} className="w-4 h-4" style={{accentColor: '#C8102E'}} />
+                          <span className="text-as-gray-700">{emp.name}</span>
+                          <span className="text-xs text-as-gray-400">{emp.department}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-xs text-as-gray-400 mt-1">Admin in lastnik mape vedno vidita mapo.</p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-white border-t border-as-gray-200 px-6 py-4 flex items-center justify-between gap-2">
+              <div>
+                {editingFolder && canEditFolder(editingFolder) && (
+                  <button onClick={() => deleteFolder(editingFolder)} className="px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-lg transition flex items-center gap-1">
+                    <Trash2 className="w-4 h-4" /> Izbriši mapo
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setShowFolderModal(false); setEditingFolder(null); }} disabled={savingFolder} className="px-4 py-2 text-sm font-semibold text-as-gray-600 hover:bg-as-gray-100 rounded-lg transition disabled:opacity-50">Prekliči</button>
+                <button onClick={saveFolder} disabled={savingFolder} className="px-4 py-2 text-sm font-semibold text-white rounded-lg hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2" style={{backgroundColor: '#C8102E'}}>
+                  {savingFolder ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Shrani mapo
+                </button>
+              </div>
             </div>
           </div>
         </div>
