@@ -869,7 +869,8 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
 
   // Statistike
   const visitCount = dayVisits.filter((v) => v.entry_type === 'visit').length;
-  const offerCount = dayVisits.filter((v) => v.entry_type === 'visit' && v.create_offer).length;
+  const callCount = dayVisits.filter((v) => v.entry_type === 'call').length;
+  const offerCount = dayVisits.filter((v) => (v.entry_type === 'visit' || v.entry_type === 'call') && v.create_offer).length;
   const totalTimeAtCustomers = dayVisits
     .filter((v) => v.entry_type === 'visit' && v.arrival_time && v.departure_time)
     .reduce((s, v) => s + (diffMinutes(v.arrival_time, v.departure_time) || 0), 0);
@@ -924,8 +925,9 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
           </div>
 
           {/* Statistike */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <BigStat icon="📍" label="Obiski" value={visitCount} unit="" color={CRM_COLOR} bgColor={CRM_BG} />
+            <BigStat icon="📞" label="Klici / emaili" value={callCount} unit="" color="#6D28D9" bgColor="#EDE9FE" />
             <BigStat icon="🚗" label="Skupaj km" value={formatNumber(kmData.totalKm)} unit="km" color="#1E40AF" bgColor="#DBEAFE" />
             <BigStat icon="⏱️" label="Čas pri strankah" value={formatMinutes(totalTimeAtCustomers)} unit="" color="#0E7490" bgColor="#CFFAFE" />
             <BigStat icon="📝" label="Ponudbe" value={offerCount} unit="" color="#854D0E" bgColor="#FEF3C7" />
@@ -990,6 +992,12 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
     bg = '#A7F3D0';
     label = `Konec dneva doma`;
     timeStr = formatTime(visit.arrival_time);
+  } else if (visit.entry_type === 'call') {
+    icon = visit.channel === 'email' ? '✉️' : '📞';
+    color = '#6D28D9';
+    bg = '#EDE9FE';
+    label = visit.customer_name || '(brez imena)';
+    timeStr = formatTime(visit.arrival_time);
   } else {
     icon = '📍';
     color = CRM_COLOR;
@@ -1012,9 +1020,19 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
             <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {timeStr}</span>
             {visit.odometer_km != null && <span className="flex items-center gap-1"><Car className="w-3 h-3" /> {formatNumber(visit.odometer_km)} km</span>}
             {duration != null && <span>{formatMinutes(duration)} pri stranki</span>}
+            {visit.entry_type === 'call' && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#EDE9FE', color: '#6D28D9' }}>
+                {visit.channel === 'email' ? '✉️ Email' : '📞 Klic'}{visit.channel === 'phone' && visit.call_duration_min != null ? ` · ${formatMinutes(visit.call_duration_min)}` : ''}
+              </span>
+            )}
             {visit.create_offer && (
               <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#FEF3C7', color: '#854D0E' }}>
                 📝 Ponudba
+              </span>
+            )}
+            {visit.notify_responsible && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#DBEAFE', color: '#1E40AF' }}>
+                📧 {visit.responsible_name || visit.responsible_email}
               </span>
             )}
           </div>
@@ -1075,9 +1093,10 @@ function MonthlyView({ visits, loading }) {
 
   // Skupaj statistike
   const totalVisits = monthVisits.filter((v) => v.entry_type === 'visit').length;
-  const totalOffers = monthVisits.filter((v) => v.entry_type === 'visit' && v.create_offer).length;
+  const totalCalls = monthVisits.filter((v) => v.entry_type === 'call').length;
+  const totalOffers = monthVisits.filter((v) => (v.entry_type === 'visit' || v.entry_type === 'call') && v.create_offer).length;
   const uniqueDays = new Set(monthVisits.map((v) => v.visit_date)).size;
-  const uniqueCustomers = new Set(monthVisits.filter((v) => v.entry_type === 'visit').map((v) => v.customer_name)).size;
+  const uniqueCustomers = new Set(monthVisits.filter((v) => v.entry_type === 'visit' || v.entry_type === 'call').map((v) => v.customer_name)).size;
 
   // Skupna kilometrina (po dnevih)
   const totalKm = useMemo(() => {
@@ -1168,8 +1187,9 @@ function MonthlyView({ visits, loading }) {
         <LoadingBox />
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
             <BigStat icon="📍" label="Obiski" value={totalVisits} unit="" color={CRM_COLOR} bgColor={CRM_BG} />
+            <BigStat icon="📞" label="Klici / emaili" value={totalCalls} unit="" color="#6D28D9" bgColor="#EDE9FE" />
             <BigStat icon="🚗" label="Skupaj km" value={formatNumber(totalKm)} unit="km" color="#1E40AF" bgColor="#DBEAFE" />
             <BigStat icon="📝" label="Ponudbe" value={totalOffers} unit="" color="#854D0E" bgColor="#FEF3C7" />
             <BigStat icon="🏢" label="Strank" value={uniqueCustomers} unit="" color="#065F46" bgColor="#A7F3D0" />
@@ -1283,7 +1303,7 @@ function exportDailyCSV(date, visits, kmData) {
   lines.push('');
   lines.push('Tip;Čas prihoda;Čas odhoda;Km števec;Stranka;Naslov;Dogovori;Ponudba?;Opis ponudbe;Dodeljeno;Rok ponudbe');
   visits.forEach((v) => {
-    const tip = v.entry_type === 'home_start' ? 'Začetek doma' : v.entry_type === 'home_end' ? 'Konec doma' : 'Obisk';
+    const tip = v.entry_type === 'home_start' ? 'Začetek doma' : v.entry_type === 'home_end' ? 'Konec doma' : v.entry_type === 'call' ? (v.channel === 'email' ? 'Email' : 'Klic') : 'Obisk';
     lines.push([
       tip,
       v.arrival_time || '',
