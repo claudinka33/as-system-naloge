@@ -1412,7 +1412,8 @@ function CustomerPicker({ selected, onSelect, onClear }) {
         .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
         .ilike('naziv', `%${term}%`)
         .order('naziv', { ascending: true })
-        .limit(15);
+        .order('poslovalnica', { ascending: true })
+        .limit(100);
       if (active) { setResults(data || []); setLoading(false); }
     }, 250);
     return () => { active = false; clearTimeout(t); };
