@@ -637,6 +637,40 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
             )}
           </div>
 
+          {/* Po skupinah (segmentih) - mini kartoni */}
+          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+            <h3 className="font-bold text-as-gray-700 mb-3">🏷️ Proizvodnja po skupinah</h3>
+            {dayEntries.length === 0 ? (
+              <div className="text-center py-6 text-as-gray-400 text-sm">Ni vnosov.</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {(() => {
+                  const bySeg = {};
+                  dayEntries.forEach((e) => {
+                    const m = findMachine(e.machine_id);
+                    const segId = m?.segment || 'DRUGO';
+                    if (!bySeg[segId]) bySeg[segId] = { id: segId, label: m?.segmentLabel || 'Drugo', color: m?.segmentColor || '#6B7280', kosi: 0, normativ: 0 };
+                    bySeg[segId].kosi += Number(e.kosi || 0);
+                    bySeg[segId].normativ += Number(e.normativ_kos_h || 0) * Number(e.cas_ur || 0);
+                  });
+                  const order = SEGMENTS.map((s) => s.id);
+                  const segs = Object.values(bySeg).sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+                  return segs.map((s) => {
+                    const pct = s.normativ > 0 ? Math.round((s.kosi / s.normativ) * 100) : null;
+                    const pctColor = pct === null ? '#9CA3AF' : pct >= 95 ? '#16A34A' : pct >= 75 ? '#D97706' : '#DC2626';
+                    return (
+                      <div key={s.id} className="rounded-lg p-3 border" style={{ borderColor: s.color + '40', backgroundColor: s.color + '0D' }}>
+                        <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: s.color }}>{s.label}</div>
+                        <div className="text-2xl font-bold text-as-gray-700 mt-1">{formatNumber(s.kosi)}</div>
+                        {pct !== null && <div className="text-xs font-bold mt-1" style={{ color: pctColor }}>📈 {pct}% normativa</div>}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </div>
+
           {/* Zastoji - mini kartoni po razlogih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-3">⚠️ Zastoji po razlogih</h3>
