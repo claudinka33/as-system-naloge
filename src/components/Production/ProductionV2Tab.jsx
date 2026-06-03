@@ -8,6 +8,17 @@ import { SEGMENTS, findMachine, calculateEfficiency } from './productionV2Config
 
 const AS_RED = '#C8102E';
 
+const OPERATERJI = [
+  'Janko Augustinčič',
+  'Mitja Babić',
+  'Dejan Čutić',
+  'Danijel Korenini',
+  'Gregor Koritnik',
+  'Matija Postružin',
+  'Danči Šolinc',
+  'Boris Černelc',
+];
+
 const STOP_REASONS = [
   'Drugo', 'Menjava', 'Menjava orodja', 'Menjava žice', 'Nastavitev proge',
   'Nastavitev senzorja', 'Nastavitev valjanja', 'Razširilo progo',
@@ -244,7 +255,10 @@ function ProductionForm({ currentUser, onSaved, setError }) {
           <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} required className={inputCls} />
         </FormField>
         <FormField label="Delavec / Operater *">
-          <input type="text" value={formOperater} onChange={(e) => setFormOperater(e.target.value)} required className={inputCls} placeholder="Ime in priimek" />
+          <select value={formOperater} onChange={(e) => setFormOperater(e.target.value)} required className={inputCls}>
+            <option value="">— izberi delavca —</option>
+            {OPERATERJI.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
         </FormField>
       </div>
 
@@ -427,7 +441,10 @@ function StopForm({ currentUser, onSaved, setError }) {
       </div>
 
       <FormField label="Delavec / Operater *">
-        <input type="text" value={formOperater} onChange={(e) => setFormOperater(e.target.value)} required className={inputCls} placeholder="Ime in priimek" />
+        <select value={formOperater} onChange={(e) => setFormOperater(e.target.value)} required className={inputCls}>
+            <option value="">— izberi delavca —</option>
+            {OPERATERJI.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
       </FormField>
 
       <button type="submit" disabled={loading}
@@ -541,7 +558,10 @@ function WasteForm({ currentUser, onSaved, setError }) {
       </div>
 
       <FormField label="Delavec / Operater *">
-        <input type="text" value={formOperater} onChange={(e) => setFormOperater(e.target.value)} required className={inputCls} placeholder="Ime in priimek" />
+        <select value={formOperater} onChange={(e) => setFormOperater(e.target.value)} required className={inputCls}>
+            <option value="">— izberi delavca —</option>
+            {OPERATERJI.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
       </FormField>
 
       <FormField label="Opombe">
