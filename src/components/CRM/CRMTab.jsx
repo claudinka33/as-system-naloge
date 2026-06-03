@@ -179,12 +179,15 @@ function EntryView({ currentUser, employees, onSaved, setError }) {
           icon={<Home className="w-4 h-4" />} label="Začetek dneva (doma)" color="#1E40AF" bgColor="#DBEAFE" />
         <SectionPill active={entryType === 'visit'} onClick={() => setEntryType('visit')}
           icon={<MapPin className="w-4 h-4" />} label="Obisk stranke" color={CRM_COLOR} bgColor={CRM_BG} />
+        <SectionPill active={entryType === 'call'} onClick={() => setEntryType('call')}
+          icon={<Phone className="w-4 h-4" />} label="Klic / Email stranke" color="#6D28D9" bgColor="#EDE9FE" />
         <SectionPill active={entryType === 'home_end'} onClick={() => setEntryType('home_end')}
           icon={<Home className="w-4 h-4" />} label="Konec dneva (doma)" color="#065F46" bgColor="#A7F3D0" />
       </div>
 
       {entryType === 'home_start' && <HomeStartForm currentUser={currentUser} onSaved={onSaved} setError={setError} />}
       {entryType === 'visit' && <VisitForm currentUser={currentUser} employees={employees} onSaved={onSaved} setError={setError} />}
+      {entryType === 'call' && <CallForm currentUser={currentUser} employees={employees} onSaved={onSaved} setError={setError} />}
       {entryType === 'home_end' && <HomeEndForm currentUser={currentUser} onSaved={onSaved} setError={setError} />}
     </div>
   );
@@ -289,9 +292,13 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
     d.setDate(d.getDate() + 3);
     return d.toISOString().slice(0, 10);
   });
+  const [notify, setNotify] = useState(false);
+  const [responsibleEmail, setResponsibleEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
   function reset() {
+    setNotify(false);
+    setResponsibleEmail('');
     setCustomerName('');
     setCustomerAddress('');
     setArrivalTime(() => {
@@ -320,6 +327,7 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
       if (!offerDescription.trim()) { setError('Vnesi opis ponudbe.'); return; }
       if (!offerAssignedTo) { setError('Izberi komu dodeliš pripravo ponudbe.'); return; }
     }
+    if (notify && !responsibleEmail) { setError('Izberi odgovorno osebo za obvestilo.'); return; }
 
     setLoading(true); setError('');
     try {
@@ -352,6 +360,27 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
         offerTaskId = taskData.id;
       }
 
+      // Obvesti odgovorno osebo (email + Outlook), če je označeno
+      let outlookEventId = null;
+      const respEmp = employees.find((e) => e.email === responsibleEmail);
+      if (notify && responsibleEmail) {
+        outlookEventId = await crmNotifyResponsible({
+          kind: 'visit',
+          customerName,
+          dateTimeISO: new Date(`${date}T${arrivalTime || '09:00'}:00`).toISOString(),
+          descLines: [
+            customerAddress ? `Lokacija: ${customerAddress}` : '',
+            notes ? `Dogovor: ${notes}` : '',
+            createOffer ? `Ponudba: ${offerDescription} (rok ${formatDate(offerDueDate)})` : '',
+            `Vneseno iz CRM (${currentUser?.name || ''}).`,
+          ],
+          responsibleEmail,
+          responsibleName: respEmp?.name || responsibleEmail,
+          createdByName: currentUser?.name,
+          employees,
+        });
+      }
+
       // Potem shrani obisk
       const { error: visitError } = await supabase.from('crm_visits').insert([{
         visit_date: date,
@@ -367,6 +396,11 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
         offer_assigned_to_email: createOffer ? offerAssignedTo : null,
         offer_due_date: createOffer ? offerDueDate : null,
         offer_task_id: offerTaskId,
+        notify_responsible: notify,
+        responsible_email: notify ? responsibleEmail : null,
+        responsible_name: notify ? (respEmp?.name || null) : null,
+        add_to_calendar: notify,
+        outlook_event_id: outlookEventId,
         created_by: currentUser?.email,
         created_by_name: currentUser?.name,
       }]);
@@ -463,6 +497,8 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
           </div>
         )}
       </div>
+
+      <NotifyBlock notify={notify} setNotify={setNotify} responsibleEmail={responsibleEmail} setResponsibleEmail={setResponsibleEmail} employees={employees} />
 
       <button type="submit" disabled={loading}
         className="px-5 py-2.5 text-white font-semibold rounded-lg shadow-sm inline-flex items-center gap-2 transition disabled:opacity-50"
