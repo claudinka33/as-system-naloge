@@ -1407,10 +1407,12 @@ function CustomerPicker({ selected, onSelect, onClear }) {
     let active = true;
     setLoading(true);
     const t = setTimeout(async () => {
+      const safe = term.replace(/[(),%]/g, ' ').trim();
+      const pat = `%${safe}%`;
       const { data } = await supabase
         .from('crm_customers')
         .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
-        .ilike('naziv', `%${term}%`)
+        .or(`naziv.ilike.${pat},ulica.ilike.${pat},posta.ilike.${pat},davcna.ilike.${pat}`)
         .order('naziv', { ascending: true })
         .order('poslovalnica', { ascending: true })
         .limit(100);
@@ -1435,7 +1437,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
   return (
     <div className="relative">
       <input type="text" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
-        className={inputCls} placeholder="Začni tipkati naziv stranke (min. 2 črki)..." />
+        className={inputCls} placeholder="Išči po nazivu, naslovu ali davčni (min. 2 znaka)..." />
       {open && q.trim().length >= 2 && (
         <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-as-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
           {loading && <div className="px-3 py-2 text-sm text-as-gray-400">Iščem…</div>}
