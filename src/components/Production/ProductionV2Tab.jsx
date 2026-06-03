@@ -806,9 +806,12 @@ function MonthlyView({ entries, stops, wastes, loading }) {
   // Po segmentih (za bar chart)
   const bySegment = useMemo(() => {
     const map = {};
-    SEGMENTS.forEach((s) => { map[s.id] = { id: s.id, label: s.label, color: s.color, kosi: 0 }; });
+    SEGMENTS.forEach((s) => { map[s.id] = { id: s.id, label: s.label, color: s.color, kosi: 0, normativ: 0 }; });
     for (const e of monthEntries) {
-      if (map[e.segment]) map[e.segment].kosi += Number(e.kosi || 0);
+      if (map[e.segment]) {
+        map[e.segment].kosi += Number(e.kosi || 0);
+        map[e.segment].normativ += Number(e.normativ_kos_h || 0) * Number(e.cas_ur || 0);
+      }
     }
     return Object.values(map);
   }, [monthEntries]);
@@ -867,8 +870,8 @@ function MonthlyView({ entries, stops, wastes, loading }) {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <BigStat icon="📦" label="Skupaj kosov" value={formatNumber(totalPieces)} unit="kos" color="#0E7490" bgColor="#CFFAFE" />
-            <BigStat icon="⏱️" label="Skupne ure" value={totalHours.toFixed(1)} unit="h" color="#7C2D12" bgColor="#FED7AA" />
-            <BigStat icon="⚠️" label="Zastoji" value={totalStopHours.toFixed(1)} unit="h" color="#854D0E" bgColor="#FEF08A" />
+            <BigStat icon="⏱️" label="Skupne ure" value={hoursToTimeString(totalHours)} unit="h" color="#7C2D12" bgColor="#FED7AA" />
+            <BigStat icon="⚠️" label="Zastoji" value={hoursToTimeString(totalStopHours)} unit="h" color="#854D0E" bgColor="#FEF08A" />
             <BigStat icon="🗑️" label="Odpadek" value={formatNumber(totalWasteKg)} unit="kg" color="#991B1B" bgColor="#FECACA" />
           </div>
 
@@ -888,60 +891,37 @@ function MonthlyView({ entries, stops, wastes, loading }) {
 
           {/* Po strojih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
-            <h3 className="font-bold text-as-gray-700 mb-4">🏭 Po strojih — {SLOVENIAN_MONTHS[month - 1]} {year}</h3>
+            <h3 className="font-bold text-as-gray-700 mb-3">🏭 Po strojih — {SLOVENIAN_MONTHS[month - 1]} {year}</h3>
             {byMachine.length === 0 ? <Empty /> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-as-gray-50 text-as-gray-500 text-xs uppercase">
-                    <tr>
-                      <th className="text-left p-2">Stroj</th>
-                      <th className="text-left p-2">Naziv</th>
-                      <th className="text-left p-2">Operacija</th>
-                      <th className="text-right p-2">Kosov</th>
-                      <th className="text-right p-2">Ur</th>
-                      <th className="text-right p-2">Doseganje</th>
-                      <th className="text-right p-2">Zastoji (h)</th>
-                      <th className="text-right p-2">Odpadek (kg)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {byMachine.map((r) => {
-                      const pct = r.ucinkovitost;
-                      const color = pct === null ? '#9CA3AF' : pct >= 95 ? '#16A34A' : pct >= 75 ? '#D97706' : '#DC2626';
-                      return (
-                        <tr key={r.machine_id} className="border-t border-as-gray-100 hover:bg-as-gray-50">
-                          <td className="p-2 font-semibold">{r.machine_id}</td>
-                          <td className="p-2 text-as-gray-700">{r.machine_name}</td>
-                          <td className="p-2 text-xs text-as-gray-500">{r.operacija}</td>
-                          <td className="p-2 text-right font-semibold">{formatNumber(r.kosi)}</td>
-                          <td className="p-2 text-right">{r.ur.toFixed(1)}</td>
-                          <td className="p-2 text-right font-bold" style={{ color }}>{pct === null ? '—' : `${pct}%`}</td>
-                          <td className="p-2 text-right">{r.zastoj_ur.toFixed(1)}</td>
-                          <td className="p-2 text-right">{formatNumber(r.odpadek_kg)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {byMachine.map((m) => {
+                  const pct = m.ucinkovitost;
+                  const color = pct === null ? '#9CA3AF' : pct >= 95 ? '#16A34A' : pct >= 75 ? '#D97706' : '#DC2626';
+                  return (
+                    <div key={m.machine_id} className="border border-as-gray-100 rounded-lg p-3">
+                      <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">{m.machine_id} · {m.machine_name}</div>
+                      <div className="text-2xl font-bold text-as-gray-700 mt-1">{formatNumber(m.kosi)}</div>
+                      {pct !== null && <div className="text-xs font-bold mt-1" style={{ color }}>📈 {pct}% normativa</div>}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Po segmentih */}
+          {/* Po skupinah */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
-            <h3 className="font-bold text-as-gray-700 mb-4">🏷️ Proizvodnja po skupinah</h3>
+            <h3 className="font-bold text-as-gray-700 mb-3">🏷️ Proizvodnja po skupinah</h3>
             {bySegment.every((s) => s.kosi === 0) ? <Empty /> : (
-              <div className="space-y-2">
-                {bySegment.map((s) => {
-                  const max = Math.max(...bySegment.map((x) => x.kosi), 1);
-                  const pct = (s.kosi / max) * 100;
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {bySegment.filter((s) => s.kosi > 0).map((s) => {
+                  const pct = s.normativ > 0 ? Math.round((s.kosi / s.normativ) * 100) : null;
+                  const pctColor = pct === null ? '#9CA3AF' : pct >= 95 ? '#16A34A' : pct >= 75 ? '#D97706' : '#DC2626';
                   return (
-                    <div key={s.id} className="grid grid-cols-12 gap-2 items-center text-sm">
-                      <div className="col-span-3 text-as-gray-700">{s.label}</div>
-                      <div className="col-span-7 bg-as-gray-100 rounded h-5 overflow-hidden">
-                        <div className="h-full" style={{ width: `${pct}%`, backgroundColor: s.color }} />
-                      </div>
-                      <div className="col-span-2 text-right font-semibold text-as-gray-700">{formatNumber(s.kosi)}</div>
+                    <div key={s.id} className="rounded-lg p-3 border" style={{ borderColor: s.color + '40', backgroundColor: s.color + '0D' }}>
+                      <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: s.color }}>{s.label}</div>
+                      <div className="text-2xl font-bold text-as-gray-700 mt-1">{formatNumber(s.kosi)}</div>
+                      {pct !== null && <div className="text-xs font-bold mt-1" style={{ color: pctColor }}>📈 {pct}% normativa</div>}
                     </div>
                   );
                 })}
@@ -951,44 +931,30 @@ function MonthlyView({ entries, stops, wastes, loading }) {
 
           {/* Zastoji po razlogih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
-            <h3 className="font-bold text-as-gray-700 mb-4">⚠️ Zastoji po razlogih</h3>
+            <h3 className="font-bold text-as-gray-700 mb-3">⚠️ Zastoji po razlogih</h3>
             {byStopReason.every((r) => r.hours === 0) ? <Empty /> : (
-              <div className="space-y-2">
-                {byStopReason.filter((r) => r.hours > 0).sort((a, b) => b.hours - a.hours).map((r) => {
-                  const max = Math.max(...byStopReason.map((x) => x.hours), 1);
-                  const pct = (r.hours / max) * 100;
-                  return (
-                    <div key={r.reason} className="grid grid-cols-12 gap-2 items-center text-sm">
-                      <div className="col-span-3 text-as-gray-700">{r.reason}</div>
-                      <div className="col-span-7 bg-as-gray-100 rounded h-5 overflow-hidden">
-                        <div className="h-full" style={{ width: `${pct}%`, backgroundColor: '#D97706' }} />
-                      </div>
-                      <div className="col-span-2 text-right font-semibold text-as-gray-700">{r.hours.toFixed(1)} h</div>
-                    </div>
-                  );
-                })}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {byStopReason.filter((r) => r.hours > 0).sort((a, b) => b.hours - a.hours).map((r) => (
+                  <div key={r.reason} className="border border-as-gray-100 rounded-lg p-3">
+                    <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">{r.reason}</div>
+                    <div className="text-2xl font-bold text-as-gray-700 mt-1">{r.hours.toFixed(1)} h</div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
           {/* Odpadek po razlogih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
-            <h3 className="font-bold text-as-gray-700 mb-4">🗑️ Odpadek po razlogih</h3>
+            <h3 className="font-bold text-as-gray-700 mb-3">🗑️ Odpadek po razlogih</h3>
             {byWasteReason.every((r) => r.kg === 0) ? <Empty /> : (
-              <div className="space-y-2">
-                {byWasteReason.filter((r) => r.kg > 0).sort((a, b) => b.kg - a.kg).map((r) => {
-                  const max = Math.max(...byWasteReason.map((x) => x.kg), 1);
-                  const pct = (r.kg / max) * 100;
-                  return (
-                    <div key={r.reason} className="grid grid-cols-12 gap-2 items-center text-sm">
-                      <div className="col-span-3 text-as-gray-700">{r.reason}</div>
-                      <div className="col-span-7 bg-as-gray-100 rounded h-5 overflow-hidden">
-                        <div className="h-full" style={{ width: `${pct}%`, backgroundColor: '#991B1B' }} />
-                      </div>
-                      <div className="col-span-2 text-right font-semibold text-as-gray-700">{formatNumber(r.kg)} kg</div>
-                    </div>
-                  );
-                })}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {byWasteReason.filter((r) => r.kg > 0).sort((a, b) => b.kg - a.kg).map((r) => (
+                  <div key={r.reason} className="border border-as-gray-100 rounded-lg p-3">
+                    <div className="text-xs text-as-gray-500 font-semibold uppercase tracking-wider">{r.reason}</div>
+                    <div className="text-2xl font-bold text-as-gray-700 mt-1">{formatNumber(r.kg)} kg</div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
