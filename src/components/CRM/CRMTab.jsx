@@ -1409,7 +1409,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
     const t = setTimeout(async () => {
       const { data } = await supabase
         .from('crm_customers')
-        .select('id,naziv,ulica,posta,davcna,panoga')
+        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
         .ilike('naziv', `%${term}%`)
         .order('naziv', { ascending: true })
         .limit(15);
@@ -1423,7 +1423,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
       <div className="flex items-start justify-between gap-3 border border-as-gray-200 rounded-lg p-3 bg-as-gray-50">
         <div className="text-sm">
           <div className="font-bold text-as-gray-800">{selected.naziv}</div>
-          <div className="text-as-gray-500">{[selected.ulica, selected.posta].filter(Boolean).join(', ') || '—'}</div>
+          <div className="text-as-gray-500">{selected.poslovalnica ? `Posl. ${selected.poslovalnica} · ` : ''}{[selected.ulica, selected.posta].filter(Boolean).join(', ') || '—'}</div>
           <div className="text-xs text-as-gray-400 mt-0.5">Davčna: {selected.davcna || '—'} · Panoga: {selected.panoga || '—'}</div>
         </div>
         <button type="button" onClick={onClear} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold whitespace-nowrap">Zamenjaj</button>
@@ -1442,7 +1442,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
           {results.map((c) => (
             <button key={c.id} type="button" onClick={() => { onSelect(c); setOpen(false); setQ(''); }}
               className="w-full text-left px-3 py-2 hover:bg-as-gray-50 border-b border-as-gray-100 last:border-0">
-              <div className="text-sm font-semibold text-as-gray-800">{c.naziv}</div>
+              <div className="text-sm font-semibold text-as-gray-800">{c.naziv}{c.poslovalnica ? ` · posl. ${c.poslovalnica}` : ''}</div>
               <div className="text-xs text-as-gray-500">{[c.ulica, c.posta].filter(Boolean).join(', ') || '—'} · {c.panoga || '—'}</div>
             </button>
           ))}
@@ -1488,7 +1488,7 @@ function AnalysisView({ visits, loading }) {
       const map = {};
       for (let i = 0; i < ids.length; i += 200) {
         const chunk = ids.slice(i, i + 200);
-        const { data } = await supabase.from('crm_customers').select('id,naziv,panoga,ulica,posta').in('id', chunk);
+        const { data } = await supabase.from('crm_customers').select('id,naziv,panoga,ulica,posta,davcna').in('id', chunk);
         (data || []).forEach((c) => { map[c.id] = c; });
       }
       if (active) setCustMap(map);
@@ -1501,7 +1501,7 @@ function AnalysisView({ visits, loading }) {
     for (const v of (visits || [])) {
       if (v.entry_type !== 'visit' && v.entry_type !== 'call') continue;
       const cust = v.customer_id ? custMap[v.customer_id] : null;
-      const key = v.customer_id ? `id:${v.customer_id}` : `n:${(v.customer_name || '—').toLowerCase()}`;
+      const key = (cust && cust.davcna) ? `d:${cust.davcna}` : (v.customer_id ? `id:${v.customer_id}` : `n:${(v.customer_name || '—').toLowerCase()}`);
       if (!g[key]) g[key] = { key, naziv: cust?.naziv || v.customer_name || '—', panoga: cust?.panoga || '—', kontakti: 0, minutes: 0, narocila: 0, ponudbe: 0, zadnji: null };
       const r = g[key];
       if (cust?.naziv) r.naziv = cust.naziv;
