@@ -798,6 +798,36 @@ export default function App() {
     return !recurringNearestIds.has(task.id);
   };
 
+  const taskComparator = (a, b) => {
+    if (sortBy === 'date_desc') {
+      const da = a.due_date ? new Date(a.due_date).getTime() : -Infinity;
+      const db = b.due_date ? new Date(b.due_date).getTime() : -Infinity;
+      return db - da;
+    }
+    if (sortBy === 'date_asc') {
+      const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+      const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+      return da - db;
+    }
+    if (sortBy === 'priority') {
+      const pa = priorityRank[a.priority] ?? 99;
+      const pb = priorityRank[b.priority] ?? 99;
+      return pa - pb;
+    }
+    if (sortBy === 'comments_new') {
+      const ua = countUnreadComments(a, currentUser?.email, taskViews[a.id]);
+      const ub = countUnreadComments(b, currentUser?.email, taskViews[b.id]);
+      if (ua !== ub) return ub - ua;
+      return new Date(b.created_at) - new Date(a.created_at);
+    }
+    const pa = priorityRank[a.priority] ?? 99;
+    const pb = priorityRank[b.priority] ?? 99;
+    if (pa !== pb) return pa - pb;
+    const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+    const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+    return da - db;
+  };
+
   const filteredTasks = tasks.filter(task => {
     if (!isAdmin) {
       const isMine = isAssignedToMe(task);
@@ -827,38 +857,20 @@ export default function App() {
         !task.description?.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !task.company?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
-  }).sort((a, b) => {
-    // Po izbranem sortBy
-    if (sortBy === 'date_desc') {
-      const da = a.due_date ? new Date(a.due_date).getTime() : -Infinity;
-      const db = b.due_date ? new Date(b.due_date).getTime() : -Infinity;
-      return db - da;
-    }
-    if (sortBy === 'date_asc') {
-      const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-      const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
-      return da - db;
-    }
-    if (sortBy === 'priority') {
-      const pa = priorityRank[a.priority] ?? 99;
-      const pb = priorityRank[b.priority] ?? 99;
-      return pa - pb;
-    }
-    if (sortBy === 'comments_new') {
-      const ua = countUnreadComments(a, currentUser?.email, taskViews[a.id]);
-      const ub = countUnreadComments(b, currentUser?.email, taskViews[b.id]);
-      if (ua !== ub) return ub - ua;
-      // tie-break: novejša naloga prej
-      return new Date(b.created_at) - new Date(a.created_at);
-    }
-    // default: prioriteta + rok
-    const pa = priorityRank[a.priority] ?? 99;
-    const pb = priorityRank[b.priority] ?? 99;
-    if (pa !== pb) return pa - pb;
-    const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-    const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
-    return da - db;
-  });
+  }).sort(taskComparator);
+
+  // "Moje naloge" razdeljeno: meni dodeljene + tiste, ki sem jih dodelil drugim
+  const minePassesSecondary = (task) => {
+    if (isHiddenRecurringInstance(task)) return false;
+    if (filterPerson !== 'all' && !task.assigned_to_emails?.includes(filterPerson)) return false;
+    if (filterDepartment !== 'all' && task.department !== filterDepartment) return false;
+    if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
+        !task.description?.toLowerCase().includes(searchQuery.toLowerCase()) &&
+        !task.company?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    return true;
+  };
+  const mineAssignedTasks = tasks.filter(t => isAssignedToMe(t) && t.status === 'pending' && minePassesSecondary(t)).sort(taskComparator);
+  const mineDelegatedTasks = tasks.filter(t => t.created_by_email === currentUser.email && !isAssignedToMe(t) && t.status === 'pending' && minePassesSecondary(t)).sort(taskComparator);
 
   const visibleTasks = isAdmin ? tasks : tasks.filter(t => isAssignedToMe(t) || t.created_by_email === currentUser.email);
   
@@ -897,6 +909,41 @@ mineUnseen: tasks.filter(t => {
     const emails = task.assigned_to_emails || [];
     return emails.map(email => getEmployeeName(email));
   };
+
+  const renderTaskCard = (task) => (
+    <TaskCard
+      key={task.id}
+      task={task}
+      isExpanded={expandedTask === task.id}
+      onToggleExpand={() => {
+        const newExpanded = expandedTask === task.id ? null : task.id;
+        setExpandedTask(newExpanded);
+        if (newExpanded && currentUser) {
+          markTaskAsViewed(task.id, currentUser.email);
+          setTaskViews(prev => ({ ...prev, [task.id]: new Date().toISOString() }));
+        }
+      }}
+      onToggleStatus={() => toggleTaskStatus(task.id)}
+      onEdit={() => setEditingTask(task)}
+      onDelete={() => deleteTask(task.id)}
+      onFileUpload={(e) => handleFileUpload(e, task.id)}
+      onDownloadFile={downloadFile}
+      onRemoveAttachment={removeAttachment}
+      onEditComment={(commentId, newText) => editComment(task.id, commentId, newText)}
+      onAddComment={(text) => addComment(task.id, text)}
+      getFileIcon={getFileIcon}
+      formatFileSize={formatFileSize}
+      formatDate={formatDate}
+      isOverdue={isOverdue(task)}
+      priorityColors={priorityColors}
+      priorityLabels={priorityLabels}
+      currentUser={currentUser}
+      isAdmin={isAdmin}
+      isAssignedToMe={isAssignedToMe(task)}
+      assignedNames={getAssignedNames(task)}
+      unreadCount={countUnreadComments(task, currentUser?.email, taskViews[task.id])}
+    />
+  );
 
   // === Helper za navigacijo iz HomePage
   const handleHomeNavigate = (section, opts) => {
@@ -1320,56 +1367,41 @@ mineUnseen: tasks.filter(t => {
                   <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-as-gray-400" />
                   <p className="text-as-gray-500">Nalagam naloge...</p>
                 </div>
-              ) : filteredTasks.length === 0 ? (
+              ) : (filter === 'mine' ? (mineAssignedTasks.length + mineDelegatedTasks.length === 0) : filteredTasks.length === 0) ? (
                 <div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center">
                   <div className="w-16 h-16 bg-as-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                     <Circle className="w-8 h-8 text-as-gray-300" />
                   </div>
                   <p className="text-as-gray-600 font-semibold">Ni nalog za prikaz</p>
                   <p className="text-as-gray-400 text-sm mt-1">
-                    {filter === 'mine' && 'Trenutno nimate nobenih dodeljenih nalog.'}
+                    {filter === 'mine' && 'Trenutno nimate nobenih nalog.'}
                     {filter === 'created' && 'Niste še dodelili nobene naloge.'}
                     {filter === 'all' && 'Ustvarite prvo nalogo s klikom na gumb zgoraj.'}
                     {filter === 'pending' && 'Vse naloge so opravljene.'}
                     {filter === 'completed' && 'Še ni opravljenih nalog.'}
                   </p>
                 </div>
+              ) : filter === 'mine' ? (
+                <>
+                  {mineAssignedTasks.length > 0 && (
+                    <div className="col-span-full flex items-center gap-2 mt-1 mb-1">
+                      <span className="text-sm font-bold text-as-gray-700">👤 Moje naloge</span>
+                      <span className="text-xs text-as-gray-400">({mineAssignedTasks.length})</span>
+                      <div className="flex-1 h-px bg-as-gray-200" />
+                    </div>
+                  )}
+                  {mineAssignedTasks.map(renderTaskCard)}
+                  {mineDelegatedTasks.length > 0 && (
+                    <div className="col-span-full flex items-center gap-2 mt-4 mb-1">
+                      <span className="text-sm font-bold text-as-gray-700">📤 Sem dodelil</span>
+                      <span className="text-xs text-as-gray-400">({mineDelegatedTasks.length})</span>
+                      <div className="flex-1 h-px bg-as-gray-200" />
+                    </div>
+                  )}
+                  {mineDelegatedTasks.map(renderTaskCard)}
+                </>
               ) : (
-                filteredTasks.map(task => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    isExpanded={expandedTask === task.id}
-                    onToggleExpand={() => {
-                    const newExpanded = expandedTask === task.id ? null : task.id;
-                    setExpandedTask(newExpanded);
-                    // Ko odpremo nalogo, jo označimo kot videno
-                    if (newExpanded && currentUser) {
-                      markTaskAsViewed(task.id, currentUser.email);
-                      setTaskViews(prev => ({ ...prev, [task.id]: new Date().toISOString() }));
-                    }
-                  }}
-                    onToggleStatus={() => toggleTaskStatus(task.id)}
-                    onEdit={() => setEditingTask(task)}
-                    onDelete={() => deleteTask(task.id)}
-                    onFileUpload={(e) => handleFileUpload(e, task.id)}
-                    onDownloadFile={downloadFile}
-                    onRemoveAttachment={removeAttachment}
-                    onEditComment={(commentId, newText) => editComment(task.id, commentId, newText)}
-                onAddComment={(text) => addComment(task.id, text)}
-                    getFileIcon={getFileIcon}
-                    formatFileSize={formatFileSize}
-                    formatDate={formatDate}
-                    isOverdue={isOverdue(task)}
-                    priorityColors={priorityColors}
-                    priorityLabels={priorityLabels}
-                    currentUser={currentUser}
-                    isAdmin={isAdmin}
-                    isAssignedToMe={isAssignedToMe(task)}
-                    assignedNames={getAssignedNames(task)}
-                    unreadCount={countUnreadComments(task, currentUser?.email, taskViews[task.id])}
-                  />
-                ))
+                filteredTasks.map(renderTaskCard)
               )}
             </div>
           </>
