@@ -13,7 +13,7 @@ async function crmNotifyResponsible({ kind, customerName, dateTimeISO, descLines
   const pseudoTask = {
     id: `crm-${kind}-${Date.now()}`,
     title: `${titlePrefix}: ${customerName || 'stranka'}`,
-    description: (descLines || []).filter(Boolean).join('\n'),
+    description: (descLines || []).filter(Boolean).join(' · ').replace(/[\r\n\t]+/g, ' ').replace(/"/g, "'"),
     due_date: dateTimeISO,
     priority: 'medium',
     assigned_to_emails: [responsibleEmail],
