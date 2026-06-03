@@ -133,6 +133,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
             <SubTab active={view === 'entry'} onClick={() => setView('entry')} icon={<Plus className="w-4 h-4" />} label="Vnos" />
             <SubTab active={view === 'daily'} onClick={() => setView('daily')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
             <SubTab active={view === 'monthly'} onClick={() => setView('monthly')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+            <SubTab active={view === 'analysis'} onClick={() => setView('analysis')} icon={<User className="w-4 h-4" />} label="Analiza strank" />
           </div>
         </div>
         <div id="crm-controls-slot" className="flex flex-wrap items-center gap-3 ml-auto"></div>
@@ -149,6 +150,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       {view === 'entry' && <EntryView currentUser={currentUser} employees={employees} onSaved={loadAll} setError={setError} />}
       {view === 'daily' && <DailyView visits={visits} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
       {view === 'monthly' && <MonthlyView visits={visits} loading={loading} />}
+      {view === 'analysis' && <AnalysisView visits={visits} loading={loading} />}
     </div>
   );
 }
@@ -277,6 +279,9 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [customerName, setCustomerName] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [customer, setCustomer] = useState(null);
+  const [outcome, setOutcome] = useState('nic');
+  const [minutes, setMinutes] = useState('');
   const [arrivalTime, setArrivalTime] = useState(() => {
     const now = new Date();
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -299,6 +304,9 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
   function reset() {
     setNotify(false);
     setResponsibleEmail('');
+    setCustomer(null);
+    setOutcome('nic');
+    setMinutes('');
     setCustomerName('');
     setCustomerAddress('');
     setArrivalTime(() => {
@@ -390,6 +398,9 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
         arrival_time: arrivalTime,
         departure_time: departureTime || null,
         odometer_km: parseInt(km),
+        customer_id: customer?.id || null,
+        outcome,
+        visit_duration_min: minutes ? parseInt(minutes) : null,
         notes: notes || null,
         create_offer: createOffer,
         offer_description: createOffer ? offerDescription : null,
@@ -432,11 +443,11 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
       </div>
 
       <FormField label="Stranka *">
-        <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required className={inputCls} placeholder="npr. JAGER d.o.o." />
-      </FormField>
-
-      <FormField label="Naslov / lokacija (neobvezno)">
-        <input type="text" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} className={inputCls} placeholder="npr. Ljubljanska 5, Maribor" />
+        <CustomerPicker
+          selected={customer}
+          onSelect={(c) => { setCustomer(c); setCustomerName(c.naziv); setCustomerAddress([c.ulica, c.posta].filter(Boolean).join(', ')); }}
+          onClear={() => { setCustomer(null); setCustomerName(''); setCustomerAddress(''); }}
+        />
       </FormField>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -445,6 +456,15 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
         </FormField>
         <FormField label="Čas odhoda (neobvezno)">
           <input type="time" value={departureTime} onChange={(e) => setDepartureTime(e.target.value)} className={inputCls} />
+        </FormField>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <FormField label="Čas pri stranki (min)">
+          <input type="number" min="0" value={minutes} onChange={(e) => setMinutes(e.target.value)} className={inputCls} placeholder="npr. 45" />
+        </FormField>
+        <FormField label="Izid obiska *">
+          <OutcomePicker value={outcome} onChange={setOutcome} />
         </FormField>
       </div>
 
@@ -614,6 +634,8 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
   });
   const [customerName, setCustomerName] = useState('');
   const [channel, setChannel] = useState('phone');
+  const [customer, setCustomer] = useState(null);
+  const [outcome, setOutcome] = useState('nic');
   const [durationMin, setDurationMin] = useState('');
   const [notes, setNotes] = useState('');
   const [createOffer, setCreateOffer] = useState(false);
@@ -627,6 +649,7 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
   const [loading, setLoading] = useState(false);
 
   function reset() {
+    setCustomer(null); setOutcome('nic');
     setCustomerName(''); setChannel('phone'); setDurationMin(''); setNotes('');
     setCreateOffer(false); setOfferDescription(''); setOfferAssignedTo('');
     setOfferDueDate(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); });
@@ -700,6 +723,9 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
         arrival_time: time || null,
         channel,
         call_duration_min: channel === 'phone' && durationMin ? parseInt(durationMin) : null,
+        customer_id: customer?.id || null,
+        outcome,
+        visit_duration_min: channel === 'phone' && durationMin ? parseInt(durationMin) : null,
         notes: notes || null,
         create_offer: createOffer,
         offer_description: createOffer ? offerDescription : null,
@@ -742,7 +768,11 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
       </div>
 
       <FormField label="Stranka *">
-        <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required className={inputCls} placeholder="npr. JAGER d.o.o." />
+        <CustomerPicker
+          selected={customer}
+          onSelect={(c) => { setCustomer(c); setCustomerName(c.naziv); }}
+          onClear={() => { setCustomer(null); setCustomerName(''); }}
+        />
       </FormField>
 
       <FormField label="Vrsta stika *">
@@ -765,6 +795,10 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
           <input type="number" min="0" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} className={inputCls} placeholder="npr. 15" />
         </FormField>
       )}
+
+      <FormField label="Izid *">
+        <OutcomePicker value={outcome} onChange={setOutcome} />
+      </FormField>
 
       <FormField label="Dogovori / kaj se je dogovorilo">
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={inputCls + ' resize-none'}
