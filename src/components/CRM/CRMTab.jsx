@@ -537,6 +537,38 @@ function HomeEndForm({ currentUser, onSaved, setError }) {
   );
 }
 
+// ─── NOTIFY BLOCK (obvestilo odgovorni osebi: email + Outlook) ───
+function NotifyBlock({ notify, setNotify, responsibleEmail, setResponsibleEmail, employees }) {
+  return (
+    <div className="border-2 border-dashed border-as-gray-200 rounded-lg p-4 space-y-3" style={{ background: notify ? '#EFF6FF' : '#fafafa' }}>
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)}
+          className="w-5 h-5 rounded border-as-gray-300 cursor-pointer" style={{ accentColor: '#1E40AF' }} />
+        <div className="flex-1">
+          <div className="text-sm font-bold text-as-gray-700 flex items-center gap-1.5">
+            <Mail className="w-4 h-4" /> Obvesti odgovorno osebo (email + Outlook)
+          </div>
+          <p className="text-xs text-as-gray-500 mt-0.5">
+            Izbrani osebi pride email iz naloge@as-system.si in dogodek v Outlook koledar.
+          </p>
+        </div>
+      </label>
+      {notify && (
+        <div className="pt-2 border-t border-as-gray-200">
+          <FormField label="Odgovorna oseba *">
+            <select value={responsibleEmail} onChange={(e) => setResponsibleEmail(e.target.value)} required className={inputCls}>
+              <option value="">-- izberi osebo --</option>
+              {(employees || []).map((emp) => (
+                <option key={emp.email} value={emp.email}>{emp.name} ({emp.department})</option>
+              ))}
+            </select>
+          </FormField>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── DAILY VIEW ───
 function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
   const [filterDate, setFilterDate] = useState(() => new Date().toISOString().slice(0, 10));
