@@ -1358,3 +1358,199 @@ function exportMonthlyCSV(year, month, byDay, topCustomers) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// ─── IZBIRA STRANKE (iskalni dropdown nad crm_customers) ───
+function CustomerPicker({ selected, onSelect, onClear }) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (selected) return;
+    const term = q.trim();
+    if (term.length < 2) { setResults([]); return; }
+    let active = true;
+    setLoading(true);
+    const t = setTimeout(async () => {
+      const { data } = await supabase
+        .from('crm_customers')
+        .select('id,naziv,ulica,posta,davcna,panoga')
+        .ilike('naziv', `%${term}%`)
+        .order('naziv', { ascending: true })
+        .limit(15);
+      if (active) { setResults(data || []); setLoading(false); }
+    }, 250);
+    return () => { active = false; clearTimeout(t); };
+  }, [q, selected]);
+
+  if (selected) {
+    return (
+      <div className="flex items-start justify-between gap-3 border border-as-gray-200 rounded-lg p-3 bg-as-gray-50">
+        <div className="text-sm">
+          <div className="font-bold text-as-gray-800">{selected.naziv}</div>
+          <div className="text-as-gray-500">{[selected.ulica, selected.posta].filter(Boolean).join(', ') || '—'}</div>
+          <div className="text-xs text-as-gray-400 mt-0.5">Davčna: {selected.davcna || '—'} · Panoga: {selected.panoga || '—'}</div>
+        </div>
+        <button type="button" onClick={onClear} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold whitespace-nowrap">Zamenjaj</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input type="text" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
+        className={inputCls} placeholder="Začni tipkati naziv stranke (min. 2 črki)..." />
+      {open && q.trim().length >= 2 && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-as-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+          {loading && <div className="px-3 py-2 text-sm text-as-gray-400">Iščem…</div>}
+          {!loading && results.length === 0 && <div className="px-3 py-2 text-sm text-as-gray-400">Ni zadetkov.</div>}
+          {results.map((c) => (
+            <button key={c.id} type="button" onClick={() => { onSelect(c); setOpen(false); setQ(''); }}
+              className="w-full text-left px-3 py-2 hover:bg-as-gray-50 border-b border-as-gray-100 last:border-0">
+              <div className="text-sm font-semibold text-as-gray-800">{c.naziv}</div>
+              <div className="text-xs text-as-gray-500">{[c.ulica, c.posta].filter(Boolean).join(', ') || '—'} · {c.panoga || '—'}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── IZBIRA IZIDA (Naročilo / Ponudba / Nič) ───
+function OutcomePicker({ value, onChange }) {
+  const opts = [
+    { id: 'narocilo', label: 'Naročilo', color: '#16A34A', bg: '#DCFCE7' },
+    { id: 'ponudba', label: 'Ponudba', color: '#D97706', bg: '#FEF3C7' },
+    { id: 'nic', label: 'Nič', color: '#6B7280', bg: '#F3F4F6' },
+  ];
+  return (
+    <div className="flex gap-2">
+      {opts.map((o) => {
+        const active = value === o.id;
+        return (
+          <button key={o.id} type="button" onClick={() => onChange(o.id)}
+            className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold border-2 transition"
+            style={{ borderColor: active ? o.color : '#E5E7EB', background: active ? o.bg : '#fff', color: active ? o.color : '#6B7280' }}>
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── ANALIZA PO STRANKAH ───
+function AnalysisView({ visits, loading }) {
+  const [q, setQ] = useState('');
+  const [custMap, setCustMap] = useState({});
+
+  useEffect(() => {
+    const ids = [...new Set((visits || []).map((v) => v.customer_id).filter(Boolean))];
+    if (ids.length === 0) { setCustMap({}); return; }
+    let active = true;
+    (async () => {
+      const map = {};
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const { data } = await supabase.from('crm_customers').select('id,naziv,panoga,ulica,posta').in('id', chunk);
+        (data || []).forEach((c) => { map[c.id] = c; });
+      }
+      if (active) setCustMap(map);
+    })();
+    return () => { active = false; };
+  }, [visits]);
+
+  const rows = useMemo(() => {
+    const g = {};
+    for (const v of (visits || [])) {
+      if (v.entry_type !== 'visit' && v.entry_type !== 'call') continue;
+      const cust = v.customer_id ? custMap[v.customer_id] : null;
+      const key = v.customer_id ? `id:${v.customer_id}` : `n:${(v.customer_name || '—').toLowerCase()}`;
+      if (!g[key]) g[key] = { key, naziv: cust?.naziv || v.customer_name || '—', panoga: cust?.panoga || '—', kontakti: 0, minutes: 0, narocila: 0, ponudbe: 0, zadnji: null };
+      const r = g[key];
+      if (cust?.naziv) r.naziv = cust.naziv;
+      if (cust?.panoga) r.panoga = cust.panoga;
+      r.kontakti += 1;
+      r.minutes += Number(v.visit_duration_min || v.call_duration_min || diffMinutes(v.arrival_time, v.departure_time) || 0);
+      if (v.outcome === 'narocilo') r.narocila += 1;
+      else if (v.outcome === 'ponudba') r.ponudbe += 1;
+      else if (v.create_offer && !v.outcome) r.ponudbe += 1;
+      if (!r.zadnji || (v.visit_date && v.visit_date > r.zadnji)) r.zadnji = v.visit_date;
+    }
+    let arr = Object.values(g);
+    const term = q.trim().toLowerCase();
+    if (term) arr = arr.filter((r) => r.naziv.toLowerCase().includes(term) || (r.panoga || '').toLowerCase().includes(term));
+    arr.sort((a, b) => b.kontakti - a.kontakti || b.minutes - a.minutes);
+    return arr;
+  }, [visits, custMap, q]);
+
+  const totals = useMemo(() => rows.reduce((a, r) => {
+    a.kontakti += r.kontakti; a.minutes += r.minutes; a.narocila += r.narocila; a.ponudbe += r.ponudbe;
+    return a;
+  }, { kontakti: 0, minutes: 0, narocila: 0, ponudbe: 0 }), [rows]);
+
+  if (loading) return <div className="text-center py-10 text-as-gray-400">Nalagam…</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Strank z aktivnostjo</div><div className="text-2xl font-bold text-as-gray-700 mt-1">{rows.length}</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Skupaj kontaktov</div><div className="text-2xl font-bold text-as-gray-700 mt-1">{totals.kontakti}</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Naročila</div><div className="text-2xl font-bold mt-1" style={{ color: '#16A34A' }}>{totals.narocila}</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Ponudbe</div><div className="text-2xl font-bold mt-1" style={{ color: '#D97706' }}>{totals.ponudbe}</div></div>
+      </div>
+
+      <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+          <h3 className="font-bold text-as-gray-700">👤 Analiza po strankah</h3>
+          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Išči stranko ali panogo…" className={inputCls + ' max-w-xs'} />
+        </div>
+        {rows.length === 0 ? (
+          <div className="text-center py-8 text-as-gray-400 text-sm">Ni podatkov. Vnosi z izbrano stranko se bodo prikazali tukaj.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-as-gray-50 text-as-gray-500 text-xs uppercase">
+                <tr>
+                  <th className="text-left p-2">Stranka</th>
+                  <th className="text-left p-2">Panoga</th>
+                  <th className="text-right p-2">Kontakti</th>
+                  <th className="text-right p-2">Čas (h)</th>
+                  <th className="text-right p-2">Naročila</th>
+                  <th className="text-right p-2">Ponudbe</th>
+                  <th className="text-left p-2">Ocena</th>
+                  <th className="text-right p-2">Zadnji kontakt</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const naroca = r.narocila > 0;
+                  const ponudbeBrez = r.ponudbe > 0 && r.narocila === 0;
+                  const badge = naroca
+                    ? { t: 'Naroča', c: '#16A34A', b: '#DCFCE7' }
+                    : ponudbeBrez
+                      ? { t: 'Ponudbe, brez naročila', c: '#DC2626', b: '#FEE2E2' }
+                      : { t: 'Brez izida', c: '#6B7280', b: '#F3F4F6' };
+                  return (
+                    <tr key={r.key} className="border-t border-as-gray-100 hover:bg-as-gray-50">
+                      <td className="p-2 font-semibold text-as-gray-800">{r.naziv}</td>
+                      <td className="p-2 text-as-gray-500 text-xs">{r.panoga}</td>
+                      <td className="p-2 text-right">{r.kontakti}</td>
+                      <td className="p-2 text-right">{(r.minutes / 60).toFixed(1)}</td>
+                      <td className="p-2 text-right font-semibold" style={{ color: r.narocila > 0 ? '#16A34A' : '#9CA3AF' }}>{r.narocila}</td>
+                      <td className="p-2 text-right font-semibold" style={{ color: r.ponudbe > 0 ? '#D97706' : '#9CA3AF' }}>{r.ponudbe}</td>
+                      <td className="p-2"><span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: badge.c, background: badge.b }}>{badge.t}</span></td>
+                      <td className="p-2 text-right text-as-gray-500">{r.zadnji ? formatDate(r.zadnji) : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
