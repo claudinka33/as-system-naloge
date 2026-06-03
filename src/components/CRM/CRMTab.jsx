@@ -569,6 +569,219 @@ function NotifyBlock({ notify, setNotify, responsibleEmail, setResponsibleEmail,
   );
 }
 
+// ─── CALL / EMAIL FORM ───
+function CallForm({ currentUser, employees, onSaved, setError }) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [time, setTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
+  const [customerName, setCustomerName] = useState('');
+  const [channel, setChannel] = useState('phone');
+  const [durationMin, setDurationMin] = useState('');
+  const [notes, setNotes] = useState('');
+  const [createOffer, setCreateOffer] = useState(false);
+  const [offerDescription, setOfferDescription] = useState('');
+  const [offerAssignedTo, setOfferAssignedTo] = useState('');
+  const [offerDueDate, setOfferDueDate] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10);
+  });
+  const [notify, setNotify] = useState(false);
+  const [responsibleEmail, setResponsibleEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  function reset() {
+    setCustomerName(''); setChannel('phone'); setDurationMin(''); setNotes('');
+    setCreateOffer(false); setOfferDescription(''); setOfferAssignedTo('');
+    setOfferDueDate(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); });
+    setNotify(false); setResponsibleEmail('');
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!customerName.trim()) { setError('Vnesi ime stranke.'); return; }
+    if (createOffer) {
+      if (!offerDescription.trim()) { setError('Vnesi opis ponudbe.'); return; }
+      if (!offerAssignedTo) { setError('Izberi komu dodeliš pripravo ponudbe.'); return; }
+    }
+    if (notify && !responsibleEmail) { setError('Izberi odgovorno osebo za obvestilo.'); return; }
+
+    setLoading(true); setError('');
+    try {
+      let offerTaskId = null;
+      if (createOffer) {
+        const assignedEmp = employees.find((emp) => emp.email === offerAssignedTo);
+        const kanalTxt = channel === 'email' ? 'email-a' : 'klica';
+        const { data: taskData, error: taskError } = await supabase
+          .from('tasks')
+          .insert([{
+            title: `Pripravi ponudbo: ${customerName}`,
+            description: `Iz ${kanalTxt} ${formatDate(date)}.\n\nOpis ponudbe:\n${offerDescription}\n\nDogovor:\n${notes || '—'}`,
+            assigned_to_emails: [offerAssignedTo],
+            responsible_email: offerAssignedTo,
+            responsible_name: assignedEmp?.name || null,
+            department: assignedEmp?.department || 'Komerciala',
+            company: customerName,
+            area: 'Ponudba',
+            priority: 'medium',
+            due_date: new Date(offerDueDate).toISOString(),
+            status: 'pending',
+            recurring_type: 'none',
+            created_by_email: currentUser?.email,
+            created_by_name: currentUser?.name,
+          }])
+          .select()
+          .single();
+        if (taskError) throw taskError;
+        offerTaskId = taskData.id;
+      }
+
+      let outlookEventId = null;
+      const respEmp = employees.find((e) => e.email === responsibleEmail);
+      if (notify && responsibleEmail) {
+        outlookEventId = await crmNotifyResponsible({
+          kind: 'call',
+          customerName,
+          dateTimeISO: new Date(`${date}T${time || '09:00'}:00`).toISOString(),
+          descLines: [
+            `Kanal: ${channel === 'email' ? 'Email' : 'Telefonski klic'}`,
+            (channel === 'phone' && durationMin) ? `Trajanje: ${durationMin} min` : '',
+            notes ? `Dogovor: ${notes}` : '',
+            createOffer ? `Ponudba: ${offerDescription} (rok ${formatDate(offerDueDate)})` : '',
+            `Vneseno iz CRM (${currentUser?.name || ''}).`,
+          ],
+          responsibleEmail,
+          responsibleName: respEmp?.name || responsibleEmail,
+          createdByName: currentUser?.name,
+          employees,
+        });
+      }
+
+      const { error: callError } = await supabase.from('crm_visits').insert([{
+        visit_date: date,
+        entry_type: 'call',
+        customer_name: customerName.trim(),
+        arrival_time: time || null,
+        channel,
+        call_duration_min: channel === 'phone' && durationMin ? parseInt(durationMin) : null,
+        notes: notes || null,
+        create_offer: createOffer,
+        offer_description: createOffer ? offerDescription : null,
+        offer_assigned_to_email: createOffer ? offerAssignedTo : null,
+        offer_due_date: createOffer ? offerDueDate : null,
+        offer_task_id: offerTaskId,
+        notify_responsible: notify,
+        responsible_email: notify ? responsibleEmail : null,
+        responsible_name: notify ? (respEmp?.name || null) : null,
+        add_to_calendar: notify,
+        outlook_event_id: outlookEventId,
+        created_by: currentUser?.email,
+        created_by_name: currentUser?.name,
+      }]);
+      if (callError) throw callError;
+
+      reset();
+      onSaved();
+    } catch (e) {
+      setError(e.message || 'Napaka pri shranjevanju.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+      <h3 className="font-bold text-as-gray-700 flex items-center gap-2">
+        <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#EDE9FE', color: '#6D28D9' }}>📞</span>
+        Klic / Email stranke
+      </h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <FormField label="Datum *">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
+        </FormField>
+        <FormField label="Čas">
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={inputCls} />
+        </FormField>
+      </div>
+
+      <FormField label="Stranka *">
+        <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required className={inputCls} placeholder="npr. JAGER d.o.o." />
+      </FormField>
+
+      <FormField label="Vrsta stika *">
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setChannel('phone')}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border-2 transition"
+            style={{ borderColor: channel === 'phone' ? '#6D28D9' : '#E5E7EB', background: channel === 'phone' ? '#EDE9FE' : '#fff', color: channel === 'phone' ? '#6D28D9' : '#6B7280' }}>
+            <Phone className="w-4 h-4" /> Klic
+          </button>
+          <button type="button" onClick={() => setChannel('email')}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border-2 transition"
+            style={{ borderColor: channel === 'email' ? '#6D28D9' : '#E5E7EB', background: channel === 'email' ? '#EDE9FE' : '#fff', color: channel === 'email' ? '#6D28D9' : '#6B7280' }}>
+            <Mail className="w-4 h-4" /> Email
+          </button>
+        </div>
+      </FormField>
+
+      {channel === 'phone' && (
+        <FormField label="Trajanje klica (min)">
+          <input type="number" min="0" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} className={inputCls} placeholder="npr. 15" />
+        </FormField>
+      )}
+
+      <FormField label="Dogovori / kaj se je dogovorilo">
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={inputCls + ' resize-none'}
+          placeholder="O čem ste se pogovarjali, kaj je bilo dogovorjeno, naslednji koraki..." />
+      </FormField>
+
+      {/* PONUDBA */}
+      <div className="border-2 border-dashed border-as-gray-200 rounded-lg p-4 space-y-3" style={{ background: createOffer ? '#FEF3C7' : '#fafafa' }}>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={createOffer} onChange={(e) => setCreateOffer(e.target.checked)}
+            className="w-5 h-5 rounded border-as-gray-300 cursor-pointer" style={{ accentColor: CRM_COLOR }} />
+          <div className="flex-1">
+            <div className="text-sm font-bold text-as-gray-700 flex items-center gap-1.5">
+              <Briefcase className="w-4 h-4" /> Naredi ponudbo za to stranko
+            </div>
+            <p className="text-xs text-as-gray-500 mt-0.5">Avtomatsko ustvari nalogo "Pripravi ponudbo" za izbrano osebo.</p>
+          </div>
+        </label>
+        {createOffer && (
+          <div className="space-y-3 pt-2 border-t border-as-gray-200">
+            <FormField label="Opis ponudbe *">
+              <textarea value={offerDescription} onChange={(e) => setOfferDescription(e.target.value)} rows={2} className={inputCls + ' resize-none'}
+                placeholder="Kaj naj se ponudi? Količine, izdelki, posebnosti..." />
+            </FormField>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <FormField label="Komu dodeli pripravo *">
+                <select value={offerAssignedTo} onChange={(e) => setOfferAssignedTo(e.target.value)} required className={inputCls}>
+                  <option value="">-- izberi osebo --</option>
+                  {(employees || []).map((emp) => (
+                    <option key={emp.email} value={emp.email}>{emp.name} ({emp.department})</option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="Rok za ponudbo *">
+                <input type="date" value={offerDueDate} onChange={(e) => setOfferDueDate(e.target.value)} required className={inputCls} />
+              </FormField>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <NotifyBlock notify={notify} setNotify={setNotify} responsibleEmail={responsibleEmail} setResponsibleEmail={setResponsibleEmail} employees={employees} />
+
+      <button type="submit" disabled={loading}
+        className="px-5 py-2.5 text-white font-semibold rounded-lg shadow-sm inline-flex items-center gap-2 transition disabled:opacity-50"
+        style={{ background: '#6D28D9' }}>
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+        Shrani {channel === 'email' ? 'email' : 'klic'} {createOffer && '+ kreiraj nalogo'}
+      </button>
+    </form>
+  );
+}
+
 // ─── DAILY VIEW ───
 function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
   const [filterDate, setFilterDate] = useState(() => new Date().toISOString().slice(0, 10));
