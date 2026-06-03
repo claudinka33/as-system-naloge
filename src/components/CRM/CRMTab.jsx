@@ -103,17 +103,20 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [personFilter, setPersonFilter] = useState(isAdmin ? 'all' : (currentUser?.email || 'all'));
 
   async function loadAll() {
     setLoading(true);
     setError('');
     try {
-      const { data, error } = await supabase
+      let qy = supabase
         .from('crm_visits')
         .select('*')
         .order('visit_date', { ascending: false })
         .order('arrival_time', { ascending: true })
         .limit(2000);
+      if (!isAdmin) qy = qy.eq('created_by', currentUser?.email);
+      const { data, error } = await qy;
       if (error) throw error;
       setVisits(data || []);
     } catch (e) {
@@ -124,6 +127,8 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
   }
 
   useEffect(() => { loadAll(); }, []);
+
+  const scopedVisits = (personFilter === 'all') ? visits : visits.filter((v) => v.created_by === personFilter);
 
   return (
     <div>
@@ -136,6 +141,15 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
             <SubTab active={view === 'analysis'} onClick={() => setView('analysis')} icon={<User className="w-4 h-4" />} label="Analiza strank" />
           </div>
         </div>
+        {isAdmin && (
+          <select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}
+            className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm">
+            <option value="all">Vsi komercialisti</option>
+            {(employees || []).filter((e) => canAccessCRM(e.email)).map((e) => (
+              <option key={e.email} value={e.email}>{e.name}</option>
+            ))}
+          </select>
+        )}
         <div id="crm-controls-slot" className="flex flex-wrap items-center gap-3 ml-auto"></div>
       </div>
 
@@ -148,9 +162,9 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       )}
 
       {view === 'entry' && <EntryView currentUser={currentUser} employees={employees} onSaved={loadAll} setError={setError} />}
-      {view === 'daily' && <DailyView visits={visits} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
-      {view === 'monthly' && <MonthlyView visits={visits} loading={loading} />}
-      {view === 'analysis' && <AnalysisView visits={visits} loading={loading} />}
+      {view === 'daily' && <DailyView visits={scopedVisits} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
+      {view === 'monthly' && <MonthlyView visits={scopedVisits} loading={loading} />}
+      {view === 'analysis' && <AnalysisView visits={scopedVisits} loading={loading} />}
     </div>
   );
 }
@@ -1399,9 +1413,11 @@ function CustomerPicker({ selected, onSelect, onClear }) {
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [chosen, setChosen] = useState(null);
+  const [branches, setBranches] = useState([]);
 
   useEffect(() => {
-    if (selected) return;
+    if (selected || chosen) return;
     const term = q.trim();
     if (term.length < 2) { setResults([]); return; }
     let active = true;
@@ -1413,13 +1429,33 @@ function CustomerPicker({ selected, onSelect, onClear }) {
         .from('crm_customers')
         .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
         .or(`naziv.ilike.${pat},ulica.ilike.${pat},posta.ilike.${pat},davcna.ilike.${pat}`)
-        .order('naziv', { ascending: true })
         .order('poslovalnica', { ascending: true })
-        .limit(100);
-      if (active) { setResults(data || []); setLoading(false); }
+        .limit(200);
+      const map = {};
+      (data || []).forEach((c) => {
+        const key = (c.davcna && String(c.davcna).trim()) ? `d:${c.davcna}` : `id:${c.id}`;
+        if (!map[key]) map[key] = { key, davcna: c.davcna || null, naziv: c.naziv, panoga: c.panoga, sampleId: c.id, count: 0 };
+        map[key].count += 1;
+        if (c.poslovalnica === 0) map[key].naziv = c.naziv;
+      });
+      const arr = Object.values(map).sort((a, b) => a.naziv.localeCompare(b.naziv)).slice(0, 30);
+      if (active) { setResults(arr); setLoading(false); }
     }, 250);
     return () => { active = false; clearTimeout(t); };
-  }, [q, selected]);
+  }, [q, selected, chosen]);
+
+  async function chooseCustomer(cust) {
+    setOpen(false);
+    let qy = supabase.from('crm_customers').select('id,naziv,ulica,posta,davcna,panoga,poslovalnica');
+    qy = cust.davcna ? qy.eq('davcna', cust.davcna) : qy.eq('id', cust.sampleId);
+    const { data } = await qy.order('poslovalnica', { ascending: true });
+    const list = data || [];
+    if (list.length <= 1) { onSelect(list[0] || null); return; }
+    setChosen(cust);
+    setBranches(list);
+  }
+
+  function resetAll() { setChosen(null); setBranches([]); setQ(''); setResults([]); onClear(); }
 
   if (selected) {
     return (
@@ -1429,7 +1465,24 @@ function CustomerPicker({ selected, onSelect, onClear }) {
           <div className="text-as-gray-500">{selected.poslovalnica ? `Posl. ${selected.poslovalnica} · ` : ''}{[selected.ulica, selected.posta].filter(Boolean).join(', ') || '—'}</div>
           <div className="text-xs text-as-gray-400 mt-0.5">Davčna: {selected.davcna || '—'} · Panoga: {selected.panoga || '—'}</div>
         </div>
-        <button type="button" onClick={onClear} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold whitespace-nowrap">Zamenjaj</button>
+        <button type="button" onClick={resetAll} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold whitespace-nowrap">Zamenjaj</button>
+      </div>
+    );
+  }
+
+  if (chosen) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-bold text-as-gray-800">{chosen.naziv}</div>
+          <button type="button" onClick={() => { setChosen(null); setBranches([]); }} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold whitespace-nowrap">Druga stranka</button>
+        </div>
+        <select className={inputCls} defaultValue="" onChange={(e) => { const b = branches.find((x) => String(x.id) === e.target.value); if (b) onSelect(b); }}>
+          <option value="" disabled>— izberi poslovalnico ({branches.length}) —</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>{b.poslovalnica != null ? `Posl. ${b.poslovalnica} — ` : ''}{[b.ulica, b.posta].filter(Boolean).join(', ')}</option>
+          ))}
+        </select>
       </div>
     );
   }
@@ -1437,16 +1490,16 @@ function CustomerPicker({ selected, onSelect, onClear }) {
   return (
     <div className="relative">
       <input type="text" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
-        className={inputCls} placeholder="Išči po nazivu, naslovu ali davčni (min. 2 znaka)..." />
+        className={inputCls} placeholder="Išči stranko po nazivu, naslovu ali davčni (min. 2 znaka)..." />
       {open && q.trim().length >= 2 && (
         <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-as-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
           {loading && <div className="px-3 py-2 text-sm text-as-gray-400">Iščem…</div>}
           {!loading && results.length === 0 && <div className="px-3 py-2 text-sm text-as-gray-400">Ni zadetkov.</div>}
           {results.map((c) => (
-            <button key={c.id} type="button" onClick={() => { onSelect(c); setOpen(false); setQ(''); }}
+            <button key={c.key} type="button" onClick={() => chooseCustomer(c)}
               className="w-full text-left px-3 py-2 hover:bg-as-gray-50 border-b border-as-gray-100 last:border-0">
-              <div className="text-sm font-semibold text-as-gray-800">{c.naziv}{c.poslovalnica ? ` · posl. ${c.poslovalnica}` : ''}</div>
-              <div className="text-xs text-as-gray-500">{[c.ulica, c.posta].filter(Boolean).join(', ') || '—'} · {c.panoga || '—'}</div>
+              <div className="text-sm font-semibold text-as-gray-800">{c.naziv}</div>
+              <div className="text-xs text-as-gray-500">{c.davcna ? `Davčna ${c.davcna}` : ''}{c.count > 1 ? ` · ${c.count} poslovalnic` : ''} · {c.panoga || '—'}</div>
             </button>
           ))}
         </div>
