@@ -1,8 +1,33 @@
 // CRMTab.jsx — CRM modul za komercialistko (obiski strank + kilometrina + ponudbe)
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase } from 'lucide-react';
+import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail } from 'lucide-react';
 import { supabase } from '../../supabase';
+import { syncTaskWebhook } from '../../webhooks.js';
+
+// Pošlje email + Outlook obvestilo odgovorni osebi (znova uporabi obstoječi task-sync n8n flow).
+// Vrne outlook_event_id (ali null). Napaka ne prekine shranjevanja.
+async function crmNotifyResponsible({ kind, customerName, dateTimeISO, descLines, responsibleEmail, responsibleName, createdByName, employees }) {
+  if (!responsibleEmail) return null;
+  const titlePrefix = kind === 'call' ? 'CRM klic / email' : 'CRM obisk';
+  const pseudoTask = {
+    id: `crm-${kind}-${Date.now()}`,
+    title: `${titlePrefix}: ${customerName || 'stranka'}`,
+    description: (descLines || []).filter(Boolean).join('\n'),
+    due_date: dateTimeISO,
+    priority: 'medium',
+    assigned_to_emails: [responsibleEmail],
+    add_to_calendar: true,
+    outlook_event_id: null,
+  };
+  try {
+    const res = await syncTaskWebhook('create', pseudoTask, employees || [], createdByName);
+    return res?.outlook_event_id || null;
+  } catch (e) {
+    console.error('[crm] obvestilo napaka:', e);
+    return null;
+  }
+}
 
 const AS_RED = '#C8102E';
 const CRM_COLOR = '#7C2D12';
