@@ -286,7 +286,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                     <th className="px-3 py-3 text-center font-bold text-blue-700">MN odp.</th>
                     <th className="px-3 py-3 text-center font-bold text-blue-700">MN zak.</th>
                     <th className="px-3 py-3 text-center font-bold text-amber-700">PN odp.</th>
-                    <th className="px-3 py-3 text-center font-bold text-amber-700">PN zak.</th>
+                    <th className="px-3 py-3 text-center font-bold text-amber-700">PN zak.</th><th className="px-3 py-3 text-center font-bold text-emerald-700">Skupaj zak.</th>
                     <th className="px-3 py-3 text-center font-bold text-green-700">Prev.</th>
                     <th className="px-3 py-3 text-center font-bold text-red-700">Rek.</th>
                     <th className="px-3 py-3 text-center font-bold text-purple-700">Koop.</th>
@@ -302,7 +302,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                         <td className="px-3 py-3 text-center font-bold text-blue-700">{e.mn_odprti}</td>
                         <td className="px-3 py-3 text-center font-bold text-blue-700">{e.mn_zakljuceni}</td>
                         <td className="px-3 py-3 text-center font-bold text-amber-700">{e.pn_odprti}</td>
-                        <td className="px-3 py-3 text-center font-bold text-amber-700">{e.pn_zakljuceni}</td>
+                        <td className="px-3 py-3 text-center font-bold text-amber-700">{e.pn_zakljuceni}</td><td className="px-3 py-3 text-center font-bold text-emerald-700">{(e.mn_zakljuceni || 0) + (e.pn_zakljuceni || 0)}</td>
                         <td className="px-3 py-3 text-center font-bold text-green-700">{e.prevzemnice}</td>
                         <td className="px-3 py-3 text-center font-bold text-red-700">{e.reklamacije}</td>
                         <td className="px-3 py-3 text-center font-bold text-purple-700">{e.kooperanti}</td>
@@ -325,7 +325,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                       </tr>
                       {expandedRow === e.id ? (
                         <tr className="bg-gray-50 border-b">
-                          <td colSpan={10} className="px-4 py-4">
+                          <td colSpan={11} className="px-4 py-4">
                             <div className="space-y-2 text-sm">
                               {e.opomba ? (
                                 <div>
@@ -376,7 +376,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                     <th className="px-3 py-3 text-center font-bold text-blue-700">MN odp.</th>
                     <th className="px-3 py-3 text-center font-bold text-blue-700">MN zak.</th>
                     <th className="px-3 py-3 text-center font-bold text-amber-700">PN odp.</th>
-                    <th className="px-3 py-3 text-center font-bold text-amber-700">PN zak.</th>
+                    <th className="px-3 py-3 text-center font-bold text-amber-700">PN zak.</th><th className="px-3 py-3 text-center font-bold text-emerald-700">Skupaj zak.</th>
                     <th className="px-3 py-3 text-center font-bold text-green-700">Prev.</th>
                     <th className="px-3 py-3 text-center font-bold text-red-700">Rek.</th>
                     <th className="px-3 py-3 text-center font-bold text-purple-700">Koop.</th>
@@ -391,7 +391,7 @@ export default function KomercialaModule({ currentUser, isAdmin }) {
                       <td className="px-3 py-3 text-center font-bold text-blue-700">{m.mn_odprti}</td>
                       <td className="px-3 py-3 text-center font-bold text-blue-700">{m.mn_zakljuceni}</td>
                       <td className="px-3 py-3 text-center font-bold text-amber-700">{m.pn_odprti}</td>
-                      <td className="px-3 py-3 text-center font-bold text-amber-700">{m.pn_zakljuceni}</td>
+                      <td className="px-3 py-3 text-center font-bold text-amber-700">{m.pn_zakljuceni}</td><td className="px-3 py-3 text-center font-bold text-emerald-700">{(m.mn_zakljuceni || 0) + (m.pn_zakljuceni || 0)}</td>
                       <td className="px-3 py-3 text-center font-bold text-green-700">{m.prevzemnice}</td>
                       <td className="px-3 py-3 text-center font-bold text-red-700">{m.reklamacije}</td>
                       <td className="px-3 py-3 text-center font-bold text-purple-700">{m.kooperanti}</td>
