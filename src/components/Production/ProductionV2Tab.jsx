@@ -66,6 +66,10 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('sl-SI');
 }
 
+function shiftLabel(n) {
+  return Number(n) === 2 ? 'Popoldanska' : Number(n) === 1 ? 'Dopoldanska' : '—';
+}
+
 export default function ProductionV2Tab({ currentUser, isAdmin }) {
   const [view, setView] = useState('monthly');
 
@@ -189,6 +193,8 @@ function ProductionForm({ currentUser, onSaved, setError }) {
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formPieces, setFormPieces] = useState('');
   const [formTime, setFormTime] = useState('');
+  const [formDelavec, setFormDelavec] = useState('');
+  const [formShift, setFormShift] = useState(1);
   const [formTipVijaka, setFormTipVijaka] = useState('');
   const [formOperater, setFormOperater] = useState('');
   const [formOpombe, setFormOpombe] = useState('');
@@ -206,6 +212,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
     setSelectedMachine('');
     setFormPieces('');
     setFormTime('');
+    setFormDelavec('');
     setFormTipVijaka('');
     setFormOpombe('');
   }
@@ -229,6 +236,8 @@ function ProductionForm({ currentUser, onSaved, setError }) {
         date: formDate, segment: selectedSegment, machine_id: selectedMachine,
         machine_name: machineInfo.stroj, operacija: machineInfo.operacija,
         normativ_kos_h: machineInfo.normativ_h, kosi: pieces, cas_ur: hours,
+        delavec_ur: formDelavec ? timeStringToHours(formDelavec) : null,
+        shift: Number(formShift) || 1,
         tip_vijaka: formTipVijaka || null, operater: formOperater,
         opombe: formOpombe || null, ucinkovitost_pct: efficiency,
         created_by: currentUser?.email || null,
@@ -261,6 +270,13 @@ function ProductionForm({ currentUser, onSaved, setError }) {
           </select>
         </FormField>
       </div>
+
+      <FormField label="Smena *">
+        <select value={formShift} onChange={(e) => setFormShift(Number(e.target.value))} required className={inputCls}>
+          <option value={1}>Dopoldanska</option>
+          <option value={2}>Popoldanska</option>
+        </select>
+      </FormField>
 
       <FormField label="Segment *">
         <div className="flex flex-wrap gap-2">
@@ -305,10 +321,14 @@ function ProductionForm({ currentUser, onSaved, setError }) {
             <FormField label="Število kosov *">
               <input type="number" min="0" value={formPieces} onChange={(e) => setFormPieces(e.target.value)} required className={inputCls} placeholder="npr. 50000" />
             </FormField>
-            <FormField label="Čas (HH:MM) *">
+            <FormField label="Mašina delala (HH:MM) *">
               <input type="text" value={formTime} onChange={(e) => setFormTime(e.target.value)} required className={inputCls} placeholder="npr. 7:30" pattern="[0-9]+:[0-5][0-9]" />
             </FormField>
           </div>
+
+          <FormField label="Delavec delal (HH:MM)">
+            <input type="text" value={formDelavec} onChange={(e) => setFormDelavec(e.target.value)} className={inputCls} placeholder="npr. 7:30" pattern="[0-9]+:[0-5][0-9]" />
+          </FormField>
 
           <FormField label="Tip vijaka / izdelka">
             <input type="text" value={formTipVijaka} onChange={(e) => setFormTipVijaka(e.target.value)} className={inputCls} placeholder={machineInfo.tipi || ''} />
@@ -347,6 +367,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
 function StopForm({ currentUser, onSaved, setError }) {
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formTime, setFormTime] = useState('');
+  const [formShift, setFormShift] = useState(1);
   const [selectedMachine, setSelectedMachine] = useState('');
   const [formReason, setFormReason] = useState('');
   const [formDescription, setFormDescription] = useState('');
@@ -371,7 +392,7 @@ function StopForm({ currentUser, onSaved, setError }) {
     setLoading(true); setError('');
     try {
       const { error } = await supabase.from('production_v2_stops').insert([{
-        date: formDate, duration_hours: hours,
+        date: formDate, duration_hours: hours, shift: Number(formShift) || 1,
         segment: machineInfo?.segment || null, machine_id: selectedMachine,
         machine_name: machineInfo?.stroj || null,
         reason_category: formReason || null, description: formDescription || null,
@@ -404,6 +425,13 @@ function StopForm({ currentUser, onSaved, setError }) {
           <input type="text" value={formTime} onChange={(e) => setFormTime(e.target.value)} required className={inputCls} placeholder="npr. 1:30" pattern="[0-9]+:[0-5][0-9]" />
         </FormField>
       </div>
+
+      <FormField label="Smena *">
+        <select value={formShift} onChange={(e) => setFormShift(Number(e.target.value))} required className={inputCls}>
+          <option value={1}>Dopoldanska</option>
+          <option value={2}>Popoldanska</option>
+        </select>
+      </FormField>
 
       <FormField label="Stroj *">
         <select value={selectedMachine} onChange={(e) => setSelectedMachine(e.target.value)} required className={inputCls}>
@@ -642,6 +670,8 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
               </div>
             </div>
           )}
+
+          <ShiftAnalysis entries={dayEntries} stops={dayStops} />
 
           {/* Po skupinah (segmentih) - mini kartoni */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
@@ -891,7 +921,7 @@ function MonthlyView({ entries, stops, wastes, loading }) {
         </select>
       </div>
       <button
-        onClick={() => exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason)}
+        onClick={() => exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason, monthEntries, monthStops)}
         className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
       >
         <Download className="w-4 h-4" /> Izvoz v Excel
@@ -927,6 +957,8 @@ function MonthlyView({ entries, stops, wastes, loading }) {
               </div>
             </div>
           )}
+
+          <ShiftAnalysis entries={monthEntries} stops={monthStops} />
 
           {/* Po skupinah */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
@@ -1054,8 +1086,10 @@ function EntryTable({ entries, isAdmin, currentUser, onReload }) {
           <tr>
             <th className="text-left p-2">Stroj</th>
             <th className="text-left p-2">Operacija</th>
+            <th className="text-center p-2">Smena</th>
             <th className="text-right p-2">Kosi</th>
-            <th className="text-right p-2">Čas</th>
+            <th className="text-right p-2">Mašina</th>
+            <th className="text-right p-2">Delavec ur</th>
             <th className="text-right p-2">Doseganje</th>
             <th className="text-left p-2">Delavec</th>
             <th className="text-left p-2">Tip</th>
@@ -1072,8 +1106,10 @@ function EntryTable({ entries, isAdmin, currentUser, onReload }) {
               <tr key={e.id} className="border-t border-as-gray-100 hover:bg-as-gray-50">
                 <td className="p-2"><strong>{e.machine_id}</strong><div className="text-xs text-as-gray-500">{e.machine_name}</div></td>
                 <td className="p-2 text-xs text-as-gray-500">{e.operacija}</td>
+                <td className="p-2 text-center">{shiftLabel(e.shift)}</td>
                 <td className="p-2 text-right font-semibold">{formatNumber(e.kosi)}</td>
                 <td className="p-2 text-right">{hoursToTimeString(e.cas_ur)}</td>
+                <td className="p-2 text-right text-as-gray-500">{e.delavec_ur ? hoursToTimeString(e.delavec_ur) : '—'}</td>
                 <td className="p-2 text-right font-bold" style={{ color }}>{pct === null || pct === undefined ? '—' : `${pct}%`}</td>
                 <td className="p-2">{e.operater || '—'}</td>
                 <td className="p-2 text-xs text-as-gray-500">{e.tip_vijaka || '—'}</td>
@@ -1106,6 +1142,7 @@ function StopsTable({ rows, isAdmin, currentUser, onReload }) {
         <thead className="bg-as-gray-50 text-as-gray-500 text-xs uppercase">
           <tr>
             <th className="text-left p-2">Stroj</th>
+            <th className="text-center p-2">Smena</th>
             <th className="text-right p-2">Trajanje</th>
             <th className="text-left p-2">Razlog</th>
             <th className="text-left p-2">Opis</th>
@@ -1122,6 +1159,7 @@ function StopsTable({ rows, isAdmin, currentUser, onReload }) {
             return (
               <tr key={e.id} className="border-t border-as-gray-100 hover:bg-as-gray-50">
                 <td className="p-2"><strong>{e.machine_id}</strong><div className="text-xs text-as-gray-500">{e.machine_name}</div></td>
+                <td className="p-2 text-center">{shiftLabel(e.shift)}</td>
                 <td className="p-2 text-right">{hoursToTimeString(e.duration_hours)}</td>
                 <td className="p-2">{e.reason_category || '—'}</td>
                 <td className="p-2 text-xs text-as-gray-500">{e.description || '—'}</td>
@@ -1212,6 +1250,82 @@ function BigStat({ icon, label, value, unit, color, bgColor }) {
   );
 }
 
+function ShiftAnalysis({ entries, stops }) {
+  const shifts = [
+    { key: 1, label: 'Dopoldanska', emoji: '🌅', color: '#B45309' },
+    { key: 2, label: 'Popoldanska', emoji: '🌙', color: '#3730A3' },
+  ];
+  const data = { 1: { kosi: 0, masina: 0, delavec: 0, zastoj: 0, vnosov: 0, expected: 0 },
+                 2: { kosi: 0, masina: 0, delavec: 0, zastoj: 0, vnosov: 0, expected: 0 } };
+  (entries || []).forEach((e) => {
+    const k = Number(e.shift) === 2 ? 2 : 1;
+    data[k].kosi += Number(e.kosi || 0);
+    data[k].masina += Number(e.cas_ur || 0);
+    data[k].delavec += Number(e.delavec_ur || 0);
+    data[k].expected += Number(e.normativ_kos_h || 0) * Number(e.cas_ur || 0);
+    data[k].vnosov += 1;
+  });
+  (stops || []).forEach((s) => {
+    const k = Number(s.shift) === 2 ? 2 : 1;
+    data[k].zastoj += Number(s.duration_hours || 0);
+  });
+  const hasData = shifts.some((s) => data[s.key].vnosov > 0 || data[s.key].zastoj > 0);
+  return (
+    <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+      <h3 className="font-bold text-as-gray-700 mb-4">🌓 Analiza po smenah</h3>
+      {!hasData ? <Empty /> : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {shifts.map((s) => {
+            const d = data[s.key];
+            const eff = d.expected > 0 ? Math.round((d.kosi / d.expected) * 100) : null;
+            const util = (d.masina + d.zastoj) > 0 ? Math.round((d.masina / (d.masina + d.zastoj)) * 100) : null;
+            const effColor = eff === null ? '#9CA3AF' : eff >= 95 ? '#16A34A' : eff >= 75 ? '#D97706' : '#DC2626';
+            return (
+              <div key={s.key} className="border border-as-gray-100 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3 font-bold" style={{ color: s.color }}>
+                  <span className="text-lg">{s.emoji}</span> {s.label}
+                  <span className="ml-auto text-xs font-normal text-as-gray-400">{d.vnosov} vnosov</span>
+                </div>
+                <div className="space-y-1.5 text-sm">
+                  <ShiftRow label="📦 Proizvedeno" value={`${formatNumber(d.kosi)} kos`} />
+                  <ShiftRow label="⚙️ Mašina delala" value={hoursToTimeString(d.masina)} />
+                  <ShiftRow label="👷 Delavec delal" value={hoursToTimeString(d.delavec)} />
+                  <ShiftRow label="⚠️ Zastoj" value={hoursToTimeString(d.zastoj)} />
+                  {eff !== null && (
+                    <div className="flex justify-between pt-1">
+                      <span className="text-as-gray-500">🎯 Doseganje normativa</span>
+                      <span className="font-bold" style={{ color: effColor }}>{eff}%</span>
+                    </div>
+                  )}
+                  {util !== null && (
+                    <div className="pt-2">
+                      <div className="flex justify-between text-xs text-as-gray-500 mb-1">
+                        <span>Izkoriščenost stroja</span><strong style={{ color: s.color }}>{util}%</strong>
+                      </div>
+                      <div className="w-full h-2 bg-as-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full" style={{ width: `${util}%`, backgroundColor: s.color }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShiftRow({ label, value }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-as-gray-500">{label}</span>
+      <span className="font-semibold text-as-gray-700">{value}</span>
+    </div>
+  );
+}
+
 function SectionCard({ title, count, defaultOpen = false, children }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -1259,16 +1373,16 @@ function exportDailyCSV(date, entries, stops, wastes) {
   lines.push('');
 
   lines.push('PROIZVODNJA');
-  lines.push('Stroj;Naziv;Operacija;Kosi;Čas (h);Doseganje (%);Delavec;Tip;Opombe');
+  lines.push('Stroj;Naziv;Operacija;Smena;Kosi;Mašina (h);Delavec (h);Doseganje (%);Delavec;Tip;Opombe');
   entries.forEach((e) => {
-    lines.push([e.machine_id, e.machine_name, e.operacija, e.kosi, Number(e.cas_ur).toFixed(2), e.ucinkovitost_pct ?? '', e.operater || '', e.tip_vijaka || '', e.opombe || ''].join(';'));
+    lines.push([e.machine_id, e.machine_name, e.operacija, shiftLabel(e.shift), e.kosi, Number(e.cas_ur).toFixed(2), e.delavec_ur != null ? Number(e.delavec_ur).toFixed(2) : '', e.ucinkovitost_pct ?? '', e.operater || '', e.tip_vijaka || '', e.opombe || ''].join(';'));
   });
   lines.push('');
 
   lines.push('ZASTOJI');
-  lines.push('Stroj;Trajanje (h);Razlog;Opis;Popravilo;Pogostost;Odpravil;Delavec');
+  lines.push('Stroj;Smena;Trajanje (h);Razlog;Opis;Popravilo;Pogostost;Odpravil;Delavec');
   stops.forEach((s) => {
-    lines.push([s.machine_id, Number(s.duration_hours).toFixed(2), s.reason_category || '', s.description || '', s.repair_done || '', s.frequency || 1, s.fixed_by || '', s.operater || ''].join(';'));
+    lines.push([s.machine_id, shiftLabel(s.shift), Number(s.duration_hours).toFixed(2), s.reason_category || '', s.description || '', s.repair_done || '', s.frequency || 1, s.fixed_by || '', s.operater || ''].join(';'));
   });
   lines.push('');
 
@@ -1290,7 +1404,7 @@ function exportDailyCSV(date, entries, stops, wastes) {
   URL.revokeObjectURL(url);
 }
 
-function exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason) {
+function exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason, monthEntries, monthStops) {
   const lines = [];
   lines.push(`Mesečno poročilo PROIZVODNJA v2 - ${SLOVENIAN_MONTHS[month - 1]} ${year}`);
   lines.push('');
@@ -1310,6 +1424,19 @@ function exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason) {
   lines.push('ODPADEK PO RAZLOGIH');
   lines.push('Razlog;Kg');
   byWasteReason.filter((r) => r.kg > 0).forEach((r) => lines.push(`${r.reason};${r.kg}`));
+  lines.push('');
+
+  lines.push('ANALIZA PO SMENAH');
+  lines.push('Smena;Proizvedeno (kos);Mašina (h);Delavec (h);Zastoj (h)');
+  [1, 2].forEach((sh) => {
+    const ents = (monthEntries || []).filter((e) => (Number(e.shift) === 2 ? 2 : 1) === sh);
+    const stps = (monthStops || []).filter((s) => (Number(s.shift) === 2 ? 2 : 1) === sh);
+    const kosi = ents.reduce((a, e) => a + Number(e.kosi || 0), 0);
+    const masina = ents.reduce((a, e) => a + Number(e.cas_ur || 0), 0);
+    const delavec = ents.reduce((a, e) => a + Number(e.delavec_ur || 0), 0);
+    const zastoj = stps.reduce((a, s) => a + Number(s.duration_hours || 0), 0);
+    lines.push([shiftLabel(sh), kosi, masina.toFixed(2), delavec.toFixed(2), zastoj.toFixed(2)].join(';'));
+  });
 
   const csv = '\uFEFF' + lines.join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
