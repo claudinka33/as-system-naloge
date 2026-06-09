@@ -1415,6 +1415,60 @@ function CustomerPicker({ selected, onSelect, onClear }) {
   const [loading, setLoading] = useState(false);
   const [chosen, setChosen] = useState(null);
   const [branches, setBranches] = useState([]);
+  // Dodajanje nove stranke
+  const [adding, setAdding] = useState(false);
+  const [nNaziv, setNNaziv] = useState('');
+  const [nUlica, setNUlica] = useState('');
+  const [nPosta, setNPosta] = useState('');
+  const [nDavcna, setNDavcna] = useState('');
+  const [nPanoga, setNPanoga] = useState('');
+  const [savingNew, setSavingNew] = useState(false);
+  const [addErr, setAddErr] = useState('');
+
+  function startAdd() {
+    setNNaziv(q.trim());
+    setNUlica(''); setNPosta(''); setNDavcna(''); setNPanoga('');
+    setAddErr('');
+    setOpen(false);
+    setAdding(true);
+  }
+
+  async function saveNewCustomer() {
+    const naziv = nNaziv.trim();
+    if (!naziv) { setAddErr('Vnesi naziv stranke.'); return; }
+    setSavingNew(true); setAddErr('');
+    try {
+      const davcna = nDavcna.trim() || null;
+      if (davcna) {
+        const { data: ex } = await supabase
+          .from('crm_customers')
+          .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+          .eq('davcna', davcna)
+          .order('poslovalnica', { ascending: true })
+          .limit(1);
+        if (ex && ex.length > 0) { setAdding(false); onSelect(ex[0]); return; }
+      }
+      const { data, error } = await supabase
+        .from('crm_customers')
+        .insert([{
+          naziv,
+          ulica: nUlica.trim() || null,
+          posta: nPosta.trim() || null,
+          davcna,
+          panoga: nPanoga.trim() || null,
+          poslovalnica: 0,
+        }])
+        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+        .single();
+      if (error) throw error;
+      setAdding(false);
+      onSelect(data);
+    } catch (e) {
+      setAddErr(e.message || 'Napaka pri shranjevanju stranke.');
+    } finally {
+      setSavingNew(false);
+    }
+  }
 
   useEffect(() => {
     if (selected || chosen) return;
@@ -1487,6 +1541,48 @@ function CustomerPicker({ selected, onSelect, onClear }) {
     );
   }
 
+  if (adding) {
+    return (
+      <div className="border border-as-gray-200 rounded-lg p-4 bg-as-gray-50 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-bold text-as-gray-800">➕ Nova stranka</div>
+          <button type="button" onClick={() => setAdding(false)} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold">Prekliči</button>
+        </div>
+        {addErr && <div className="text-xs text-red-600">{addErr}</div>}
+        <div>
+          <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Naziv *</label>
+          <input type="text" value={nNaziv} onChange={(e) => setNNaziv(e.target.value)} className={inputCls} placeholder="Naziv stranke" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Ulica</label>
+            <input type="text" value={nUlica} onChange={(e) => setNUlica(e.target.value)} className={inputCls} placeholder="Ulica in hišna št." />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Pošta</label>
+            <input type="text" value={nPosta} onChange={(e) => setNPosta(e.target.value)} className={inputCls} placeholder="npr. 3000 Celje" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Davčna</label>
+            <input type="text" value={nDavcna} onChange={(e) => setNDavcna(e.target.value)} className={inputCls} placeholder="brez SI" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Panoga</label>
+            <input type="text" value={nPanoga} onChange={(e) => setNPanoga(e.target.value)} className={inputCls} placeholder="neobvezno" />
+          </div>
+        </div>
+        <button type="button" onClick={saveNewCustomer} disabled={savingNew}
+          className="px-4 py-2 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
+          {savingNew ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Shrani stranko in izberi
+        </button>
+        <p className="text-xs text-as-gray-400">Če davčna že obstaja, se izbere obstoječa stranka (brez podvajanja).</p>
+      </div>
+    );
+  }
+
   return (
     <div className="relative">
       <input type="text" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
@@ -1502,6 +1598,12 @@ function CustomerPicker({ selected, onSelect, onClear }) {
               <div className="text-xs text-as-gray-500">{c.davcna ? `Davčna ${c.davcna}` : ''}{c.count > 1 ? ` · ${c.count} poslovalnic` : ''} · {c.panoga || '—'}</div>
             </button>
           ))}
+          {!loading && (
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={startAdd}
+              className="w-full text-left px-3 py-2.5 hover:bg-orange-50 border-t border-as-gray-200 text-sm font-semibold flex items-center gap-2" style={{ color: CRM_COLOR }}>
+              <Plus className="w-4 h-4" /> Dodaj novo stranko{q.trim() ? `: "${q.trim()}"` : ''}
+            </button>
+          )}
         </div>
       )}
     </div>
