@@ -125,7 +125,7 @@ function Section({ title, icon, emoji, color, bgColor, open, onToggle, children 
 function ProductionForm({ shifrants, currentUser }) {
   const today = new Date().toISOString().split('T')[0];
   const [form, setForm] = useState({
-    date: today, shift: 1, machine_id: '', product_id: '', quantity: '', normativ: '', cas: '', worker_id: '', notes: ''
+    date: today, shift: 1, machine_id: '', product_id: '', quantity: '', normativ: '', delavec: '', masina: '', worker_id: '', notes: ''
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -156,8 +156,8 @@ function ProductionForm({ shifrants, currentUser }) {
 
   // Izračun % realizacije v živo
   const realizacija = (() => {
-    if (!form.quantity || !form.normativ || !form.cas) return null;
-    const minutes = hhmmToMin(form.cas);
+    if (!form.quantity || !form.normativ || !form.masina) return null;
+    const minutes = hhmmToMin(form.masina);
     if (!minutes) return null;
     const target = (Number(form.normativ) * minutes) / 60;
     if (target <= 0) return null;
@@ -178,7 +178,8 @@ function ProductionForm({ shifrants, currentUser }) {
         product_id: Number(form.product_id),
         quantity: Number(form.quantity),
         normativ: form.normativ ? Number(form.normativ) : null,
-        cas_min: form.cas ? hhmmToMin(form.cas) : null,
+        delavec_min: form.delavec ? hhmmToMin(form.delavec) : null,
+        masina_min: form.masina ? hhmmToMin(form.masina) : null,
         worker_id: form.worker_id ? Number(form.worker_id) : null,
         notes: form.notes || null,
         entered_by_email: currentUser.email,
@@ -187,7 +188,7 @@ function ProductionForm({ shifrants, currentUser }) {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2000);
       // Reset form (ohranimo datum, izmeno, stroj za hitri zaporedni vnos)
-      setForm({ ...form, product_id: '', quantity: '', normativ: '', cas: '', worker_id: '', notes: '' });
+      setForm({ ...form, product_id: '', quantity: '', normativ: '', delavec: '', masina: '', worker_id: '', notes: '' });
     } catch (e) {
       console.error(e);
       alert('Napaka pri shranjevanju: ' + e.message);
@@ -205,8 +206,8 @@ function ProductionForm({ shifrants, currentUser }) {
         <Field label="Izmena *" required>
           <select value={form.shift} onChange={e => setForm({...form, shift: e.target.value})}
             className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300">
-            <option value={1}>1. izmena</option>
-            <option value={2}>2. izmena</option>
+            <option value={1}>Dopoldanska</option>
+            <option value={2}>Popoldanska</option>
           </select>
         </Field>
       </div>
@@ -266,12 +267,18 @@ function ProductionForm({ shifrants, currentUser }) {
             onChange={e => setForm({...form, normativ: e.target.value})}
             className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
         </Field>
-        <Field label="Čas (HH:MM)">
-          <input type="time" placeholder="1:05" value={form.cas}
-            onChange={e => setForm({...form, cas: e.target.value})}
+        <Field label="Mašina delala (HH:MM)">
+          <input type="time" placeholder="1:05" value={form.masina}
+            onChange={e => setForm({...form, masina: e.target.value})}
             className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
         </Field>
       </div>
+
+      <Field label="Delavec delal (HH:MM)">
+        <input type="time" placeholder="1:05" value={form.delavec}
+          onChange={e => setForm({...form, delavec: e.target.value})}
+          className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300" />
+      </Field>
 
       {realizacija !== null && (
         <div className={`rounded-lg p-3 text-sm font-semibold border-2 ${
@@ -306,7 +313,7 @@ function ProductionForm({ shifrants, currentUser }) {
 function BreakdownForm({ shifrants, currentUser }) {
   const today = new Date().toISOString().split('T')[0];
   const [form, setForm] = useState({
-    date: today, machine_id: '', reason_id: '', description: '', repair_action: '',
+    date: today, shift: 1, machine_id: '', reason_id: '', description: '', repair_action: '',
     duration_hhmm: '', frequency: 1, repaired_by: ''
   });
   const [saving, setSaving] = useState(false);
@@ -321,6 +328,7 @@ function BreakdownForm({ shifrants, currentUser }) {
     try {
       await insertBreakdown({
         date: form.date,
+        shift: Number(form.shift),
         machine_id: Number(form.machine_id),
         reason_id: form.reason_id ? Number(form.reason_id) : null,
         description: form.description || null,
@@ -354,6 +362,14 @@ function BreakdownForm({ shifrants, currentUser }) {
             className="w-full px-3 py-2 border border-as-gray-200 rounded-lg" />
         </Field>
       </div>
+
+      <Field label="Smena *" required>
+        <select value={form.shift} onChange={e => setForm({...form, shift: e.target.value})}
+          className="w-full px-3 py-2 border border-as-gray-200 rounded-lg">
+          <option value={1}>Dopoldanska</option>
+          <option value={2}>Popoldanska</option>
+        </select>
+      </Field>
 
       <Field label="Stroj *" required>
         <select value={form.machine_id} onChange={e => setForm({...form, machine_id: e.target.value})}
