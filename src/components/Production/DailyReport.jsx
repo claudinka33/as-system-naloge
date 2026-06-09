@@ -1,7 +1,7 @@
 // DailyReport.jsx — Dnevno poročilo proizvodnje + uredi/zbriši do 7 dni
 import React, { useState, useEffect } from 'react';
 import { Calendar, Package, AlertTriangle, Trash2, Loader2, Download, Edit2, X, Save, Lock } from 'lucide-react';
-import { getDailyData, formatNumber, formatDate, CATEGORY_LABELS, CATEGORY_ICONS } from '../../lib/productionApi.js';
+import { getDailyData, formatNumber, formatDate, minToHhmm, shiftLabel, CATEGORY_LABELS, CATEGORY_ICONS } from '../../lib/productionApi.js';
 import { supabase } from '../../supabase.js';
 
 const AS_RED = '#C8102E';
@@ -56,6 +56,26 @@ export default function DailyReport() {
   const totalProduced = data.production.reduce((s, e) => s + (e.quantity || 0), 0);
   const totalBreakdownMin = data.breakdowns.reduce((s, e) => s + (e.duration_min || 0), 0);
   const totalScrapKg = data.scrap.reduce((s, e) => s + (Number(e.weight_kg) || 0), 0);
+  const totalDelavecMin = data.production.reduce((s, e) => s + (e.delavec_min || 0), 0);
+  const totalMasinaMin = data.production.reduce((s, e) => s + (e.masina_min || 0), 0);
+
+  // Analiza po smenah (1 = dopoldanska, 2 = popoldanska)
+  const byShift = {};
+  [1, 2].forEach(sh => { byShift[sh] = { produced: 0, delavec: 0, masina: 0, zastoj: 0, entries: 0, breakdowns: 0 }; });
+  data.production.forEach(e => {
+    const sh = Number(e.shift) || 1;
+    if (!byShift[sh]) byShift[sh] = { produced: 0, delavec: 0, masina: 0, zastoj: 0, entries: 0, breakdowns: 0 };
+    byShift[sh].produced += e.quantity || 0;
+    byShift[sh].delavec += e.delavec_min || 0;
+    byShift[sh].masina += e.masina_min || 0;
+    byShift[sh].entries += 1;
+  });
+  data.breakdowns.forEach(e => {
+    const sh = Number(e.shift) || 1;
+    if (!byShift[sh]) byShift[sh] = { produced: 0, delavec: 0, masina: 0, zastoj: 0, entries: 0, breakdowns: 0 };
+    byShift[sh].zastoj += e.duration_min || 0;
+    byShift[sh].breakdowns += 1;
+  });
 
   // Grupacija proizvodnje po kategoriji
   const productionByCategory = {};
@@ -133,6 +153,19 @@ export default function DailyReport() {
             />
           </div>
 
+          {/* Ure: delavec / mašina / zastoj */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard icon="👷" label="Delavec delal" value={minToHhmm(totalDelavecMin)} unit="h:mm"
+              color="#1D4ED8" bgColor="#DBEAFE" count={data.production.length} countLabel="vnosov" />
+            <StatCard icon="⚙️" label="Mašina delala" value={minToHhmm(totalMasinaMin)} unit="h:mm"
+              color="#0E7490" bgColor="#CFFAFE" count={data.production.length} countLabel="vnosov" />
+            <StatCard icon="⏱️" label="Zastoj skupaj" value={minToHhmm(totalBreakdownMin)} unit="h:mm"
+              color="#92400E" bgColor="#FEF3C7" count={data.breakdowns.length} countLabel="zastojev" />
+          </div>
+
+          {/* Analiza po smenah */}
+          <ShiftAnalysis byShift={byShift} />
+
           {/* PROIZVODNJA po kategorijah */}
           <ReportCard title="📦 Proizvodnja" emptyText="Ni vnosov za izbrani datum.">
             {Object.keys(productionByCategory).length === 0 ? null : (
@@ -152,7 +185,9 @@ export default function DailyReport() {
                           <tr>
                             <th className="text-left p-2">Stroj</th>
                             <th className="text-left p-2">Izdelek</th>
-                            <th className="text-center p-2">Izmena</th>
+                            <th className="text-center p-2">Smena</th>
+                            <th className="text-right p-2">Delavec</th>
+                            <th className="text-right p-2">Mašina</th>
                             <th className="text-right p-2">Količina</th>
                             <th className="text-right p-2">Akcije</th>
                           </tr>
@@ -162,7 +197,9 @@ export default function DailyReport() {
                             <tr key={e.id} className="border-t border-as-gray-100">
                               <td className="p-2">{e.production_machines?.name}</td>
                               <td className="p-2">{e.production_products?.name}</td>
-                              <td className="p-2 text-center">{e.shift}</td>
+                              <td className="p-2 text-center">{shiftLabel(e.shift)}</td>
+                              <td className="p-2 text-right text-as-gray-500">{minToHhmm(e.delavec_min)}</td>
+                              <td className="p-2 text-right text-as-gray-500">{minToHhmm(e.masina_min)}</td>
                               <td className="p-2 text-right font-semibold">{formatNumber(e.quantity)}</td>
                               <td className="p-2 text-right">
                                 {canEdit ? (
@@ -210,6 +247,7 @@ export default function DailyReport() {
                     <thead className="bg-as-gray-50 text-as-gray-500 text-xs uppercase">
                       <tr>
                         <th className="text-left p-2">Stroj</th>
+                        <th className="text-center p-2">Smena</th>
                         <th className="text-left p-2">Razlog</th>
                         <th className="text-left p-2">Opravljeno</th>
                         <th className="text-left p-2">Odpravil</th>
@@ -221,6 +259,7 @@ export default function DailyReport() {
                       {data.breakdowns.map(e => (
                         <tr key={e.id} className="border-t border-as-gray-100">
                           <td className="p-2">{e.production_machines?.name}</td>
+                          <td className="p-2 text-center">{shiftLabel(e.shift)}</td>
                           <td className="p-2">{e.breakdown_reasons?.name || e.description}</td>
                           <td className="p-2 text-as-gray-500">{e.repair_action}</td>
                           <td className="p-2">{e.repaired_by}</td>
@@ -343,13 +382,15 @@ function EditEntryModal({ type, entry, onClose, onSaved }) {
         updateData = {
           quantity: Number(form.quantity) || 0,
           normativ: form.normativ ? Number(form.normativ) : null,
-          cas_min: form.cas_min ? Number(form.cas_min) : null,
+          delavec_min: form.delavec_min ? Number(form.delavec_min) : null,
+          masina_min: form.masina_min ? Number(form.masina_min) : null,
           shift: Number(form.shift) || 1,
           notes: form.notes || null
         };
       } else if (type === 'breakdown') {
         updateData = {
           duration_min: Number(form.duration_min) || 0,
+          shift: Number(form.shift) || 1,
           description: form.description || null,
           repair_action: form.repair_action || null,
           repaired_by: form.repaired_by || null,
@@ -388,14 +429,30 @@ function EditEntryModal({ type, entry, onClose, onSaved }) {
             <>
               <EditField label="Količina (kosov)" type="number" value={form.quantity} onChange={v => setForm({...form, quantity: v})} />
               <EditField label="Normativ (kosov/uro)" type="number" value={form.normativ} onChange={v => setForm({...form, normativ: v})} />
-              <EditField label="Čas (minut)" type="number" value={form.cas_min} onChange={v => setForm({...form, cas_min: v})} />
-              <EditField label="Izmena" type="number" value={form.shift} onChange={v => setForm({...form, shift: v})} />
+              <EditField label="Delavec delal (minut)" type="number" value={form.delavec_min} onChange={v => setForm({...form, delavec_min: v})} />
+              <EditField label="Mašina delala (minut)" type="number" value={form.masina_min} onChange={v => setForm({...form, masina_min: v})} />
+              <div>
+                <label className="block text-xs font-semibold text-as-gray-600 mb-1">Smena</label>
+                <select value={form.shift ?? 1} onChange={e => setForm({...form, shift: e.target.value})}
+                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300">
+                  <option value={1}>Dopoldanska</option>
+                  <option value={2}>Popoldanska</option>
+                </select>
+              </div>
               <EditField label="Opombe" type="text" value={form.notes} onChange={v => setForm({...form, notes: v})} />
             </>
           )}
           {type === 'breakdown' && (
             <>
               <EditField label="Trajanje (min)" type="number" value={form.duration_min} onChange={v => setForm({...form, duration_min: v})} />
+              <div>
+                <label className="block text-xs font-semibold text-as-gray-600 mb-1">Smena</label>
+                <select value={form.shift ?? 1} onChange={e => setForm({...form, shift: e.target.value})}
+                  className="w-full px-3 py-2 border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-300">
+                  <option value={1}>Dopoldanska</option>
+                  <option value={2}>Popoldanska</option>
+                </select>
+              </div>
               <EditField label="Opis okvare" type="text" value={form.description} onChange={v => setForm({...form, description: v})} />
               <EditField label="Opravljeno delo" type="text" value={form.repair_action} onChange={v => setForm({...form, repair_action: v})} />
               <EditField label="Napako odpravil" type="text" value={form.repaired_by} onChange={v => setForm({...form, repaired_by: v})} />
@@ -478,6 +535,62 @@ function ReportCard({ title, emptyText, children }) {
   );
 }
 
+// ===== Analiza po smenah (dopoldan vs popoldan) =====
+function ShiftAnalysis({ byShift }) {
+  const shifts = [
+    { key: 1, label: 'Dopoldanska', emoji: '🌅', color: '#B45309', bg: '#FEF3C7' },
+    { key: 2, label: 'Popoldanska', emoji: '🌙', color: '#3730A3', bg: '#E0E7FF' },
+  ];
+  const hasData = shifts.some(s => byShift[s.key] && (byShift[s.key].entries > 0 || byShift[s.key].breakdowns > 0));
+  return (
+    <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+      <h3 className="font-bold text-as-gray-700 mb-4">🌓 Analiza po smenah</h3>
+      {!hasData ? (
+        <div className="text-center py-6 text-as-gray-400 text-sm">Ni podatkov po smenah za izbrano obdobje.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {shifts.map(s => {
+            const d = byShift[s.key] || { produced: 0, delavec: 0, masina: 0, zastoj: 0 };
+            const util = (d.masina + d.zastoj) > 0 ? Math.round((d.masina / (d.masina + d.zastoj)) * 100) : null;
+            return (
+              <div key={s.key} className="border border-as-gray-100 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3 font-bold" style={{ color: s.color }}>
+                  <span className="text-lg">{s.emoji}</span> {s.label}
+                </div>
+                <div className="space-y-1.5 text-sm">
+                  <Row label="📦 Proizvedeno" value={`${formatNumber(d.produced)} kos`} />
+                  <Row label="👷 Delavec delal" value={minToHhmm(d.delavec)} />
+                  <Row label="⚙️ Mašina delala" value={minToHhmm(d.masina)} />
+                  <Row label="⏱️ Zastoj" value={minToHhmm(d.zastoj)} />
+                  {util !== null && (
+                    <div className="pt-2">
+                      <div className="flex justify-between text-xs text-as-gray-500 mb-1">
+                        <span>Izkoriščenost stroja</span><strong style={{ color: s.color }}>{util}%</strong>
+                      </div>
+                      <div className="w-full h-2 bg-as-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full" style={{ width: `${util}%`, backgroundColor: s.color }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-as-gray-500">{label}</span>
+      <span className="font-semibold text-as-gray-700">{value}</span>
+    </div>
+  );
+}
+
 // ===== Excel export =====
 function exportDailyToExcel(date, data) {
   const lines = [];
@@ -485,12 +598,14 @@ function exportDailyToExcel(date, data) {
   lines.push('');
 
   lines.push('PROIZVODNJA');
-  lines.push('Stroj;Izdelek;Izmena;Količina;Delavec');
+  lines.push('Stroj;Izdelek;Smena;Delavec delal (min);Mašina delala (min);Količina;Delavec');
   data.production.forEach(e => {
     lines.push([
       e.production_machines?.name || '',
       e.production_products?.name || '',
-      e.shift,
+      shiftLabel(e.shift),
+      e.delavec_min ?? '',
+      e.masina_min ?? '',
       e.quantity,
       e.production_workers?.name || ''
     ].join(';'));
@@ -498,10 +613,11 @@ function exportDailyToExcel(date, data) {
   lines.push('');
 
   lines.push('ZASTOJI');
-  lines.push('Stroj;Razlog;Opis;Opravljeno;Odpravil;Trajanje (min)');
+  lines.push('Stroj;Smena;Razlog;Opis;Opravljeno;Odpravil;Trajanje (min)');
   data.breakdowns.forEach(e => {
     lines.push([
       e.production_machines?.name || '',
+      shiftLabel(e.shift),
       e.breakdown_reasons?.name || '',
       e.description || '',
       e.repair_action || '',
