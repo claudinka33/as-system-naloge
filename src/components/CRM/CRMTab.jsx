@@ -39,7 +39,13 @@ export const CRM_ALLOWED_EMAILS = [
   'claudia.seidl@as-system.si',
   'sara.jagodic@as-system.si',
   'hermina.leskovec@as-system.si',
+  'alen.drofenik@as-system.si',
+  'tjasa.mihevc@as-system.si',
 ];
+
+// Komercialista, ki poleg svojih vidita tudi Herminine vnose
+const CRM_TEAM_LEADS = ['alen.drofenik@as-system.si', 'tjasa.mihevc@as-system.si'];
+const CRM_TEAM_MEMBER = 'hermina.leskovec@as-system.si';
 
 export function canAccessCRM(email) {
   return CRM_ALLOWED_EMAILS.includes(email);
@@ -103,7 +109,8 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [personFilter, setPersonFilter] = useState(isAdmin ? 'all' : (currentUser?.email || 'all'));
+  const isTeamLead = !isAdmin && CRM_TEAM_LEADS.includes(currentUser?.email);
+  const [personFilter, setPersonFilter] = useState((isAdmin || isTeamLead) ? 'all' : (currentUser?.email || 'all'));
 
   async function loadAll() {
     setLoading(true);
@@ -115,7 +122,13 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
         .order('visit_date', { ascending: false })
         .order('arrival_time', { ascending: true })
         .limit(2000);
-      if (!isAdmin) qy = qy.eq('created_by', currentUser?.email);
+      if (!isAdmin) {
+        if (isTeamLead) {
+          qy = qy.in('created_by', [currentUser?.email, CRM_TEAM_MEMBER]);
+        } else {
+          qy = qy.eq('created_by', currentUser?.email);
+        }
+      }
       const { data, error } = await qy;
       if (error) throw error;
       setVisits(data || []);
@@ -141,11 +154,13 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
             <SubTab active={view === 'analysis'} onClick={() => setView('analysis')} icon={<User className="w-4 h-4" />} label="Analiza strank" />
           </div>
         </div>
-        {isAdmin && (
+        {(isAdmin || isTeamLead) && (
           <select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}
             className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm">
             <option value="all">Vsi komercialisti</option>
-            {(employees || []).filter((e) => canAccessCRM(e.email)).map((e) => (
+            {(employees || [])
+              .filter((e) => isAdmin ? canAccessCRM(e.email) : [currentUser?.email, CRM_TEAM_MEMBER].includes(e.email))
+              .map((e) => (
               <option key={e.email} value={e.email}>{e.name}</option>
             ))}
           </select>
