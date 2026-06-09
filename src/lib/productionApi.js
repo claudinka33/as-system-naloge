@@ -206,3 +206,19 @@ export function formatDate(dateStr) {
   const d = new Date(dateStr);
   return `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`;
 }
+
+export const SHIFT_LABELS = { 1: 'Dopoldanska', 2: 'Popoldanska' };
+
+export function shiftLabel(n) {
+  return SHIFT_LABELS[Number(n)] || `${n}. izmena`;
+}
+
+// Minute → "H:MM" (npr. 95 → "1:35"); null → "–"
+export function minToHhmm(min) {
+  if (min == null || min === '') return '–';
+  const m = Math.round(Number(min));
+  if (isNaN(m)) return '–';
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return `${h}:${String(r).padStart(2, '0')}`;
+}
