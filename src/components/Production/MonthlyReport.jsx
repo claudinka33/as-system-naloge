@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Loader2, Download, TrendingUp, TrendingDown } from 'lucide-react';
 import {
-  getMonthlyData, loadPlans, loadProducts, formatNumber,
+  getMonthlyData, loadPlans, loadProducts, formatNumber, minToHhmm, shiftLabel,
   CATEGORY_LABELS, CATEGORY_ICONS, SLOVENIAN_MONTHS
 } from '../../lib/productionApi.js';
 
@@ -41,6 +41,26 @@ export default function MonthlyReport() {
   const totalProduced = data.production.reduce((s, e) => s + (e.quantity || 0), 0);
   const totalBreakdownMin = data.breakdowns.reduce((s, e) => s + (e.duration_min || 0), 0);
   const totalScrapKg = data.scrap.reduce((s, e) => s + (Number(e.weight_kg) || 0), 0);
+  const totalDelavecMin = data.production.reduce((s, e) => s + (e.delavec_min || 0), 0);
+  const totalMasinaMin = data.production.reduce((s, e) => s + (e.masina_min || 0), 0);
+
+  // Analiza po smenah
+  const byShift = {};
+  [1, 2].forEach(sh => { byShift[sh] = { produced: 0, delavec: 0, masina: 0, zastoj: 0, entries: 0, breakdowns: 0 }; });
+  data.production.forEach(e => {
+    const sh = Number(e.shift) || 1;
+    if (!byShift[sh]) byShift[sh] = { produced: 0, delavec: 0, masina: 0, zastoj: 0, entries: 0, breakdowns: 0 };
+    byShift[sh].produced += e.quantity || 0;
+    byShift[sh].delavec += e.delavec_min || 0;
+    byShift[sh].masina += e.masina_min || 0;
+    byShift[sh].entries += 1;
+  });
+  data.breakdowns.forEach(e => {
+    const sh = Number(e.shift) || 1;
+    if (!byShift[sh]) byShift[sh] = { produced: 0, delavec: 0, masina: 0, zastoj: 0, entries: 0, breakdowns: 0 };
+    byShift[sh].zastoj += e.duration_min || 0;
+    byShift[sh].breakdowns += 1;
+  });
 
   // Po izdelku: produced vs plan
   const byProduct = {};
@@ -97,7 +117,7 @@ export default function MonthlyReport() {
           </select>
         </div>
         <button
-          onClick={() => exportMonthlyToExcel(year, month, productRows, byMachine, byDefect)}
+          onClick={() => exportMonthlyToExcel(year, month, productRows, byMachine, byDefect, byShift)}
           className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
         >
           <Download className="w-4 h-4" /> Izvoz v Excel
@@ -120,6 +140,17 @@ export default function MonthlyReport() {
             <BigStat icon="🗑️" label="Odpadki" value={totalScrapKg.toFixed(1)} unit="kg"
               color="#7C2D12" bgColor="#FED7AA" />
           </div>
+
+          {/* Ure */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <BigStat icon="👷" label="Delavec delal" value={minToHhmm(totalDelavecMin)} unit="h:mm"
+              color="#1D4ED8" bgColor="#DBEAFE" />
+            <BigStat icon="⚙️" label="Mašina delala" value={minToHhmm(totalMasinaMin)} unit="h:mm"
+              color="#0E7490" bgColor="#CFFAFE" />
+          </div>
+
+          {/* Analiza po smenah */}
+          <ShiftAnalysis byShift={byShift} />
 
           {/* Doseganje plana po izdelku */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
@@ -224,7 +255,63 @@ function BigStat({ icon, label, value, unit, color, bgColor }) {
   );
 }
 
-function exportMonthlyToExcel(year, month, productRows, byMachine, byDefect) {
+// ===== Analiza po smenah (dopoldan vs popoldan) =====
+function ShiftAnalysis({ byShift }) {
+  const shifts = [
+    { key: 1, label: 'Dopoldanska', emoji: '🌅', color: '#B45309' },
+    { key: 2, label: 'Popoldanska', emoji: '🌙', color: '#3730A3' },
+  ];
+  const hasData = shifts.some(s => byShift[s.key] && (byShift[s.key].entries > 0 || byShift[s.key].breakdowns > 0));
+  return (
+    <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+      <h3 className="font-bold text-as-gray-700 mb-4">🌓 Analiza po smenah</h3>
+      {!hasData ? (
+        <div className="text-center py-6 text-as-gray-400 text-sm">Ni podatkov po smenah za izbrani mesec.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {shifts.map(s => {
+            const d = byShift[s.key] || { produced: 0, delavec: 0, masina: 0, zastoj: 0 };
+            const util = (d.masina + d.zastoj) > 0 ? Math.round((d.masina / (d.masina + d.zastoj)) * 100) : null;
+            return (
+              <div key={s.key} className="border border-as-gray-100 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3 font-bold" style={{ color: s.color }}>
+                  <span className="text-lg">{s.emoji}</span> {s.label}
+                </div>
+                <div className="space-y-1.5 text-sm">
+                  <Row label="📦 Proizvedeno" value={`${formatNumber(d.produced)} kos`} />
+                  <Row label="👷 Delavec delal" value={minToHhmm(d.delavec)} />
+                  <Row label="⚙️ Mašina delala" value={minToHhmm(d.masina)} />
+                  <Row label="⏱️ Zastoj" value={minToHhmm(d.zastoj)} />
+                  {util !== null && (
+                    <div className="pt-2">
+                      <div className="flex justify-between text-xs text-as-gray-500 mb-1">
+                        <span>Izkoriščenost stroja</span><strong style={{ color: s.color }}>{util}%</strong>
+                      </div>
+                      <div className="w-full h-2 bg-as-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full" style={{ width: `${util}%`, backgroundColor: s.color }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-as-gray-500">{label}</span>
+      <span className="font-semibold text-as-gray-700">{value}</span>
+    </div>
+  );
+}
+
+function exportMonthlyToExcel(year, month, productRows, byMachine, byDefect, byShift) {
   const lines = [];
   lines.push(`Mesečno poročilo - ${SLOVENIAN_MONTHS[month - 1]} ${year}`);
   lines.push('');
@@ -251,6 +338,14 @@ function exportMonthlyToExcel(year, month, productRows, byMachine, byDefect) {
   lines.push('Napaka;Teža (kg)');
   Object.entries(byDefect).sort((a, b) => b[1] - a[1]).forEach(([n, k]) => {
     lines.push(`${n};${k.toFixed(2)}`);
+  });
+  lines.push('');
+
+  lines.push('ANALIZA PO SMENAH');
+  lines.push('Smena;Proizvedeno (kos);Delavec delal (min);Mašina delala (min);Zastoj (min)');
+  [1, 2].forEach(sh => {
+    const d = (byShift && byShift[sh]) || { produced: 0, delavec: 0, masina: 0, zastoj: 0 };
+    lines.push([shiftLabel(sh), d.produced, d.delavec, d.masina, d.zastoj].join(';'));
   });
 
   const csv = '\uFEFF' + lines.join('\n');
