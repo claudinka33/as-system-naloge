@@ -25,3 +25,15 @@ export const EMPLOYEES = [
 export const DEPARTMENTS = [...new Set(EMPLOYEES.map(e => e.department))];
 
 export const AREA_SUGGESTIONS = ['Prodaja', 'Nabava', 'Montaža', 'Proizvodnja', 'Skladišče', 'Marketing', 'Kakovost', 'Tehnolog', 'Kadrovska', 'Računovodstvo', 'Komerciala', 'Uprava', 'Splošno', 'Direktor'];
+
+// Delavci v proizvodnji — ločen seznam za tablični portal (app.proizvodnja.assystem.si)
+export const PRODUCTION_WORKERS = [
+  { email: 'janko@as-system.si',   username: 'janko',   password: 'janko123',   name: 'Janko Augustinčič', department: 'Proizvodnja' },
+  { email: 'mitjab@as-system.si',  username: 'mitjab',  password: 'mitjab123',  name: 'Mitja Babić',       department: 'Proizvodnja' },
+  { email: 'dejan@as-system.si',   username: 'dejan',   password: 'dejan123',   name: 'Dejan Čutić',       department: 'Proizvodnja' },
+  { email: 'danijel@as-system.si', username: 'danijel', password: 'danijel123', name: 'Danijel Korenini',  department: 'Proizvodnja' },
+  { email: 'gregork@as-system.si', username: 'gregork', password: 'gregork123', name: 'Gregor Koritnik',   department: 'Proizvodnja' },
+  { email: 'matija@as-system.si',  username: 'matija',  password: 'matija123',  name: 'Matija Postružin',  department: 'Proizvodnja' },
+  { email: 'danci@as-system.si',   username: 'danci',   password: 'danci123',   name: 'Danči Šolinc',      department: 'Proizvodnja' },
+  { email: 'borisc@as-system.si',  username: 'borisc',  password: 'borisc123',  name: 'Boris Černelc',     department: 'Proizvodnja' },
+];
