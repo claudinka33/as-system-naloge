@@ -8,7 +8,7 @@ import { getTodayQuote } from './quotes.js';
 import Chat from './Chat.jsx';
 import FloatingChat from './FloatingChat.jsx';
 import { getUnreadCounts as getChatUnreadCounts, getMyGroups as getChatMyGroups, getGroupReads as getChatGroupReads, getGroupUnreadCounts as getChatGroupUnreadCounts } from './lib/chatApi.js';
-import { ADMIN_EMAILS, EMPLOYEES, DEPARTMENTS, AREA_SUGGESTIONS } from './constants.js';
+import { ADMIN_EMAILS, EMPLOYEES, DEPARTMENTS, AREA_SUGGESTIONS, PRODUCTION_WORKERS } from './constants.js';
 import TaskCard from './components/TaskCard.jsx';
 import TaskModal from './components/TaskModal.jsx';
 import CalendarView from './components/CalendarView.jsx';
@@ -16,6 +16,7 @@ import QuoteOfTheDay from './components/QuoteOfTheDay.jsx';
 import { getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels, priorityRank } from './utils/taskHelpers.jsx';
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import ProductionV2Tab from './components/Production/ProductionV2Tab';
+import WorkerEntry from './components/Production/WorkerEntry.jsx';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import TechnologTab from './components/Technolog/TechnologTab.jsx';
 import CRMTab, { canAccessCRM } from './components/CRM/CRMTab.jsx';
@@ -237,7 +238,7 @@ export default function App() {
       const sessionAuth = sessionStorage.getItem('as_auth');
       const sessionEmail = sessionStorage.getItem('as_user_email');
       if (sessionAuth === 'true' && sessionEmail) {
-        const user = EMPLOYEES.find(e => e.email === sessionEmail);
+        const user = [...EMPLOYEES, ...PRODUCTION_WORKERS].find(e => e.email === sessionEmail);
         if (user) {
           setAuthenticated(true);
           setCurrentUser(user);
@@ -314,7 +315,7 @@ export default function App() {
     const input = emailInput.trim().toLowerCase();
     
     // Najdi po uporabniškem imenu ALI po polnem e-mailu
-    const user = EMPLOYEES.find(e => 
+    const user = [...EMPLOYEES, ...PRODUCTION_WORKERS].find(e => 
       e.username.toLowerCase() === input || 
       e.email.toLowerCase() === input
     );
@@ -757,6 +758,23 @@ export default function App() {
             <p className="text-xs text-as-gray-300 mt-1">Dostop samo za zaposlene</p>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // === TABLIČNI VNOS PROIZVODNJE (subdomena app.proizvodnja.*) ===
+  const isProductionPortal = typeof window !== 'undefined' &&
+    window.location.hostname.startsWith('app.proizvodnja');
+  if (isProductionPortal) {
+    return (
+      <div className="min-h-screen" style={{ backgroundColor: '#F5F5F5' }}>
+        <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-as-gray-200">
+          <span className="text-sm font-semibold text-as-gray-600">{currentUser.name}</span>
+          <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-as-gray-500 hover:text-as-gray-700">
+            <LogOut className="w-4 h-4" /> Odjava
+          </button>
+        </div>
+        <WorkerEntry currentUser={currentUser} />
       </div>
     );
   }
