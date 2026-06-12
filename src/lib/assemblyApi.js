@@ -132,3 +132,50 @@ export const WORK_TYPE_LABELS = {
   rocna: '👐 Ročna',
   oba: '🤖👐 Oba',
 };
+
+// ===== LINE-ITEM: delovni nalogi delavk (assembly_work_log / assembly_work_stops) =====
+
+export async function getAssemblyWorkLog(startDate, endDate) {
+  const { data, error } = await supabase
+    .from('assembly_work_log')
+    .select('*')
+    .gte('date', startDate)
+    .lt('date', endDate)
+    .order('date', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getAssemblyWorkStops(startDate, endDate) {
+  const { data, error } = await supabase
+    .from('assembly_work_stops')
+    .select('*')
+    .gte('date', startDate)
+    .lt('date', endDate)
+    .order('date', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function deleteAssemblyWorkLog(id) {
+  const { error } = await supabase.from('assembly_work_log').delete().eq('id', id);
+  if (error) throw error;
+  return true;
+}
+
+export async function deleteAssemblyWorkStop(id) {
+  const { error } = await supabase.from('assembly_work_stops').delete().eq('id', id);
+  if (error) throw error;
+  return true;
+}
+
+export async function updateAssemblyWorkLog(id, patch) {
+  const { data, error } = await supabase
+    .from('assembly_work_log')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
