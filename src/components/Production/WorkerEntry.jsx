@@ -2,10 +2,10 @@
 // Piše v ISTE tabele kot Proizvodnja v2 (production_v2_entries + production_v2_stops)
 // → analiza v ProductionV2Tab dela naprej brez sprememb.
 // Veliki gumbi / polja, optimizirano za tablični računalnik (touch).
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Package, AlertTriangle, Check, Loader2, X, ChevronLeft } from 'lucide-react';
 import { supabase } from '../../supabase';
-import { SEGMENTS, findMachine, calculateEfficiency } from './productionV2Config';
+import { loadMachines, buildSegments, makeFindMachine, calculateEfficiency } from './productionV2Config';
 
 const AS_RED = '#C8102E';
 
@@ -66,7 +66,11 @@ export default function WorkerEntry({ currentUser }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const machineInfo = useMemo(() => (machineId ? findMachine(machineId) : null), [machineId]);
+  const [machineRows, setMachineRows] = useState([]);
+  useEffect(() => { loadMachines().then(setMachineRows); }, []);
+  const SEGMENTS = useMemo(() => buildSegments(machineRows, false), [machineRows]); // brez "v okvari"
+  const findMachine = useMemo(() => makeFindMachine(machineRows), [machineRows]);
+  const machineInfo = useMemo(() => (machineId ? findMachine(machineId) : null), [machineId, findMachine]);
   const filteredMachines = useMemo(() => {
     if (!segment) return [];
     const seg = SEGMENTS.find((s) => s.id === segment);
