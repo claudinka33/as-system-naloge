@@ -1,9 +1,10 @@
 // AssemblyTab.jsx — Glavni zavihek "Montaža"
 import React, { useState } from 'react';
-import { Plus, Calendar, BarChart3 } from 'lucide-react';
+import { Plus, Calendar, BarChart3, ClipboardList } from 'lucide-react';
 import AssemblyEntry from './AssemblyEntry.jsx';
 import AssemblyDailyReport from './AssemblyDailyReport.jsx';
 import AssemblyMonthlyReport from './AssemblyMonthlyReport.jsx';
+import AssemblyWorkAnalysis from './AssemblyWorkAnalysis.jsx';
 
 // Dovoljeni emaili: Milena + admini (Aleš, Claudia, Sara)
 const ASSEMBLY_USERS = [
@@ -18,7 +19,7 @@ export function canAccessAssembly(email) {
 }
 
 export default function AssemblyTab({ currentUser }) {
-  const [view, setView] = useState('monthly');
+  const [view, setView] = useState('work');
   const [initialDate, setInitialDate] = useState(null);
   const [initialWorkerId, setInitialWorkerId] = useState(null);
 
@@ -46,6 +47,8 @@ export default function AssemblyTab({ currentUser }) {
       {/* Glavna vrstica: tabe levo, kontrole (mesec/dan + Excel) desno preko portala */}
       <div className="flex flex-wrap items-center gap-3 mb-6 justify-between">
         <div className="flex gap-1 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200">
+          <SubTab active={view === 'work'} onClick={() => setView('work')}
+            icon={<ClipboardList className="w-4 h-4" />} label="Nalogi" />
           <SubTab active={view === 'entry'} onClick={() => setView('entry')}
             icon={<Plus className="w-4 h-4" />} label="Vnos" />
           <SubTab active={view === 'daily'} onClick={() => setView('daily')}
@@ -57,6 +60,7 @@ export default function AssemblyTab({ currentUser }) {
         <div id="assembly-controls-slot" className="flex flex-wrap items-center gap-3 ml-auto"></div>
       </div>
 
+      {view === 'work' && <AssemblyWorkAnalysis />}
       {view === 'entry' && <AssemblyEntry currentUser={currentUser} initialDate={initialDate} initialWorkerId={initialWorkerId} onConsumed={() => { setInitialDate(null); setInitialWorkerId(null); }} />}
       {view === 'daily' && <AssemblyDailyReport onEditEntry={handleEditEntry} />}
       {view === 'monthly' && <AssemblyMonthlyReport onEditEntry={handleEditEntry} />}
