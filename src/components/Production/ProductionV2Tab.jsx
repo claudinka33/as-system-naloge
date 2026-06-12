@@ -4,9 +4,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Calendar, BarChart3, Package, AlertTriangle, Trash, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, TrendingUp, TrendingDown, Clock, User, FileText } from 'lucide-react';
 import { supabase } from '../../supabase';
-import { SEGMENTS, findMachine, calculateEfficiency } from './productionV2Config';
+import { calculateEfficiency, SEGMENTS_META, loadMachines, buildSegments, makeFindMachine } from './productionV2Config';
 
 const AS_RED = '#C8102E';
+
+const MachinesCtx = React.createContext({ segments: [], findMachine: () => null, reloadMachines: () => {} });
+function useMachines() { return React.useContext(MachinesCtx); }
+const MACHINE_ADMIN_EMAILS = ['boris.cernelc@as-system.si'];
 
 const OPERATERJI = [
   'Janko Augustinčič',
@@ -79,6 +83,7 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
   const [wastes, setWastes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [machineRows, setMachineRows] = useState([]);
 
   async function loadAll() {
     setLoading(true);
@@ -104,7 +109,14 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
 
   useEffect(() => { loadAll(); }, []);
 
+  async function reloadMachines() { const rows = await loadMachines(); setMachineRows(rows); }
+  useEffect(() => { reloadMachines(); }, []);
+  const segments = useMemo(() => buildSegments(machineRows, true), [machineRows]);
+  const findMachine = useMemo(() => makeFindMachine(machineRows), [machineRows]);
+  const canManageMachines = isAdmin || MACHINE_ADMIN_EMAILS.includes(currentUser?.email);
+
   return (
+    <MachinesCtx.Provider value={{ segments, findMachine, reloadMachines }}>
     <div>
       {/* Glavna vrstica: tabe levo, kontrole desno preko portala */}
       <div className="flex flex-wrap items-center gap-3 mb-6 justify-between">
@@ -113,6 +125,9 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
             <SubTab active={view === 'entry'} onClick={() => setView('entry')} icon={<Plus className="w-4 h-4" />} label="Vnos" />
             <SubTab active={view === 'daily'} onClick={() => setView('daily')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
             <SubTab active={view === 'monthly'} onClick={() => setView('monthly')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+            {canManageMachines && (
+              <SubTab active={view === 'machines'} onClick={() => setView('machines')} icon={<Package className="w-4 h-4" />} label="Stroji" />
+            )}
           </div>
         </div>
         <div id="productionv2-controls-slot" className="flex flex-wrap items-center gap-3 ml-auto"></div>
@@ -129,7 +144,11 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
       {view === 'entry' && <EntryView currentUser={currentUser} onSaved={loadAll} setError={setError} />}
       {view === 'daily' && <DailyView entries={entries} stops={stops} wastes={wastes} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
       {view === 'monthly' && <MonthlyView entries={entries} stops={stops} wastes={wastes} loading={loading} />}
+      {view === 'machines' && canManageMachines && (
+        <MachinesAdmin rows={machineRows} onReload={reloadMachines} setError={setError} isAdmin={isAdmin} />
+      )}
     </div>
+    </MachinesCtx.Provider>
   );
 }
 
@@ -188,6 +207,7 @@ function SectionPill({ active, onClick, icon, label, color, bgColor }) {
 
 // ─── PROIZVODNJA FORM ───
 function ProductionForm({ currentUser, onSaved, setError }) {
+  const { segments: SEGMENTS, findMachine } = useMachines();
   const [selectedSegment, setSelectedSegment] = useState('');
   const [selectedMachine, setSelectedMachine] = useState('');
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -365,6 +385,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
 
 // ─── ZASTOJ FORM ───
 function StopForm({ currentUser, onSaved, setError }) {
+  const { segments: SEGMENTS, findMachine } = useMachines();
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formTime, setFormTime] = useState('');
   const [formShift, setFormShift] = useState(1);
@@ -486,6 +507,7 @@ function StopForm({ currentUser, onSaved, setError }) {
 
 // ─── ODPADEK FORM ───
 function WasteForm({ currentUser, onSaved, setError }) {
+  const { segments: SEGMENTS, findMachine } = useMachines();
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formWeight, setFormWeight] = useState('');
   const [selectedMachine, setSelectedMachine] = useState('');
@@ -607,6 +629,7 @@ function WasteForm({ currentUser, onSaved, setError }) {
 
 // ─── DAILY VIEW ───
 function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loading }) {
+  const { segments: SEGMENTS, findMachine } = useMachines();
   const [filterDate, setFilterDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [slotEl, setSlotEl] = useState(null);
 
@@ -805,6 +828,7 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
 
 // ─── MONTHLY VIEW ───
 function MonthlyView({ entries, stops, wastes, loading }) {
+  const { segments: SEGMENTS, findMachine } = useMachines();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -1448,4 +1472,180 @@ function exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason, m
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ─── STROJI (admin/Boris): dodajanje, urejanje, "v okvari" ───
+function MachinesAdmin({ rows, onReload, setError, isAdmin }) {
+  const [editing, setEditing] = useState(null); // DB-vrstica (uredi) | {} (nov) | null
+  const [busy, setBusy] = useState(false);
+
+  const grouped = SEGMENTS_META.map((sg) => ({
+    ...sg,
+    items: (rows || [])
+      .filter((r) => r.segment === sg.id)
+      .sort((a, b) => (a.sort_order - b.sort_order) || String(a.machine_id).localeCompare(String(b.machine_id))),
+  }));
+
+  async function toggleOkvara(r) {
+    setBusy(true);
+    const { error } = await supabase.from('production_v2_machines')
+      .update({ v_okvari: !r.v_okvari, updated_at: new Date().toISOString() }).eq('id', r.id);
+    setBusy(false);
+    if (error) { setError(error.message); return; }
+    onReload();
+  }
+
+  async function remove(r) {
+    if (!window.confirm(`Izbrišem stroj ${r.machine_id} – ${r.stroj}?\n\nVnosi v zgodovini ostanejo, a se naziv stroja ne bo več prikazoval v analizi.\nČe je stroj samo pokvarjen, raje uporabi "V okvari".`)) return;
+    setBusy(true);
+    const { error } = await supabase.from('production_v2_machines').delete().eq('id', r.id);
+    setBusy(false);
+    if (error) { setError(error.message); return; }
+    onReload();
+  }
+
+  async function save(form) {
+    const mid = (form.machine_id || '').trim();
+    if (!mid) { setError('Vpiši številko stroja.'); return; }
+    if (!form.segment) { setError('Izberi segment.'); return; }
+    if (!(form.stroj || '').trim()) { setError('Vpiši naziv stroja.'); return; }
+    setBusy(true);
+    const payload = {
+      machine_id: mid,
+      segment: form.segment,
+      stroj: form.stroj.trim(),
+      operacija: (form.operacija || '').trim(),
+      normativ_h: Number(form.normativ_h) || 0,
+      normativ_min: Number(form.normativ_min) || 0,
+      tipi: (form.tipi || '').trim(),
+      v_okvari: !!form.v_okvari,
+      sort_order: Number(form.sort_order) || 0,
+      updated_at: new Date().toISOString(),
+    };
+    const res = form.id
+      ? await supabase.from('production_v2_machines').update(payload).eq('id', form.id)
+      : await supabase.from('production_v2_machines').insert(payload);
+    setBusy(false);
+    if (res.error) {
+      const dup = (res.error.message || '').toLowerCase().includes('duplicate');
+      setError(dup ? `Stroj s številko "${mid}" že obstaja.` : res.error.message);
+      return;
+    }
+    setEditing(null);
+    onReload();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm text-as-gray-500">
+          Skupaj strojev: <strong>{(rows || []).length}</strong>. Spremembe se takoj poznajo pri vnosu in na tablicah.
+        </div>
+        <button onClick={() => setEditing({ segment: 'VIJAKI', v_okvari: false, sort_order: 0 })}
+          className="px-4 py-2 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2"
+          style={{ background: AS_RED }}>
+          <Plus className="w-4 h-4" /> Dodaj stroj
+        </button>
+      </div>
+
+      {editing && (
+        <MachineEditor initial={editing} busy={busy} onCancel={() => setEditing(null)} onSave={save} />
+      )}
+
+      {grouped.map((g) => (
+        <SectionCard key={g.id} title={`${g.label} (${g.items.length})`} defaultOpen={g.items.length > 0}>
+          {g.items.length === 0 ? <Empty /> : (
+            <div className="divide-y divide-as-gray-100">
+              {g.items.map((r) => (
+                <div key={r.id} className="flex flex-wrap items-center gap-2 py-2">
+                  <span className="font-mono font-semibold text-sm w-14">{r.machine_id}</span>
+                  <span className="text-sm flex-1 min-w-[140px]">{r.stroj}<span className="text-as-gray-400"> · {r.operacija}</span></span>
+                  <span className="text-xs text-as-gray-500 w-24 text-right">{formatNumber(r.normativ_h)} kos/h</span>
+                  {r.v_okvari
+                    ? <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#fee', color: '#900' }}>V OKVARI</span>
+                    : <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e8f5e9', color: '#1b5e20' }}>OK</span>}
+                  <button onClick={() => setEditing(r)} className="text-xs px-2 py-1 rounded border border-as-gray-200 hover:bg-as-gray-50">Uredi</button>
+                  <button onClick={() => toggleOkvara(r)} disabled={busy}
+                    className="text-xs px-2 py-1 rounded border border-as-gray-200 hover:bg-as-gray-50 inline-flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />{r.v_okvari ? 'Vklopi' : 'V okvari'}
+                  </button>
+                  {isAdmin && (
+                    <button onClick={() => remove(r)} disabled={busy} className="text-xs px-2 py-1 rounded text-red-600 hover:bg-red-50" title="Izbriši">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      ))}
+    </div>
+  );
+}
+
+function MachineEditor({ initial, busy, onCancel, onSave }) {
+  const [f, setF] = useState({
+    id: initial.id,
+    machine_id: initial.machine_id || '',
+    segment: initial.segment || 'VIJAKI',
+    stroj: initial.stroj || '',
+    operacija: initial.operacija || '',
+    normativ_h: initial.normativ_h ?? '',
+    normativ_min: initial.normativ_min ?? '',
+    tipi: initial.tipi || '',
+    v_okvari: !!initial.v_okvari,
+    sort_order: initial.sort_order ?? 0,
+  });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  return (
+    <div className="border-2 rounded-xl p-4 space-y-3" style={{ borderColor: AS_RED }}>
+      <div className="font-semibold">{f.id ? `Uredi stroj ${f.machine_id}` : 'Nov stroj'}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Segment *">
+          <select value={f.segment} onChange={(e) => set('segment', e.target.value)} className={inputCls}>
+            {SEGMENTS_META.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        </FormField>
+        <FormField label="Številka stroja *">
+          <input value={f.machine_id} onChange={(e) => set('machine_id', e.target.value)} className={inputCls} placeholder="npr. 207" />
+        </FormField>
+        <FormField label="Naziv stroja *">
+          <input value={f.stroj} onChange={(e) => set('stroj', e.target.value)} className={inputCls} placeholder="npr. SACMA SP01" />
+        </FormField>
+        <FormField label="Operacija">
+          <input value={f.operacija} onChange={(e) => set('operacija', e.target.value)} className={inputCls} placeholder="KOVANJE / VALJANJE / STRUŽENJE ..." />
+        </FormField>
+        <FormField label="Normativ (kos/h) *">
+          <input type="number" value={f.normativ_h} onChange={(e) => {
+            const h = e.target.value; set('normativ_h', h);
+            if (!f.normativ_min) set('normativ_min', h ? Math.round((Number(h) / 60) * 10) / 10 : '');
+          }} className={inputCls} placeholder="npr. 9000" />
+        </FormField>
+        <FormField label="Normativ (kos/min)">
+          <input type="number" value={f.normativ_min} onChange={(e) => set('normativ_min', e.target.value)} className={inputCls} placeholder="npr. 150" />
+        </FormField>
+        <FormField label="Tipi / opombe">
+          <input value={f.tipi} onChange={(e) => set('tipi', e.target.value)} className={inputCls} placeholder="npr. M4x8, 4x15 ..." />
+        </FormField>
+        <FormField label="Vrstni red">
+          <input type="number" value={f.sort_order} onChange={(e) => set('sort_order', e.target.value)} className={inputCls} />
+        </FormField>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={f.v_okvari} onChange={(e) => set('v_okvari', e.target.checked)} />
+        <span>Stroj je <strong>v okvari</strong> (skrit delavcem, ostane v analizi)</span>
+      </label>
+      <div className="flex gap-2">
+        <button onClick={() => onSave(f)} disabled={busy}
+          className="px-4 py-2 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2 disabled:opacity-50" style={{ background: AS_RED }}>
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Shrani
+        </button>
+        <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold rounded-lg border border-as-gray-200 inline-flex items-center gap-2">
+          <X className="w-4 h-4" /> Prekliči
+        </button>
+      </div>
+    </div>
+  );
 }
