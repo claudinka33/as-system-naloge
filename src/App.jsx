@@ -17,6 +17,7 @@ import { getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, pri
 import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
 import ProductionV2Tab from './components/Production/ProductionV2Tab';
 import WorkerEntry from './components/Production/WorkerEntry.jsx';
+import MontazaWorkerEntry from './components/Assembly/MontazaWorkerEntry.jsx';
 import AssemblyTab, { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import TechnologTab from './components/Technolog/TechnologTab.jsx';
 import CRMTab, { canAccessCRM } from './components/CRM/CRMTab.jsx';
@@ -238,7 +239,10 @@ export default function App() {
       const sessionAuth = sessionStorage.getItem('as_auth');
       const sessionEmail = sessionStorage.getItem('as_user_email');
       if (sessionAuth === 'true' && sessionEmail) {
-        const user = [...EMPLOYEES, ...PRODUCTION_WORKERS].find(e => e.email === sessionEmail);
+        let user = [...EMPLOYEES, ...PRODUCTION_WORKERS].find(e => e.email === sessionEmail);
+        if (!user) {
+          try { const obj = sessionStorage.getItem('as_user_obj'); if (obj) user = JSON.parse(obj); } catch (e) {}
+        }
         if (user) {
           setAuthenticated(true);
           setCurrentUser(user);
@@ -311,7 +315,7 @@ export default function App() {
     setLoading(false);
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const input = emailInput.trim().toLowerCase();
     
     // Najdi po uporabniškem imenu ALI po polnem e-mailu
@@ -321,6 +325,40 @@ export default function App() {
     );
     
     if (!user) {
+      // Delavke montaže: prijava iz baze assembly_workers
+      try {
+        const { data: aw } = await supabase
+          .from('assembly_workers')
+          .select('*')
+          .ilike('username', input)
+          .eq('active', true)
+          .maybeSingle();
+        if (aw && aw.username && passwordInput === aw.password) {
+          const wu = {
+            email: `montaza-${aw.id}@as-system.si`,
+            name: aw.name,
+            username: aw.username,
+            department: 'Montaža',
+            isAssemblyWorker: true,
+            assemblyWorkerId: aw.id,
+            workType: aw.work_type || null,
+          };
+          setAuthenticated(true);
+          setCurrentUser(wu);
+          setAuthError('');
+          try {
+            sessionStorage.setItem('as_auth', 'true');
+            sessionStorage.setItem('as_user_email', wu.email);
+            sessionStorage.setItem('as_user_obj', JSON.stringify(wu));
+          } catch (e) {}
+          return;
+        }
+        if (aw && aw.username) {
+          setAuthError('Napačno uporabniško ime ali geslo.');
+          setPasswordInput('');
+          return;
+        }
+      } catch (e) {}
       setAuthError('Uporabniško ime ne obstaja. Preverite vnos.');
       return;
     }
@@ -337,6 +375,7 @@ export default function App() {
     try {
       sessionStorage.setItem('as_auth', 'true');
       sessionStorage.setItem('as_user_email', user.email);
+      sessionStorage.setItem('as_user_obj', JSON.stringify(user));
     } catch (e) {}
   };
 
@@ -350,6 +389,7 @@ export default function App() {
     try {
       sessionStorage.removeItem('as_auth');
       sessionStorage.removeItem('as_user_email');
+      sessionStorage.removeItem('as_user_obj');
     } catch (e) {}
   };
 
@@ -775,6 +815,23 @@ export default function App() {
           </button>
         </div>
         <WorkerEntry currentUser={currentUser} />
+      </div>
+    );
+  }
+
+  // === TABLIČNI VNOS MONTAŽE (subdomena app.montaza.*) ===
+  const isMontazaPortal = typeof window !== 'undefined' &&
+    window.location.hostname.startsWith('app.montaza');
+  if (isMontazaPortal) {
+    return (
+      <div className="min-h-screen" style={{ backgroundColor: '#F5F5F5' }}>
+        <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-as-gray-200">
+          <span className="text-sm font-semibold text-as-gray-600">{currentUser.name}</span>
+          <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-as-gray-500 hover:text-as-gray-700">
+            <LogOut className="w-4 h-4" /> Odjava
+          </button>
+        </div>
+        <MontazaWorkerEntry currentUser={currentUser} />
       </div>
     );
   }
