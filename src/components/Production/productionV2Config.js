@@ -1,5 +1,5 @@
 // Konfiguracija strojev po segmentih z normativi
-// Vir: shema iz dokumenta z naziri strojev in normativi
+// Vir: Borisov potrjeni seznam strojev z oznakami in normativi
 
 export const SEGMENTS = [
   {
@@ -7,13 +7,13 @@ export const SEGMENTS = [
     label: 'VIJAKI',
     color: '#C8102E',
     machines: [
-      { id: '201', stroj: 'SACMA SP01', operacija: 'KOVANJE', normativ_min: 233, normativ_h: 14000, tipi: '4x15 PAN, 4x15, 4x12' },
+      { id: '201', stroj: 'CARLO SALVI TP2C', operacija: 'KOVANJE', normativ_min: 150, normativ_h: 9000, tipi: 'IVER Z 4x12, OKNA 4x20' },
       { id: '202', stroj: 'CARLO SALVI TP2C', operacija: 'KOVANJE', normativ_min: 150, normativ_h: 9000, tipi: 'M4x8, M4x6.5, M4x10' },
-      { id: '203', stroj: 'CARLO SALVI TP2C', operacija: 'KOVANJE', normativ_min: 150, normativ_h: 9000, tipi: '4x15, 4x12, 3.5x20' },
+      { id: '203', stroj: 'CARLO SALVI TP2CL', operacija: 'KOVANJE', normativ_min: 150, normativ_h: 9000, tipi: '4x15, 4x12, M4x8, M4x6.5, 3x40' },
       { id: '204', stroj: 'CARLO SALVI TP2C', operacija: 'KOVANJE', normativ_min: 150, normativ_h: 9000, tipi: '3.5x9, 5x8' },
-      { id: '205', stroj: 'CARLO SALVI TP2CL', operacija: 'KOVANJE', normativ_min: 150, normativ_h: 9000, tipi: '4x15, 4x12, M4x8, M4x6.5, 3x40' },
+      { id: '205', stroj: 'CARLO SALVI TP2C', operacija: 'KOVANJE', normativ_min: 150, normativ_h: 9000, tipi: '4x15, 4x12, 3.5x20' },
       { id: '206', stroj: 'CARLO SALVI TP2C', operacija: 'KOVANJE', normativ_min: 150, normativ_h: 9000, tipi: 'M4x8, M4x6.5, M4x10' },
-      { id: '207', stroj: 'CARLO SALVI TP2C', operacija: 'KOVANJE', normativ_min: 150, normativ_h: 9000, tipi: 'IVER Z 4x12, OKNA 4x20' },
+      { id: '207', stroj: 'SACMA SP01', operacija: 'KOVANJE', normativ_min: 233, normativ_h: 14000, tipi: '4x15 PAN, 4x15, 4x12' },
       { id: '208', stroj: 'CHUN ZU CH-6L', operacija: 'KOVANJE', normativ_min: 210, normativ_h: 12600, tipi: 'SMREKCE DO 50MM' },
       { id: '209', stroj: 'CHUN ZU CH-6LL', operacija: 'KOVANJE', normativ_min: 210, normativ_h: 12600, tipi: 'SMREKCE DO 70MM' },
       { id: '212', stroj: 'CARLO SALVI INTC', operacija: 'KOVANJE', normativ_min: 133, normativ_h: 8000, tipi: 'M5x12.5, M5x15' },
@@ -30,7 +30,7 @@ export const SEGMENTS = [
       { id: '206-V', stroj: 'EWM GW62', operacija: 'VALJANJE', normativ_min: 133, normativ_h: 8000, tipi: 'VIJAKI DO L NAVOJA 50MM' },
       { id: '208-V', stroj: 'EWM GW62', operacija: 'VALJANJE', normativ_min: 133, normativ_h: 8000, tipi: 'VIJAKI DO L NAVOJA 50MM' },
       { id: '209-V', stroj: 'EWM GW62', operacija: 'VALJANJE', normativ_min: 133, normativ_h: 8000, tipi: 'VIJAKI DO L NAVOJA 50MM' },
-      { id: '210', stroj: 'HANREZ ROLVY.O', operacija: 'VALJANJE', normativ_min: 333, normativ_h: 20000, tipi: 'METRIČNI VIJAKI DO L NAVOJA 30MM' },
+      { id: '258', stroj: 'HANREZ ROLVY.O', operacija: 'VALJANJE', normativ_min: 333, normativ_h: 20000, tipi: 'METRIČNI VIJAKI DO L NAVOJA 30MM' },
       { id: '260', stroj: 'DAHLIAN DL-1.5I', operacija: 'VALJANJE', normativ_min: 150, normativ_h: 9000, tipi: '' },
       { id: '261', stroj: 'DAHLIAN DL-1.5I', operacija: 'VALJANJE', normativ_min: 150, normativ_h: 9000, tipi: '' },
       { id: '262', stroj: 'DAHLIAN DL-1.5I', operacija: 'VALJANJE', normativ_min: 150, normativ_h: 9000, tipi: '' },
@@ -57,7 +57,7 @@ export const SEGMENTS = [
     color: '#F39C12',
     machines: [
       { id: '701', stroj: 'NEDSCHROEF NB416', operacija: 'KOVANJE + VALJANJE', normativ_min: 80, normativ_h: 4800, tipi: 'SIDRA M8-M16 L50-185MM' },
-      { id: '702', stroj: 'NEDSCHROEF NB416', operacija: 'KOVANJE + VALJANJE', normativ_min: 105, normativ_h: 6300, tipi: 'SIDRA M8-M26 L50-150MM' },
+      { id: '702', stroj: 'NEDSCHROEF NB515', operacija: 'KOVANJE + VALJANJE', normativ_min: 105, normativ_h: 6300, tipi: 'SIDRA M8-M26 L50-150MM' },
     ],
   },
   {
