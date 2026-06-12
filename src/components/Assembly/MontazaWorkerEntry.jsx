@@ -2,7 +2,7 @@
 // Piše v assembly_work_log (en delovni nalog = ena vrstica) + assembly_work_stops (zastoji).
 // → analiza montaže (line-item) dela na teh tabelah.
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Check, Loader2, X, Clock } from 'lucide-react';
+import { Plus, Trash2, Check, Loader2, X, Clock, Package } from 'lucide-react';
 import { supabase } from '../../supabase';
 
 const AS_RED = '#C8102E';
@@ -156,8 +156,19 @@ export default function MontazaWorkerEntry({ currentUser }) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-3 py-4 pb-28">
-      <h1 className="text-xl font-bold mb-3" style={{ color: AS_RED }}>Montaža — vnos</h1>
+    <div className="min-h-screen bg-as-gray-50 pb-32">
+      {/* Glava */}
+      <div className="text-white px-5 py-4 shadow-md" style={{ background: AS_RED }}>
+        <div className="flex items-center gap-3">
+          <Package className="w-8 h-8" />
+          <div>
+            <div className="text-2xl font-bold leading-tight">Vnos montaže</div>
+            <div className="text-sm opacity-90">AS system · {new Date(datum).toLocaleDateString('sl-SI')}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-3xl mx-auto px-4 py-5">
 
       {error && (
         <div className="flex items-center gap-2 p-3 mb-3 rounded-lg border text-sm" style={{ background: '#fee', borderColor: '#fcc', color: '#900' }}>
@@ -188,14 +199,14 @@ export default function MontazaWorkerEntry({ currentUser }) {
 
       {/* Delovni nalogi */}
       <div className="mt-4 mb-1 flex items-center justify-between">
-        <h2 className="font-bold text-as-gray-700">Delovni nalogi</h2>
+        <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: AS_RED }}><span className="inline-block w-1.5 h-5 rounded" style={{ background: AS_RED }} />Delovni nalogi</h2>
       </div>
       {orders.map((o, idx) => {
         const norm = normForSifra(o.sifra);
         return (
           <Card key={o.key}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold text-as-gray-500">Nalog #{idx + 1}</span>
+              <span className="text-sm font-bold" style={{ color: AS_RED }}>Nalog #{idx + 1}</span>
               {orders.length > 1 && (
                 <button onClick={() => removeOrder(o.key)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
               )}
@@ -241,7 +252,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
 
       {/* Zastoji */}
       <div className="mt-5 mb-1 flex items-center justify-between">
-        <h2 className="font-bold text-as-gray-700">Zastoji <span className="text-as-gray-400 font-normal text-sm">(neobvezno)</span></h2>
+        <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: '#F39C12' }}><span className="inline-block w-1.5 h-5 rounded" style={{ background: '#F39C12' }} />Zastoji <span className="text-as-gray-400 font-normal text-sm">(neobvezno)</span></h2>
       </div>
       {stops.map((s, idx) => (
         <Card key={s.key}>
@@ -294,6 +305,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
