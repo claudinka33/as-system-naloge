@@ -1,10 +1,11 @@
 // AssemblyTab.jsx — Glavni zavihek "Montaža"
 import React, { useState } from 'react';
-import { Plus, Calendar, BarChart3, ClipboardList } from 'lucide-react';
+import { Plus, Calendar, BarChart3, ClipboardList, Settings } from 'lucide-react';
 import AssemblyEntry from './AssemblyEntry.jsx';
 import AssemblyDailyReport from './AssemblyDailyReport.jsx';
 import AssemblyMonthlyReport from './AssemblyMonthlyReport.jsx';
 import AssemblyWorkAnalysis from './AssemblyWorkAnalysis.jsx';
+import AssemblyAdmin from './AssemblyAdmin.jsx';
 
 // Dovoljeni emaili: Milena + admini (Aleš, Claudia, Sara)
 const ASSEMBLY_USERS = [
@@ -55,12 +56,15 @@ export default function AssemblyTab({ currentUser }) {
             icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
           <SubTab active={view === 'monthly'} onClick={() => setView('monthly')}
             icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+          <SubTab active={view === 'admin'} onClick={() => setView('admin')}
+            icon={<Settings className="w-4 h-4" />} label="Urejanje" />
         </div>
         {/* Portal slot za kontrole iz otroških komponent */}
         <div id="assembly-controls-slot" className="flex flex-wrap items-center gap-3 ml-auto"></div>
       </div>
 
       {view === 'work' && <AssemblyWorkAnalysis />}
+      {view === 'admin' && <AssemblyAdmin />}
       {view === 'entry' && <AssemblyEntry currentUser={currentUser} initialDate={initialDate} initialWorkerId={initialWorkerId} onConsumed={() => { setInitialDate(null); setInitialWorkerId(null); }} />}
       {view === 'daily' && <AssemblyDailyReport onEditEntry={handleEditEntry} />}
       {view === 'monthly' && <AssemblyMonthlyReport onEditEntry={handleEditEntry} />}
