@@ -1,6 +1,6 @@
 // ProductionV2Tab.jsx — Glavni zavihek "Proizvodnja v2" (BETA)
 // Dizajn usklajen z Montažo (AssemblyTab style)
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Calendar, BarChart3, Package, AlertTriangle, Trash, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, TrendingUp, TrendingDown, Clock, User, FileText } from 'lucide-react';
 import { supabase } from '../../supabase';
@@ -1605,9 +1605,11 @@ function MachineEditor({ initial, busy, onCancel, onSave }) {
     sort_order: initial.sort_order ?? 0,
   });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const editRef = useRef(null);
+  useEffect(() => { editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, []);
 
   return (
-    <div className="border-2 rounded-xl p-4 space-y-3" style={{ borderColor: AS_RED }}>
+    <div ref={editRef} className="border-2 rounded-xl p-4 space-y-3" style={{ borderColor: AS_RED }}>
       <div className="font-semibold">{f.id ? `Uredi stroj ${f.machine_id}` : 'Nov stroj'}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Segment *">
