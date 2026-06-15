@@ -220,6 +220,8 @@ function WorkLogEditor() {
   const [stops, setStops] = useState([]);
   const [machines, setMachines] = useState([]);
   const [sifre, setSifre] = useState([]);
+  const [workers, setWorkers] = useState([]);
+  const logEditRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [edit, setEdit] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -229,15 +231,17 @@ function WorkLogEditor() {
     setLoading(true); setErr('');
     try {
       const start = date, end = addDays(date, 1);
-      const [lg, st, mc, sf] = await Promise.all([
+      const [lg, st, mc, sf, wk] = await Promise.all([
         getAssemblyWorkLog(start, end), getAssemblyWorkStops(start, end),
         supabase.from('assembly_machines').select('id,name').order('display_order'),
         supabase.from('assembly_sifra_normativ').select('sifra,normativ_kos_h'),
+        supabase.from('assembly_workers').select('id,name').eq('active', true).order('display_order'),
       ]);
-      setLogs(lg); setStops(st); setMachines(mc.data || []); setSifre(sf.data || []);
+      setLogs(lg); setStops(st); setMachines(mc.data || []); setSifre(sf.data || []); setWorkers(wk.data || []);
     } catch (e) { setErr(e.message); } finally { setLoading(false); }
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [date]);
+  useEffect(() => { if (edit) logEditRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, [edit]);
 
   const normFor = (sifra) => {
     const h = (sifre || []).find((x) => String(x.sifra).toLowerCase() === String(sifra || '').trim().toLowerCase());
@@ -246,7 +250,7 @@ function WorkLogEditor() {
 
   async function saveLog(form) {
     setBusy(true); setErr('');
-    const patch = {
+    const base = {
       delovni_nalog: (form.delovni_nalog || '').trim() || null,
       sifra: (form.sifra || '').trim() || null,
       machine_id: form.machine_id ? Number(form.machine_id) : null,
@@ -256,8 +260,19 @@ function WorkLogEditor() {
       cas_stroja_ur: Number(form.cas_stroja_ur) || 0,
       normativ_kos_h: normFor(form.sifra),
     };
-    try { await updateAssemblyWorkLog(form.id, patch); setEdit(null); load(); }
-    catch (e) { setErr(e.message); } finally { setBusy(false); }
+    try {
+      if (form.id) {
+        await updateAssemblyWorkLog(form.id, base);
+      } else {
+        if (!form.worker_id) { setErr('Izberi delavko.'); setBusy(false); return; }
+        const w = workers.find((x) => String(x.id) === String(form.worker_id));
+        const { error } = await supabase.from('assembly_work_log').insert({
+          date: form.date || date, worker_id: Number(form.worker_id), worker_name: w?.name || null, ...base,
+        });
+        if (error) throw error;
+      }
+      setEdit(null); load();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
   }
   async function delLog(r) { if (!window.confirm('Izbrišem ta nalog?')) return; setBusy(true); try { await deleteAssemblyWorkLog(r.id); load(); } catch (e) { setErr(e.message); } finally { setBusy(false); } }
   async function delStop(r) { if (!window.confirm('Izbrišem ta zastoj?')) return; setBusy(true); try { await deleteAssemblyWorkStop(r.id); load(); } catch (e) { setErr(e.message); } finally { setBusy(false); } }
@@ -272,7 +287,13 @@ function WorkLogEditor() {
       </div>
 
       <div>
-        <h4 className="font-bold text-as-gray-700 mb-2">Delovni nalogi</h4>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="font-bold text-as-gray-700">Delovni nalogi</h4>
+          <button onClick={() => setEdit({ date, worker_id: '', delovni_nalog: '', sifra: '', machine_id: '', kolicina: '', cas_dela_ur: '', cas_stroja_ur: '' })}
+            className="px-3 py-1.5 text-white text-xs font-semibold rounded-lg inline-flex items-center gap-1" style={{ background: AS_RED }}>
+            <Plus className="w-3 h-3" /> Dodaj nalog
+          </button>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-as-gray-500 border-b border-as-gray-200">
@@ -298,9 +319,17 @@ function WorkLogEditor() {
       </div>
 
       {edit && (
-        <div className="border-2 rounded-xl p-4" style={{ borderColor: AS_RED }}>
-          <div className="font-semibold mb-3">Uredi nalog — {edit.worker_name}</div>
+        <div ref={logEditRef} className="border-2 rounded-xl p-4" style={{ borderColor: AS_RED }}>
+          <div className="font-semibold mb-3">{edit.id ? `Uredi nalog — ${edit.worker_name}` : 'Dodaj nalog'}</div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {!edit.id && (
+              <Field label="Delavka">
+                <select value={edit.worker_id || ''} onChange={(e) => setEdit({ ...edit, worker_id: e.target.value })} className={inputCls}>
+                  <option value="">— izberi —</option>
+                  {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Št. naloga"><input value={edit.delovni_nalog || ''} onChange={(e) => setEdit({ ...edit, delovni_nalog: e.target.value })} className={inputCls} /></Field>
             <Field label="Šifra"><input value={edit.sifra || ''} onChange={(e) => setEdit({ ...edit, sifra: e.target.value })} className={inputCls} /></Field>
             <Field label="Stroj / linija">
