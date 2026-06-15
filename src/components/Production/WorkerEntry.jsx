@@ -1,25 +1,17 @@
-// WorkerEntry.jsx — Tablični obrazec za delavce v proizvodnji
-// Piše v ISTE tabele kot Proizvodnja v2 (production_v2_entries + production_v2_stops)
-// → analiza v ProductionV2Tab dela naprej brez sprememb.
-// Veliki gumbi / polja, optimizirano za tablični računalnik (touch).
-import React, { useState, useMemo, useEffect } from 'react';
-import { Package, AlertTriangle, Check, Loader2, X, ChevronLeft } from 'lucide-react';
+// WorkerEntry.jsx — Tablični vnos PROIZVODNJE (več delovnih nalogov na dan).
+// Piše v production_v2_entries (vsak nalog = ena vrstica) + production_v2_stops (zastoji).
+// Struktura usklajena z montažo (MontazaWorkerEntry).
+import React, { useState, useEffect, useMemo } from 'react';
+import { Package, Check, Loader2, X, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { loadMachines, buildSegments, makeFindMachine, calculateEfficiency } from './productionV2Config';
 
 const AS_RED = '#C8102E';
 
 const OPERATERJI = [
-  'Janko Augustinčič',
-  'Mitja Babić',
-  'Dejan Čutić',
-  'Danijel Korenini',
-  'Gregor Koritnik',
-  'Matija Postružin',
-  'Danči Šolinc',
-  'Boris Černelc',
+  'Janko Augustinčič', 'Mitja Babić', 'Dejan Čutić', 'Danijel Korenini',
+  'Gregor Koritnik', 'Matija Postružin', 'Danči Šolinc', 'Boris Černelc',
 ];
-
 const STOP_REASONS = [
   'Menjava', 'Menjava orodja', 'Menjava žice', 'Nastavitev proge',
   'Nastavitev senzorja', 'Nastavitev valjanja', 'Zatikanje na progi',
@@ -27,144 +19,144 @@ const STOP_REASONS = [
 ];
 
 function hmToHours(h, m) {
-  const hh = parseInt(h, 10) || 0;
-  const mm = parseInt(m, 10) || 0;
-  return hh + mm / 60;
+  const hh = parseInt(h, 10) || 0, mm = parseInt(m, 10) || 0;
+  return Math.round((hh + mm / 60) * 1000) / 1000;
 }
-
 function formatNumber(n) {
   if (n === null || n === undefined || n === '') return '—';
   return Number(n).toLocaleString('sl-SI');
 }
+let _k = 0; const newKey = () => `r${++_k}`;
+const blankOrder = () => ({ key: newKey(), segmentId: '', machineId: '', sifra: '', nalog: '', kosi: '', strojH: '', strojM: '', delH: '', delM: '' });
+const blankStop = () => ({ key: newKey(), reason: '', linkKey: '', h: '', m: '', opomba: '' });
 
 export default function WorkerEntry({ currentUser }) {
-  // Glava
+  const isKnownOperater = OPERATERJI.includes(currentUser?.name);
+
   const [operater, setOperater] = useState(currentUser?.name || '');
   const [datum, setDatum] = useState(() => new Date().toISOString().slice(0, 10));
   const [shift, setShift] = useState(1);
-
-  // Stroj
-  const [segment, setSegment] = useState('');
-  const [machineId, setMachineId] = useState('');
-
-  // Vnos
-  const [sifra, setSifra] = useState('');       // šifra izdelka
-  const [nalog, setNalog] = useState('');        // delovni nalog
-  const [kosi, setKosi] = useState('');          // količina
-  const [strojH, setStrojH] = useState('');      // čas stroja - ure
-  const [strojM, setStrojM] = useState('');      // čas stroja - minute
-  const [delH, setDelH] = useState('');          // čas delavca - ure
-  const [delM, setDelM] = useState('');          // čas delavca - minute
-
-  // Zastoj
-  const [hasStop, setHasStop] = useState(false);
-  const [stopH, setStopH] = useState('');
-  const [stopM, setStopM] = useState('');
-  const [stopReason, setStopReason] = useState('');
-
-  const [loading, setLoading] = useState(false);
+  const [machineRows, setMachineRows] = useState([]);
+  const [orders, setOrders] = useState([blankOrder()]);
+  const [stops, setStops] = useState([]);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const [machineRows, setMachineRows] = useState([]);
   useEffect(() => { loadMachines().then(setMachineRows); }, []);
   const SEGMENTS = useMemo(() => buildSegments(machineRows, false), [machineRows]); // brez "v okvari"
   const findMachine = useMemo(() => makeFindMachine(machineRows), [machineRows]);
-  const machineInfo = useMemo(() => (machineId ? findMachine(machineId) : null), [machineId, findMachine]);
-  const filteredMachines = useMemo(() => {
-    if (!segment) return [];
-    const seg = SEGMENTS.find((s) => s.id === segment);
-    return seg ? seg.machines : [];
-  }, [segment]);
+  const machinesFor = (segmentId) => (SEGMENTS.find((s) => s.id === segmentId)?.machines) || [];
 
-  const casStroja = hmToHours(strojH, strojM);
-  const casDelavca = hmToHours(delH, delM);
+  // — orders —
+  const setOrder = (key, field, val) => setOrders((p) => p.map((o) => {
+    if (o.key !== key) return o;
+    const next = { ...o, [field]: val };
+    if (field === 'segmentId') next.machineId = ''; // reset stroja ob menjavi segmenta
+    return next;
+  }));
+  const addOrder = () => setOrders((p) => [...p, blankOrder()]);
+  const removeOrder = (key) => setOrders((p) => (p.length > 1 ? p.filter((o) => o.key !== key) : p));
 
-  const eff = useMemo(() => {
-    if (!machineInfo || !kosi || casStroja <= 0) return null;
-    return calculateEfficiency(parseInt(kosi, 10) || 0, casStroja, machineInfo.normativ_h);
-  }, [machineInfo, kosi, casStroja]);
+  // — stops —
+  const setStop = (key, field, val) => setStops((p) => p.map((s) => (s.key === key ? { ...s, [field]: val } : s)));
+  const addStop = () => setStops((p) => [...p, blankStop()]);
+  const removeStop = (key) => setStops((p) => p.filter((s) => s.key !== key));
 
   function resetForm() {
-    setSegment('');
-    setMachineId('');
-    setSifra('');
-    setNalog('');
-    setKosi('');
-    setStrojH(''); setStrojM('');
-    setDelH(''); setDelM('');
-    setHasStop(false);
-    setStopH(''); setStopM(''); setStopReason('');
+    setOrders([blankOrder()]); setStops([]);
   }
 
   async function handleSave() {
     setError('');
     if (!operater) { setError('Izberi svoje ime.'); return; }
-    if (!machineId) { setError('Izberi stroj.'); return; }
-    if (machineInfo?.vOkvari) { setError('Ta stroj je V OKVARI.'); return; }
-    if (!kosi) { setError('Vpiši količino.'); return; }
-    if (casStroja <= 0) { setError('Vpiši čas stroja.'); return; }
-    const pieces = parseInt(kosi, 10);
-    if (isNaN(pieces) || pieces < 0) { setError('Količina mora biti pozitivna.'); return; }
+    if (!datum) { setError('Izberi datum.'); return; }
 
-    const stopHours = hasStop ? hmToHours(stopH, stopM) : 0;
-    if (hasStop && stopHours <= 0) { setError('Vpiši trajanje zastoja ali izklopi zastoj.'); return; }
+    const orderRows = orders.filter((o) => (o.machineId || o.sifra || o.nalog || o.kosi));
+    const stopRows = stops.filter((s) => s.reason && (s.h || s.m));
+    if (orderRows.length === 0 && stopRows.length === 0) { setError('Vnesi vsaj en delovni nalog.'); return; }
 
-    setLoading(true);
+    // validacija nalogov
+    for (let i = 0; i < orderRows.length; i++) {
+      const o = orderRows[i];
+      const mi = o.machineId ? findMachine(o.machineId) : null;
+      if (!mi) { setError(`Nalog #${i + 1}: izberi stroj.`); return; }
+      if (mi.vOkvari) { setError(`Nalog #${i + 1}: stroj je V OKVARI.`); return; }
+      const pieces = parseInt(o.kosi, 10);
+      if (isNaN(pieces) || pieces <= 0) { setError(`Nalog #${i + 1}: vpiši količino.`); return; }
+      if (hmToHours(o.strojH, o.strojM) <= 0) { setError(`Nalog #${i + 1}: vpiši čas stroja.`); return; }
+    }
+    for (let i = 0; i < stopRows.length; i++) {
+      if (hmToHours(stopRows[i].h, stopRows[i].m) <= 0) { setError(`Zastoj #${i + 1}: vpiši trajanje.`); return; }
+    }
+
+    setSaving(true);
     try {
-      const efficiency = calculateEfficiency(pieces, casStroja, machineInfo.normativ_h);
+      if (orderRows.length) {
+        const payload = orderRows.map((o) => {
+          const mi = findMachine(o.machineId);
+          const casStroja = hmToHours(o.strojH, o.strojM);
+          const casDelavca = hmToHours(o.delH, o.delM);
+          const pieces = parseInt(o.kosi, 10) || 0;
+          return {
+            date: datum,
+            segment: mi.segment,
+            machine_id: o.machineId,
+            machine_name: mi.stroj,
+            operacija: mi.operacija,
+            normativ_kos_h: mi.normativ_h,
+            kosi: pieces,
+            cas_ur: casStroja,
+            delavec_ur: casDelavca > 0 ? casDelavca : null,
+            shift: Number(shift) || 1,
+            tip_vijaka: (o.sifra || '').trim() || null,
+            delovni_nalog: (o.nalog || '').trim() || null,
+            operater,
+            opombe: null,
+            ucinkovitost_pct: calculateEfficiency(pieces, casStroja, mi.normativ_h),
+            created_by: currentUser?.email || null,
+          };
+        });
+        const { error: e1 } = await supabase.from('production_v2_entries').insert(payload);
+        if (e1) throw e1;
+      }
 
-      // 1) Proizvodnja → production_v2_entries (iste kolone kot v2 + delovni_nalog)
-      const { error: e1 } = await supabase.from('production_v2_entries').insert([{
-        date: datum,
-        segment,
-        machine_id: machineId,
-        machine_name: machineInfo.stroj,
-        operacija: machineInfo.operacija,
-        normativ_kos_h: machineInfo.normativ_h,
-        kosi: pieces,
-        cas_ur: casStroja,
-        delavec_ur: casDelavca > 0 ? casDelavca : null,
-        shift: Number(shift) || 1,
-        tip_vijaka: sifra || null,          // šifra izdelka
-        delovni_nalog: nalog || null,        // NOVO
-        operater,
-        opombe: null,
-        ucinkovitost_pct: efficiency,
-        created_by: currentUser?.email || null,
-      }]);
-      if (e1) throw e1;
-
-      // 2) Zastoj → production_v2_stops (samo če označen)
-      if (hasStop && stopHours > 0) {
-        const { error: e2 } = await supabase.from('production_v2_stops').insert([{
-          date: datum,
-          duration_hours: stopHours,
-          shift: Number(shift) || 1,
-          segment: machineInfo.segment || null,
-          machine_id: machineId,
-          machine_name: machineInfo.stroj,
-          reason_category: stopReason || 'Drugo',
-          description: null,
-          repair_done: null,
-          frequency: 1,
-          fixed_by: null,
-          operater,
-          created_by: currentUser?.email || null,
-        }]);
+      if (stopRows.length) {
+        const payload = stopRows.map((s) => {
+          const linkedOrder = s.linkKey ? orders.find((o) => o.key === s.linkKey) : null;
+          const mi = linkedOrder && linkedOrder.machineId ? findMachine(linkedOrder.machineId) : null;
+          return {
+            date: datum,
+            duration_hours: hmToHours(s.h, s.m),
+            shift: Number(shift) || 1,
+            segment: mi ? mi.segment : null,
+            machine_id: mi ? linkedOrder.machineId : null,
+            machine_name: mi ? mi.stroj : null,
+            delovni_nalog: linkedOrder ? ((linkedOrder.nalog || '').trim() || null) : null,
+            reason_category: s.reason || 'Drugo',
+            description: (s.opomba || '').trim() || null,
+            repair_done: null,
+            frequency: 1,
+            fixed_by: null,
+            operater,
+            created_by: currentUser?.email || null,
+          };
+        });
+        const { error: e2 } = await supabase.from('production_v2_stops').insert(payload);
         if (e2) throw e2;
       }
 
-      // uspeh: počisti vnos (ohrani ime/datum/smeno za naslednji vnos)
-      resetForm();
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 2200);
+      resetForm();
+      setTimeout(() => setSuccess(false), 1800);
     } catch (e) {
       setError(e.message || 'Napaka pri shranjevanju.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
+
+  const orderOptions = orders.filter((o) => (o.nalog || o.sifra || o.machineId));
 
   return (
     <div className="min-h-screen bg-as-gray-50 pb-32">
@@ -179,171 +171,161 @@ export default function WorkerEntry({ currentUser }) {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-5 space-y-5">
-        {/* Kdo / kdaj / smena */}
-        <Card>
-          <BigLabel>Delavec</BigLabel>
-          <select value={operater} onChange={(e) => setOperater(e.target.value)} className={selCls}>
-            <option value="">— izberi svoje ime —</option>
-            {OPERATERJI.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
+      <div className="max-w-3xl mx-auto px-4 py-5">
+        {error && (
+          <div className="flex items-center gap-2 p-3 mb-3 rounded-lg border text-sm" style={{ background: '#fee', borderColor: '#fcc', color: '#900' }}>
+            <X className="w-4 h-4" /> <span className="flex-1">{error}</span>
+          </div>
+        )}
 
-          <div className="grid grid-cols-2 gap-3 mt-4">
+        {/* Glava: operater / datum / smena */}
+        <Card>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <BigLabel>Delavec</BigLabel>
+              {isKnownOperater ? (
+                <div className="px-3 py-3 rounded-lg bg-as-gray-100 font-semibold">{operater}</div>
+              ) : (
+                <select value={operater} onChange={(e) => setOperater(e.target.value)} className={selCls}>
+                  <option value="">— izberi —</option>
+                  {OPERATERJI.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              )}
+            </div>
             <div>
               <BigLabel>Datum</BigLabel>
-              <input type="date" value={datum} onChange={(e) => setDatum(e.target.value)} className={inpCls} />
+              <input type="date" value={datum} onChange={(e) => setDatum(e.target.value)} className={selCls} />
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <BigLabel>Smena</BigLabel>
-              <div className="grid grid-cols-2 gap-2">
-                <ToggleBtn active={shift === 1} onClick={() => setShift(1)} label="🌅 Dop." />
-                <ToggleBtn active={shift === 2} onClick={() => setShift(2)} label="🌙 Pop." />
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setShift(1)}
+                  className={`flex-1 py-3 rounded-lg border-2 font-bold ${shift === 1 ? 'text-white' : 'text-as-gray-600 border-as-gray-200'}`}
+                  style={shift === 1 ? { background: AS_RED, borderColor: AS_RED } : {}}>🌅 Dop.</button>
+                <button type="button" onClick={() => setShift(2)}
+                  className={`flex-1 py-3 rounded-lg border-2 font-bold ${shift === 2 ? 'text-white' : 'text-as-gray-600 border-as-gray-200'}`}
+                  style={shift === 2 ? { background: AS_RED, borderColor: AS_RED } : {}}>🌙 Pop.</button>
               </div>
             </div>
           </div>
         </Card>
 
-        {/* Stroj */}
-        <Card>
-          <BigLabel>Segment</BigLabel>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {SEGMENTS.map((seg) => (
-              <button key={seg.id} type="button"
-                onClick={() => { setSegment(seg.id); setMachineId(''); }}
-                className="py-4 px-3 rounded-xl text-base font-bold border-2 transition active:scale-95"
-                style={{
-                  borderColor: seg.color,
-                  background: segment === seg.id ? seg.color : '#fff',
-                  color: segment === seg.id ? '#fff' : seg.color,
-                }}>
-                {seg.label}
-              </button>
-            ))}
-          </div>
-
-          {segment && (
-            <>
-              <BigLabel className="mt-5">Stroj</BigLabel>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {filteredMachines.map((m) => (
-                  <button key={m.id} type="button" disabled={m.vOkvari}
-                    onClick={() => setMachineId(m.id)}
-                    className="py-4 px-3 rounded-xl text-left border-2 transition active:scale-95 disabled:opacity-40"
-                    style={{
-                      borderColor: machineId === m.id ? AS_RED : '#E5E7EB',
-                      background: machineId === m.id ? '#FEE2E2' : '#fff',
-                    }}>
-                    <div className="font-bold text-as-gray-700">{m.id}</div>
-                    <div className="text-xs text-as-gray-500 leading-tight">{m.stroj}</div>
-                    {m.vOkvari && <div className="text-xs font-bold text-red-600 mt-1">V OKVARI</div>}
-                  </button>
-                ))}
+        {/* Delovni nalogi */}
+        <div className="mt-4 mb-1">
+          <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: AS_RED }}>
+            <span className="inline-block w-1.5 h-5 rounded" style={{ background: AS_RED }} />Delovni nalogi
+          </h2>
+        </div>
+        {orders.map((o, idx) => {
+          const segMachines = machinesFor(o.segmentId);
+          const mi = o.machineId ? findMachine(o.machineId) : null;
+          return (
+            <Card key={o.key}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold" style={{ color: AS_RED }}>Nalog #{idx + 1}</span>
+                {orders.length > 1 && <button onClick={() => removeOrder(o.key)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>}
               </div>
-            </>
-          )}
-
-          {machineInfo && !machineInfo.vOkvari && (
-            <div className="mt-4 bg-as-gray-50 border border-as-gray-200 rounded-xl p-3 text-sm">
-              <div><span className="text-as-gray-500">Normativ:</span> <strong>{formatNumber(machineInfo.normativ_h)} kos/h</strong></div>
-              <div><span className="text-as-gray-500">Operacija:</span> <strong>{machineInfo.operacija}</strong></div>
-            </div>
-          )}
-        </Card>
-
-        {/* Izdelek + nalog + količina */}
-        {machineInfo && !machineInfo.vOkvari && (
-          <Card>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <BigLabel>Šifra izdelka</BigLabel>
-                <input type="text" value={sifra} onChange={(e) => setSifra(e.target.value)} className={inpCls} placeholder="npr. M4x8" />
-              </div>
-              <div>
-                <BigLabel>Št. delovnega naloga</BigLabel>
-                <input type="text" inputMode="numeric" value={nalog} onChange={(e) => setNalog(e.target.value)} className={inpCls} placeholder="npr. 20012" />
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <BigLabel>Količina (kosov)</BigLabel>
-              <input type="number" inputMode="numeric" min="0" value={kosi} onChange={(e) => setKosi(e.target.value)} className={inpBig} placeholder="0" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              <TimeField label="Čas stroja" h={strojH} m={strojM} setH={setStrojH} setM={setStrojM} />
-              <TimeField label="Čas delavca" h={delH} m={delM} setH={setDelH} setM={setDelM} />
-            </div>
-
-            {eff !== null && (
-              <div className="mt-4 rounded-xl p-3 text-center font-bold text-lg"
-                style={{
-                  background: eff >= 95 ? '#DCFCE7' : eff >= 75 ? '#FEF3C7' : '#FEE2E2',
-                  color: eff >= 95 ? '#16A34A' : eff >= 75 ? '#D97706' : '#DC2626',
-                }}>
-                🎯 Doseganje normativa: {eff}%
-              </div>
-            )}
-          </Card>
-        )}
-
-        {/* Zastoj */}
-        {machineInfo && !machineInfo.vOkvari && (
-          <Card>
-            <button type="button" onClick={() => setHasStop((v) => !v)}
-              className="w-full flex items-center justify-between py-2 active:scale-95 transition">
-              <span className="flex items-center gap-2 text-lg font-bold text-as-gray-700">
-                <AlertTriangle className="w-6 h-6" style={{ color: '#D97706' }} /> Je bil zastoj?
-              </span>
-              <span className={`w-14 h-8 rounded-full transition relative ${hasStop ? '' : 'bg-as-gray-200'}`}
-                style={hasStop ? { background: '#D97706' } : {}}>
-                <span className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-all ${hasStop ? 'left-7' : 'left-1'}`} />
-              </span>
-            </button>
-
-            {hasStop && (
-              <div className="mt-3 space-y-4">
-                <TimeField label="Trajanje zastoja" h={stopH} m={stopM} setH={setStopH} setM={setStopM} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <BigLabel>Razlog</BigLabel>
-                  <select value={stopReason} onChange={(e) => setStopReason(e.target.value)} className={selCls}>
-                    <option value="">— izberi razlog —</option>
-                    {STOP_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  <BigLabel>Segment</BigLabel>
+                  <select value={o.segmentId} onChange={(e) => setOrder(o.key, 'segmentId', e.target.value)} className={selCls}>
+                    <option value="">— izberi —</option>
+                    {SEGMENTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                   </select>
                 </div>
+                <div>
+                  <BigLabel>Stroj</BigLabel>
+                  <select value={o.machineId} onChange={(e) => setOrder(o.key, 'machineId', e.target.value)} className={selCls} disabled={!o.segmentId}>
+                    <option value="">— izberi —</option>
+                    {segMachines.map((m) => <option key={m.id} value={m.id}>{m.id} · {m.stroj}</option>)}
+                  </select>
+                  {mi && <div className="text-xs mt-1 text-as-gray-500">Normativ: <strong>{formatNumber(mi.normativ_h)} kos/h</strong></div>}
+                </div>
+                <div>
+                  <BigLabel>Šifra izdelka</BigLabel>
+                  <input value={o.sifra} onChange={(e) => setOrder(o.key, 'sifra', e.target.value)} className={inpCls} placeholder="šifra" />
+                </div>
+                <div>
+                  <BigLabel>Št. delovnega naloga</BigLabel>
+                  <input value={o.nalog} onChange={(e) => setOrder(o.key, 'nalog', e.target.value)} className={inpCls} placeholder="npr. 20012" />
+                </div>
+                <div>
+                  <BigLabel>Količina (kos)</BigLabel>
+                  <input type="number" inputMode="numeric" value={o.kosi} onChange={(e) => setOrder(o.key, 'kosi', e.target.value)} className={inpCls} placeholder="0" />
+                </div>
+                <div />
+                <TimeField label="Čas stroja" h={o.strojH} m={o.strojM} setH={(v) => setOrder(o.key, 'strojH', v)} setM={(v) => setOrder(o.key, 'strojM', v)} />
+                <TimeField label="Čas delavca" h={o.delH} m={o.delM} setH={(v) => setOrder(o.key, 'delH', v)} setM={(v) => setOrder(o.key, 'delM', v)} />
               </div>
-            )}
-          </Card>
-        )}
+            </Card>
+          );
+        })}
+        <button onClick={addOrder} className="w-full py-3 rounded-lg border-2 border-dashed font-semibold inline-flex items-center justify-center gap-2" style={{ borderColor: AS_RED, color: AS_RED }}>
+          <Plus className="w-4 h-4" /> Dodaj nalog
+        </button>
 
-        {error && (
-          <div className="flex items-center gap-2 p-4 rounded-xl text-base font-semibold"
-            style={{ background: '#FEE2E2', color: '#991B1B' }}>
-            <X className="w-5 h-5 flex-shrink-0" /> {error}
-          </div>
-        )}
+        {/* Zastoji */}
+        <div className="mt-5 mb-1">
+          <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: '#F39C12' }}>
+            <span className="inline-block w-1.5 h-5 rounded" style={{ background: '#F39C12' }} />Zastoji <span className="text-as-gray-400 font-normal text-sm">(neobvezno)</span>
+          </h2>
+        </div>
+        {stops.map((s, idx) => (
+          <Card key={s.key}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-as-gray-500">Zastoj #{idx + 1}</span>
+              <button onClick={() => removeStop(s.key)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <BigLabel>Razlog</BigLabel>
+                <select value={s.reason} onChange={(e) => setStop(s.key, 'reason', e.target.value)} className={selCls}>
+                  <option value="">— izberi razlog —</option>
+                  {STOP_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <BigLabel>Vezan na nalog</BigLabel>
+                <select value={s.linkKey} onChange={(e) => setStop(s.key, 'linkKey', e.target.value)} className={selCls}>
+                  <option value="">Ni vezan (splošno)</option>
+                  {orderOptions.map((o, i) => {
+                    const mi = o.machineId ? findMachine(o.machineId) : null;
+                    const label = (o.nalog || o.sifra || (mi ? mi.stroj : `Nalog ${i + 1}`));
+                    return <option key={o.key} value={o.key}>{label}</option>;
+                  })}
+                </select>
+              </div>
+              <TimeField label="Trajanje" h={s.h} m={s.m} setH={(v) => setStop(s.key, 'h', v)} setM={(v) => setStop(s.key, 'm', v)} />
+              <div>
+                <BigLabel>Opomba</BigLabel>
+                <input value={s.opomba} onChange={(e) => setStop(s.key, 'opomba', e.target.value)} className={inpCls} placeholder="neobvezno" />
+              </div>
+            </div>
+          </Card>
+        ))}
+        <button onClick={addStop} className="w-full py-3 rounded-lg border-2 border-dashed font-semibold inline-flex items-center justify-center gap-2 border-as-gray-300 text-as-gray-600">
+          <Plus className="w-4 h-4" /> Dodaj zastoj
+        </button>
       </div>
 
       {/* Sticky SHRANI */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-as-gray-200 shadow-lg">
-        <div className="max-w-3xl mx-auto">
-          <button onClick={handleSave} disabled={loading || !machineInfo || machineInfo?.vOkvari}
-            className="w-full py-5 text-white text-xl font-bold rounded-2xl shadow-md inline-flex items-center justify-center gap-3 transition active:scale-95 disabled:opacity-40"
-            style={{ background: AS_RED }}>
-            {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Check className="w-6 h-6" />}
-            {loading ? 'Shranjujem…' : 'SHRANI VNOS'}
-          </button>
-        </div>
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-as-gray-200">
+        <button onClick={handleSave} disabled={saving}
+          className="max-w-3xl mx-auto w-full py-4 rounded-xl text-white font-bold text-lg inline-flex items-center justify-center gap-2 disabled:opacity-60"
+          style={{ background: AS_RED }}>
+          {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+          {saving ? 'Shranjujem…' : 'SHRANI VNOS'}
+        </button>
       </div>
 
-      {/* Uspeh overlay */}
+      {/* Uspeh */}
       {success && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-3xl px-10 py-8 text-center shadow-2xl animate-bounce-once">
-            <div className="w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-3" style={{ background: '#DCFCE7' }}>
-              <Check className="w-12 h-12" style={{ color: '#16A34A' }} />
+        <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl px-8 py-6 text-center shadow-xl">
+            <div className="w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: '#e8f5e9' }}>
+              <Check className="w-8 h-8" style={{ color: '#1b5e20' }} />
             </div>
-            <div className="text-2xl font-bold text-as-gray-700">Shranjeno!</div>
-            <div className="text-as-gray-500 mt-1">Vnesi naslednji.</div>
+            <div className="font-bold text-lg">Shranjeno!</div>
           </div>
         </div>
       )}
@@ -351,45 +333,20 @@ export default function WorkerEntry({ currentUser }) {
   );
 }
 
-// ─── Tablični gradniki (veliki) ───
-function Card({ children }) {
-  return <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm">{children}</div>;
-}
+const selCls = "w-full px-3 py-3 border border-as-gray-200 rounded-lg bg-white text-base focus:outline-none focus:border-as-red-600 disabled:bg-as-gray-50";
+const inpCls = "w-full px-3 py-3 border border-as-gray-200 rounded-lg bg-white text-base focus:outline-none focus:border-as-red-600";
 
-function BigLabel({ children, className = '' }) {
-  return <label className={`block text-sm font-bold text-as-gray-600 uppercase tracking-wide mb-2 ${className}`}>{children}</label>;
-}
-
-function ToggleBtn({ active, onClick, label }) {
-  return (
-    <button type="button" onClick={onClick}
-      className="py-3 rounded-xl text-base font-bold border-2 transition active:scale-95"
-      style={{
-        borderColor: active ? AS_RED : '#E5E7EB',
-        background: active ? '#FEE2E2' : '#fff',
-        color: active ? AS_RED : '#6B7280',
-      }}>
-      {label}
-    </button>
-  );
-}
-
+function Card({ children }) { return <div className="bg-white rounded-xl border border-as-gray-200 p-4 mb-3">{children}</div>; }
+function BigLabel({ children }) { return <label className="block text-sm font-semibold text-as-gray-600 mb-1">{children}</label>; }
 function TimeField({ label, h, m, setH, setM }) {
   return (
     <div>
       <BigLabel>{label}</BigLabel>
       <div className="flex items-center gap-2">
-        <input type="number" inputMode="numeric" min="0" max="24" value={h} onChange={(e) => setH(e.target.value)}
-          className={inpBig + ' text-center'} placeholder="0" />
-        <span className="text-2xl font-bold text-as-gray-400">:</span>
-        <input type="number" inputMode="numeric" min="0" max="59" value={m} onChange={(e) => setM(e.target.value)}
-          className={inpBig + ' text-center'} placeholder="00" />
+        <input type="number" inputMode="numeric" value={h} onChange={(e) => setH(e.target.value)} className={inpCls} placeholder="ur" />
+        <span className="text-as-gray-400">:</span>
+        <input type="number" inputMode="numeric" value={m} onChange={(e) => setM(e.target.value)} className={inpCls} placeholder="min" />
       </div>
-      <div className="text-xs text-as-gray-400 mt-1">ur : minut</div>
     </div>
   );
 }
-
-const inpCls = "w-full px-4 py-3 border-2 border-as-gray-200 rounded-xl bg-white text-base focus:outline-none focus:border-as-red-600";
-const inpBig = "w-full px-4 py-3 border-2 border-as-gray-200 rounded-xl bg-white text-2xl font-bold focus:outline-none focus:border-as-red-600";
-const selCls = "w-full px-4 py-3 border-2 border-as-gray-200 rounded-xl bg-white text-lg focus:outline-none focus:border-as-red-600";
