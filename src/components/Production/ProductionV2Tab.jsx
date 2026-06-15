@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Plus, Calendar, BarChart3, Package, AlertTriangle, Trash, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, TrendingUp, TrendingDown, Clock, User, FileText } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { calculateEfficiency, SEGMENTS_META, loadMachines, buildSegments, makeFindMachine } from './productionV2Config';
+import ProductionAdmin from './ProductionAdmin';
 
 const AS_RED = '#C8102E';
 
@@ -128,6 +129,9 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
             {canManageMachines && (
               <SubTab active={view === 'machines'} onClick={() => setView('machines')} icon={<Package className="w-4 h-4" />} label="Stroji" />
             )}
+            {canManageMachines && (
+              <SubTab active={view === 'urejanje'} onClick={() => setView('urejanje')} icon={<FileText className="w-4 h-4" />} label="Urejanje" />
+            )}
           </div>
         </div>
         <div id="productionv2-controls-slot" className="flex flex-wrap items-center gap-3 ml-auto"></div>
@@ -146,6 +150,9 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
       {view === 'monthly' && <MonthlyView entries={entries} stops={stops} wastes={wastes} loading={loading} />}
       {view === 'machines' && canManageMachines && (
         <MachinesAdmin rows={machineRows} onReload={reloadMachines} setError={setError} isAdmin={isAdmin} />
+      )}
+      {view === 'urejanje' && canManageMachines && (
+        <ProductionAdmin />
       )}
     </div>
     </MachinesCtx.Provider>
