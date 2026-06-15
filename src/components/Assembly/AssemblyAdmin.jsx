@@ -1,6 +1,6 @@
 // AssemblyAdmin.jsx — Urejanje montaže (Milena + admini): delavke, linije, šifre/normativi,
 // razlogi zastoja + popravljanje/brisanje vnosov delavk.
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Save, X, Trash2, Loader2 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import {
@@ -179,8 +179,10 @@ function CrudList({ config }) {
 function Editor({ fields, initial, busy, onCancel, onSave }) {
   const [f, setF] = useState({ ...initial });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const editRef = useRef(null);
+  useEffect(() => { editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, []);
   return (
-    <div className="border-2 rounded-xl p-4 mb-4" style={{ borderColor: AS_RED }}>
+    <div ref={editRef} className="border-2 rounded-xl p-4 mb-4" style={{ borderColor: AS_RED }}>
       <div className="font-semibold mb-3">{f.id != null && f.id !== '' ? 'Uredi' : 'Nov zapis'}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {fields.map((fld) => (
