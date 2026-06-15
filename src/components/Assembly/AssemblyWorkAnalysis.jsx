@@ -3,11 +3,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, BarChart3, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { getAssemblyWorkLog, getAssemblyWorkStops, formatNumber, SLOVENIAN_MONTHS } from '../../lib/assemblyApi.js';
+import { supabase } from '../../supabase';
 
 const AS_RED = '#C8102E';
 const num = (v) => Number(v) || 0;
 const h1 = (n) => (Math.round(num(n) * 10) / 10).toLocaleString('sl-SI');
 const pct = (kos, exp) => (exp > 0 ? Math.round((kos / exp) * 100) : null);
+const mqKos = (v) => (v && typeof v === 'object') ? Number(v.kos || 0) : Number(v || 0);
+const mqNorm = (v) => (v && typeof v === 'object') ? Number(v.normativ || 0) : 0;
+function oldKosOf(e) { let k = Number(e.total_kos || 0); if (!k) { for (const v of Object.values(e.machine_quantities || {})) k += mqKos(v); for (const v of Object.values(e.activity_data || {})) k += mqKos(v); } return k; }
+function oldExpOf(e) { let n = Number(e.normativ || 0); if (!n) { for (const v of Object.values(e.machine_quantities || {})) n += mqNorm(v); for (const v of Object.values(e.activity_data || {})) n += mqNorm(v); } return n; }
+function parseBd(raw) { if (!raw) return { reason: '', cas: 0 }; let o = raw; if (typeof raw === 'string') { try { o = JSON.parse(raw); } catch { return { reason: String(raw), cas: 0 }; } } return { reason: o.zastoj || o.vzrok || '', cas: Number(o.cas || 0) || 0 }; }
 
 function addDays(dateStr, n) { const d = new Date(dateStr); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
 function monthRange(y, m) {
@@ -17,16 +23,18 @@ function monthRange(y, m) {
   return [start, end];
 }
 
-export default function AssemblyWorkAnalysis() {
+export default function AssemblyWorkAnalysis({ lockMode = null }) {
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date();
-  const [mode, setMode] = useState('day'); // 'day' | 'month'
+  const [mode, setMode] = useState(lockMode || 'day'); // 'day' | 'month'
   const [date, setDate] = useState(today);
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [logs, setLogs] = useState([]);
   const [stops, setStops] = useState([]);
+  const [oldEntries, setOldEntries] = useState([]);
   const [loading, setLoading] = useState(true);
+  useEffect(() => { if (lockMode) setMode(lockMode); }, [lockMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,10 +44,16 @@ export default function AssemblyWorkAnalysis() {
         let start, end;
         if (mode === 'day') { start = date; end = addDays(date, 1); }
         else { [start, end] = monthRange(year, month); }
-        const [lg, st] = await Promise.all([getAssemblyWorkLog(start, end), getAssemblyWorkStops(start, end)]);
-        if (!cancelled) { setLogs(lg); setStops(st); }
+        const [lg, st, oe] = await Promise.all([
+          getAssemblyWorkLog(start, end),
+          getAssemblyWorkStops(start, end),
+          supabase.from('assembly_entries')
+            .select('id,date,total_hours,total_kos,normativ,breakdowns,machine_quantities,activity_data,assembly_workers(name)')
+            .gte('date', start).lt('date', end),
+        ]);
+        if (!cancelled) { setLogs(lg); setStops(st); setOldEntries(oe.data || []); }
       } catch (e) {
-        if (!cancelled) { setLogs([]); setStops([]); }
+        if (!cancelled) { setLogs([]); setStops([]); setOldEntries([]); }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -69,16 +83,35 @@ export default function AssemblyWorkAnalysis() {
       (byReason[rs] = byReason[rs] || { reason: rs, count: 0, hours: 0 });
       byReason[rs].count += 1; byReason[rs].hours += c;
     }
+    let oldNalogi = 0, oldStops = 0;
+    for (const e of oldEntries) {
+      const k = oldKosOf(e), cd = num(e.total_hours), exp = oldExpOf(e);
+      if (k === 0 && cd === 0 && exp === 0) continue;
+      kos += k; dela += cd; expected += exp; oldNalogi += 1;
+      const wn = e.assembly_workers?.name || '(staro)';
+      (byWorker[wn] = byWorker[wn] || { name: wn, kos: 0, dela: 0, stroja: 0, exp: 0, nalogi: 0 });
+      byWorker[wn].kos += k; byWorker[wn].dela += cd; byWorker[wn].exp += exp; byWorker[wn].nalogi += 1;
+      const sf = '(staro)';
+      (bySifra[sf] = bySifra[sf] || { sifra: sf, kos: 0, dela: 0, stroja: 0, exp: 0, nh: 0, nalogi: 0 });
+      bySifra[sf].kos += k; bySifra[sf].dela += cd; bySifra[sf].exp += exp; bySifra[sf].nalogi += 1;
+      const bd = parseBd(e.breakdowns);
+      if (bd.cas) {
+        stopHours += bd.cas; oldStops += 1;
+        const rs = bd.reason || 'staro';
+        (byReason[rs] = byReason[rs] || { reason: rs, count: 0, hours: 0 });
+        byReason[rs].count += 1; byReason[rs].hours += bd.cas;
+      }
+    }
     return {
       kos, dela, stroja, expected,
       doseganje: pct(kos, expected),
-      nalogi: logs.length,
-      stopCount: stops.length, stopHours,
+      nalogi: logs.length + oldNalogi,
+      stopCount: stops.length + oldStops, stopHours,
       workers: Object.values(byWorker).sort((x, y) => y.kos - x.kos),
       sifre: Object.values(bySifra).sort((x, y) => y.kos - x.kos),
       reasons: Object.values(byReason).sort((x, y) => y.hours - x.hours),
     };
-  }, [logs, stops]);
+  }, [logs, stops, oldEntries]);
 
   const monthLabel = `${SLOVENIAN_MONTHS[month - 1]} ${year}`;
   const prevMonth = () => { if (month === 1) { setMonth(12); setYear(year - 1); } else setMonth(month - 1); };
@@ -88,10 +121,12 @@ export default function AssemblyWorkAnalysis() {
     <div className="space-y-5">
       {/* Kontrole obdobja */}
       <div className="flex flex-wrap items-center gap-3">
+        {!lockMode && (
         <div className="flex gap-1 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200">
           <Pill active={mode === 'day'} onClick={() => setMode('day')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
           <Pill active={mode === 'month'} onClick={() => setMode('month')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
         </div>
+        )}
         {mode === 'day' ? (
           <div className="flex items-center gap-2">
             <button onClick={() => setDate(addDays(date, -1))} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronLeft className="w-4 h-4" /></button>
@@ -117,7 +152,7 @@ export default function AssemblyWorkAnalysis() {
         <BigStat icon="🛑" label="Zastoji" value={h1(a.stopHours)} unit={`h · ${a.stopCount}×`} color="#F39C12" bgColor="#FEF3E0" />
       </div>
 
-      {logs.length === 0 && stops.length === 0 && !loading && (
+      {logs.length === 0 && stops.length === 0 && oldEntries.length === 0 && !loading && (
         <div className="bg-white border border-as-gray-200 rounded-xl p-8 text-center text-sm text-as-gray-500">
           Za to obdobje ni vnosov.
         </div>
