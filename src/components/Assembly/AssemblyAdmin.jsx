@@ -42,12 +42,17 @@ const SECTIONS = [
   { key: 'vnosi', label: 'Popravi vnose' },
 ];
 
-export default function AssemblyAdmin() {
+export default function AssemblyAdmin({ onlySection = null }) {
+  const visible = SECTIONS.filter((s) => s.key !== 'linije');
   const [section, setSection] = useState('delavke');
+  if (onlySection) {
+    const sec = SECTIONS.find((s) => s.key === onlySection);
+    return <div className="space-y-4">{sec && sec.config ? <CrudList config={sec.config} /> : null}</div>;
+  }
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-1 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200 w-fit">
-        {SECTIONS.map((s) => (
+        {visible.map((s) => (
           <button key={s.key} onClick={() => setSection(s.key)}
             className={`px-3 py-1.5 text-sm font-semibold rounded transition ${section === s.key ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
             style={section === s.key ? { backgroundColor: AS_RED } : {}}>
@@ -57,7 +62,7 @@ export default function AssemblyAdmin() {
       </div>
       {section === 'vnosi'
         ? <WorkLogEditor />
-        : <CrudList config={SECTIONS.find((s) => s.key === section).config} />}
+        : <CrudList config={visible.find((s) => s.key === section).config} />}
     </div>
   );
 }
