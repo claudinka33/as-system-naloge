@@ -325,16 +325,16 @@ function WorkLogEditor() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-as-gray-500 border-b border-as-gray-200">
-              <th className="text-left p-2">Delavka</th><th className="text-left p-2">Razlog</th><th className="text-right p-2">Trajanje (h)</th><th className="text-left p-2">Opomba</th><th className="text-right p-2">Akcije</th>
+              <th className="text-left p-2">Delavka</th><th className="text-left p-2">Razlog</th><th className="text-left p-2">Nalog</th><th className="text-right p-2">Trajanje (h)</th><th className="text-left p-2">Opomba</th><th className="text-right p-2">Akcije</th>
             </tr></thead>
             <tbody>
               {stops.map((r) => (
                 <tr key={r.id} className="border-b border-as-gray-100">
-                  <td className="p-2">{r.worker_name || '—'}</td><td className="p-2">{r.reason || '—'}</td><td className="p-2 text-right">{h1(r.cas_ur)}</td><td className="p-2">{r.opomba || '—'}</td>
+                  <td className="p-2">{r.worker_name || '—'}</td><td className="p-2">{r.reason || '—'}</td><td className="p-2">{r.delovni_nalog || 'splošno'}</td><td className="p-2 text-right">{h1(r.cas_ur)}</td><td className="p-2">{r.opomba || '—'}</td>
                   <td className="p-2 text-right"><button onClick={() => delStop(r)} disabled={busy} className="text-xs px-2 py-1 rounded text-red-600 hover:bg-red-50"><Trash2 className="w-3 h-3" /></button></td>
                 </tr>
               ))}
-              {stops.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-as-gray-400">Ni zastojev za ta dan.</td></tr>}
+              {stops.length === 0 && <tr><td colSpan={6} className="p-4 text-center text-as-gray-400">Ni zastojev za ta dan.</td></tr>}
             </tbody>
           </table>
         </div>
