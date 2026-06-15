@@ -1,6 +1,6 @@
 // AssemblyTab.jsx — Glavni zavihek "Montaža"
 import React, { useState } from 'react';
-import { Plus, Calendar, BarChart3, ClipboardList, Settings } from 'lucide-react';
+import { Plus, Calendar, BarChart3, ClipboardList, Settings, Archive } from 'lucide-react';
 import AssemblyEntry from './AssemblyEntry.jsx';
 import AssemblyDailyReport from './AssemblyDailyReport.jsx';
 import AssemblyMonthlyReport from './AssemblyMonthlyReport.jsx';
@@ -23,11 +23,12 @@ export default function AssemblyTab({ currentUser }) {
   const [view, setView] = useState('work');
   const [initialDate, setInitialDate] = useState(null);
   const [initialWorkerId, setInitialWorkerId] = useState(null);
+  const [legacyView, setLegacyView] = useState('daily');
 
   const handleEditEntry = (date, workerId) => {
     setInitialDate(date);
     setInitialWorkerId(workerId);
-    setView('entry');
+    setView('legacy'); setLegacyView('entry');
   };
 
   if (!canAccessAssembly(currentUser?.email)) {
@@ -50,12 +51,8 @@ export default function AssemblyTab({ currentUser }) {
         <div className="flex gap-1 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200">
           <SubTab active={view === 'work'} onClick={() => setView('work')}
             icon={<ClipboardList className="w-4 h-4" />} label="Nalogi" />
-          <SubTab active={view === 'entry'} onClick={() => setView('entry')}
-            icon={<Plus className="w-4 h-4" />} label="Vnos" />
-          <SubTab active={view === 'daily'} onClick={() => setView('daily')}
-            icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
-          <SubTab active={view === 'monthly'} onClick={() => setView('monthly')}
-            icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+          <SubTab active={view === 'legacy'} onClick={() => setView('legacy')}
+            icon={<Archive className="w-4 h-4" />} label="Stara analiza" />
           <SubTab active={view === 'admin'} onClick={() => setView('admin')}
             icon={<Settings className="w-4 h-4" />} label="Urejanje" />
         </div>
@@ -65,9 +62,21 @@ export default function AssemblyTab({ currentUser }) {
 
       {view === 'work' && <AssemblyWorkAnalysis />}
       {view === 'admin' && <AssemblyAdmin />}
-      {view === 'entry' && <AssemblyEntry currentUser={currentUser} initialDate={initialDate} initialWorkerId={initialWorkerId} onConsumed={() => { setInitialDate(null); setInitialWorkerId(null); }} />}
-      {view === 'daily' && <AssemblyDailyReport onEditEntry={handleEditEntry} />}
-      {view === 'monthly' && <AssemblyMonthlyReport onEditEntry={handleEditEntry} />}
+      {view === 'legacy' && (
+        <div>
+          <div className="flex gap-1 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200 mb-4 w-fit">
+            <SubTab active={legacyView === 'entry'} onClick={() => setLegacyView('entry')}
+              icon={<Plus className="w-4 h-4" />} label="Vnos" />
+            <SubTab active={legacyView === 'daily'} onClick={() => setLegacyView('daily')}
+              icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
+            <SubTab active={legacyView === 'monthly'} onClick={() => setLegacyView('monthly')}
+              icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+          </div>
+          {legacyView === 'entry' && <AssemblyEntry currentUser={currentUser} initialDate={initialDate} initialWorkerId={initialWorkerId} onConsumed={() => { setInitialDate(null); setInitialWorkerId(null); }} />}
+          {legacyView === 'daily' && <AssemblyDailyReport onEditEntry={handleEditEntry} />}
+          {legacyView === 'monthly' && <AssemblyMonthlyReport onEditEntry={handleEditEntry} />}
+        </div>
+      )}
     </div>
   );
 }
