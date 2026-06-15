@@ -19,7 +19,7 @@ function formatNumber(n) {
 let _k = 0;
 const newKey = () => `r${++_k}`;
 const blankOrder = () => ({ key: newKey(), nalog: '', sifra: '', machineId: '', kolicina: '', delH: '', delM: '', strojH: '', strojM: '' });
-const blankStop = () => ({ key: newKey(), reason: '', newReason: '', h: '', m: '', opomba: '' });
+const blankStop = () => ({ key: newKey(), reason: '', newReason: '', linkKey: '', h: '', m: '', opomba: '' });
 
 export default function MontazaWorkerEntry({ currentUser }) {
   const fixedWorkerId = currentUser?.assemblyWorkerId || null;
@@ -112,6 +112,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
         setReasons(mr.data || []);
       }
 
+      const logByKey = {};
       if (orderRows.length) {
         const payload = orderRows.map((o) => ({
           date: datum,
@@ -127,20 +128,26 @@ export default function MontazaWorkerEntry({ currentUser }) {
           normativ_kos_h: normForSifra(o.sifra),
           created_by: currentUser?.email || null,
         }));
-        const { error: e1 } = await supabase.from('assembly_work_log').insert(payload);
+        const { data: insLogs, error: e1 } = await supabase.from('assembly_work_log').insert(payload).select();
         if (e1) throw e1;
+        (insLogs || []).forEach((row, i) => { const o = orderRows[i]; if (o) logByKey[o.key] = row; });
       }
 
       if (stopRows.length) {
-        const payload = stopRows.map((s) => ({
-          date: datum,
-          worker_id: wid,
-          worker_name: workerName || null,
-          reason: ((s.newReason || '').trim() || s.reason || '').trim(),
-          cas_ur: hmToHours(s.h, s.m),
-          opomba: (s.opomba || '').trim(),
-          created_by: currentUser?.email || null,
-        }));
+        const payload = stopRows.map((s) => {
+          const linked = s.linkKey ? logByKey[s.linkKey] : null;
+          return {
+            date: datum,
+            worker_id: wid,
+            worker_name: workerName || null,
+            reason: ((s.newReason || '').trim() || s.reason || '').trim(),
+            cas_ur: hmToHours(s.h, s.m),
+            opomba: (s.opomba || '').trim(),
+            log_id: linked ? linked.id : null,
+            delovni_nalog: linked ? (linked.delovni_nalog || null) : null,
+            created_by: currentUser?.email || null,
+          };
+        });
         const { error: e2 } = await supabase.from('assembly_work_stops').insert(payload);
         if (e2) throw e2;
       }
@@ -271,6 +278,15 @@ export default function MontazaWorkerEntry({ currentUser }) {
               {s.reason === '__new__' && (
                 <input value={s.newReason} onChange={(e) => setStop(s.key, 'newReason', e.target.value)} className={inpCls + ' mt-2'} placeholder="vpiši nov razlog (ostane shranjen)" />
               )}
+            </div>
+            <div>
+              <BigLabel>Vezan na nalog</BigLabel>
+              <select value={s.linkKey} onChange={(e) => setStop(s.key, 'linkKey', e.target.value)} className={selCls}>
+                <option value="">Ni vezan (splošno)</option>
+                {orders.filter((o) => (o.nalog || o.sifra)).map((o, i) => (
+                  <option key={o.key} value={o.key}>{(o.nalog || o.sifra) || `Nalog ${i + 1}`}</option>
+                ))}
+              </select>
             </div>
             <TimeField label="Trajanje" h={s.h} m={s.m} setH={(v) => setStop(s.key, 'h', v)} setM={(v) => setStop(s.key, 'm', v)} />
             <div className="sm:col-span-2">
