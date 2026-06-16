@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck, Home, Wallet, NotebookPen } from 'lucide-react';
+import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck, Home, Wallet, NotebookPen, Settings } from 'lucide-react';
 import { supabase } from './supabase.js';
 import Reports from './Reports.jsx';
 import { syncTaskWebhook } from './webhooks.js';
@@ -24,6 +24,7 @@ import CRMTab, { canAccessCRM } from './components/CRM/CRMTab.jsx';
 import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
 import Notes from './Notes.jsx';
+import UserAdmin from './UserAdmin.jsx';
 import { getMyTaskViews, markTaskAsViewed, countUnreadComments } from './lib/taskViewsApi.js';
 import NabavaModule from './NabavaModule.jsx';
 import { canAccessNabava } from './nabavaConfig.js';
@@ -167,6 +168,53 @@ export default function App() {
   const triggerModuleReset = (key) => {
     setModuleResetCounters(c => ({ ...c, [key]: (c[key] || 0) + 1 }));
   };
+
+  // === Uporabniki & pravice iz baze ===
+  const [dbUsers, setDbUsers] = useState([]);
+  const [moduleAccess, setModuleAccess] = useState({});
+  const [showUserAdmin, setShowUserAdmin] = useState(false);
+
+  const loadUsersAndAccess = async () => {
+    try {
+      const [uRes, aRes] = await Promise.all([
+        supabase.from('app_users').select('*').eq('active', true).order('name', { ascending: true }),
+        supabase.from('module_access').select('*')
+      ]);
+      if (!uRes.error && uRes.data && uRes.data.length) setDbUsers(uRes.data);
+      const map = {};
+      if (!aRes.error && aRes.data) aRes.data.forEach(r => { map[r.user_email] = r.modules || []; });
+      setModuleAccess(map);
+    } catch (e) {}
+  };
+  useEffect(() => { loadUsersAndAccess(); }, []);
+
+  // Zdruzen seznam zaposlenih: baza (ce obstaja) sicer constants
+  const employees = dbUsers.length ? dbUsers : EMPLOYEES;
+
+  // Privzete (legacy) pravice - veljajo dokler admin ne nastavi po meri
+  const legacyModulesFor = (u) => {
+    const email = u?.email;
+    const adm = u?.is_admin || ADMIN_EMAILS.includes(email);
+    const out = ['tasks', 'gradiva', 'notes', 'chat'];
+    if (canAccessProduction(email)) out.push('proizvodnja-v2');
+    if (canAccessAssembly(email)) out.push('assembly');
+    if (canAccessCRM(email)) out.push('crm');
+    ['nabava', 'prodaja', 'tehnolog', 'komerciala', 'kakovost'].forEach(k => {
+      const cfg = ODDELKI_CONFIG[k];
+      if (adm || (cfg && cfg.allowedEmails && cfg.allowedEmails.includes(email))) out.push(k);
+    });
+    if (adm) out.push('racunovodstvo');
+    return [...new Set(out)];
+  };
+
+  const canSeeModule = (key) => {
+    if (isAdmin) return true;
+    const email = currentUser?.email;
+    if (email && Object.prototype.hasOwnProperty.call(moduleAccess, email)) {
+      return (moduleAccess[email] || []).includes(key);
+    }
+    return legacyModulesFor(currentUser || {}).includes(key);
+  };
   const handleModuleClick = (key) => {
     if (mainSection === key) {
       // že je aktiven → reset na home tega modula
@@ -204,7 +252,7 @@ export default function App() {
     }
   }, []);
 
-  const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
+  const isAdmin = currentUser && (currentUser.is_admin === true || ADMIN_EMAILS.includes(currentUser.email));
 
   // Chat unread badge — poll vsakih 15s
   const [chatUnread, setChatUnread] = useState(0);
@@ -317,6 +365,32 @@ export default function App() {
 
   const handleLogin = async () => {
     const input = emailInput.trim().toLowerCase();
+
+    // Najprej preveri bazo app_users (admin upravlja zaposlene iz UI)
+    try {
+      const { data: dbu } = await supabase
+        .from('app_users')
+        .select('*')
+        .or(`username.eq.${input},email.eq.${input}`)
+        .eq('active', true)
+        .maybeSingle();
+      if (dbu && dbu.username) {
+        if (passwordInput !== dbu.password) {
+          setAuthError('Napačno uporabniško ime ali geslo.');
+          setPasswordInput('');
+          return;
+        }
+        setAuthenticated(true);
+        setCurrentUser(dbu);
+        setAuthError('');
+        try {
+          sessionStorage.setItem('as_auth', 'true');
+          sessionStorage.setItem('as_user_email', dbu.email);
+          sessionStorage.setItem('as_user_obj', JSON.stringify(dbu));
+        } catch (e) {}
+        return;
+      }
+    } catch (e) {}
     
     // Najdi po uporabniškem imenu ALI po polnem e-mailu
     const user = [...EMPLOYEES, ...PRODUCTION_WORKERS].find(e => 
@@ -505,7 +579,7 @@ export default function App() {
       if (error) throw error;
       // Pošlji v n8n: ustvari Outlook event + email
       if (insertedTask && insertedTask.due_date) {
-        const result = await syncTaskWebhook('create', insertedTask, EMPLOYEES, currentUser.name);
+        const result = await syncTaskWebhook('create', insertedTask, employees, currentUser.name);
         if (result && result.outlook_event_id) {
           await supabase
             .from('tasks')
@@ -582,7 +656,7 @@ export default function App() {
       const updatedTask = tasks.find(t => t.id === taskId);
       if (updatedTask && updatedTask.due_date && updatedTask.outlook_event_id) {
         const merged = { ...updatedTask, ...dbUpdates };
-        await syncTaskWebhook('update', merged, EMPLOYEES, currentUser.name);
+        await syncTaskWebhook('update', merged, employees, currentUser.name);
       }
       
       setEditingTask(null);
@@ -683,7 +757,7 @@ export default function App() {
       }
       // Pošlji v n8n: izbriši Outlook event
       if (task && task.outlook_event_id) {
-        await syncTaskWebhook('delete', task, EMPLOYEES, currentUser.name);
+        await syncTaskWebhook('delete', task, employees, currentUser.name);
       }
       
       // Brišemo nalogo (komentarji in priponke se zbrišejo avtomatsko zaradi CASCADE)
@@ -976,7 +1050,7 @@ mineUnseen: tasks.filter(t => {
 
   const getEmployeeName = (email) => {
     if (!email) return null;
-    const emp = EMPLOYEES.find(e => e.email === email);
+    const emp = employees.find(e => e.email === email);
     return emp ? emp.name : email;
   };
 
@@ -1079,6 +1153,15 @@ mineUnseen: tasks.filter(t => {
                   </button>
                 )}
 
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowUserAdmin(true)}
+                    className="p-2 hover:bg-as-gray-100 rounded-lg transition text-as-gray-400 hover:text-as-gray-600"
+                    title="Uporabniki in pravice"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </button>
+                )}
                 <button
                   onClick={handleLogout}
                   className="p-2 hover:bg-as-gray-100 rounded-lg transition text-as-gray-400 hover:text-as-gray-600"
@@ -1100,7 +1183,7 @@ mineUnseen: tasks.filter(t => {
                   <ClipboardList className="w-4 h-4" />
                   <span className="hidden sm:inline">Naloge</span>
                 </button>
-                {currentUser && (
+                {canSeeModule('gradiva') && (
                   <button
                     onClick={() => handleModuleClick('gradiva')}
                     className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'gradiva' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
@@ -1132,7 +1215,7 @@ mineUnseen: tasks.filter(t => {
                     <span className="hidden sm:inline">Proizvodnja</span>
                   </button>
                 )}
-                {canAccessProduction(currentUser?.email) && (
+                {canSeeModule('proizvodnja-v2') && (
               <button
   onClick={() => handleModuleClick('proizvodnja-v2')}
   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'proizvodnja-v2' ? 'text-white' : ''}`}
@@ -1142,7 +1225,7 @@ mineUnseen: tasks.filter(t => {
   <span className="hidden sm:inline">Proizvodnja</span>
 </button>
             )}
-                {canAccessAssembly(currentUser?.email) && (
+                {canSeeModule('assembly') && (
                   <button
                     onClick={() => handleModuleClick('assembly')}
                     className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'assembly' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
@@ -1152,7 +1235,7 @@ mineUnseen: tasks.filter(t => {
                     <span className="hidden sm:inline">Montaža</span>
                   </button>
                 )}
-                {canAccessCRM(currentUser?.email) && (
+                {canSeeModule('crm') && (
                   <button
                     onClick={() => handleModuleClick('crm')}
                     className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'crm' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
@@ -1164,7 +1247,7 @@ mineUnseen: tasks.filter(t => {
                 )}
                 {Object.entries(ODDELKI_CONFIG).map(([key, oddelek]) => {
                   const Icon = oddelek.icon;
-                  const allowed = isAdmin || (oddelek.allowedEmails && oddelek.allowedEmails.includes(currentUser?.email));
+                  const allowed = canSeeModule(key);
                   if (!allowed) return null;
                   return (
                     <button
@@ -1178,7 +1261,7 @@ mineUnseen: tasks.filter(t => {
                     </button>
                   );
                 })}
-                {isAdmin && (
+                {canSeeModule('racunovodstvo') && (
                   <div className="relative">
                     <button
                       onClick={() => {
@@ -1298,23 +1381,23 @@ mineUnseen: tasks.filter(t => {
           <Racunovodstvo
             currentUser={currentUser}
             isAdmin={isAdmin}
-            employees={EMPLOYEES}
+            employees={employees}
             selectedCategoryFromHeader={racunovodstvoCategory}
             onCategoryHandled={() => setRacunovodstvoCategory(undefined)}
             resetSignal={moduleResetCounters.racunovodstvo || 0}
           />
         ) : mainSection === 'nabava' ? (
-          <OddelekModule config={ODDELKI_CONFIG.nabava} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.nabava || 0} />
+          <OddelekModule config={ODDELKI_CONFIG.nabava} currentUser={currentUser} isAdmin={isAdmin} employees={employees} resetSignal={moduleResetCounters.nabava || 0} />
         ) : mainSection === 'prodaja' ? (
-          <OddelekModule config={ODDELKI_CONFIG.prodaja} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.prodaja || 0} />
+          <OddelekModule config={ODDELKI_CONFIG.prodaja} currentUser={currentUser} isAdmin={isAdmin} employees={employees} resetSignal={moduleResetCounters.prodaja || 0} />
        ) : mainSection === 'tehnolog' ? (
           <TechnologTab currentUser={currentUser} isAdmin={isAdmin} />
         ) : mainSection === 'komerciala' ? (
           <KomercialaModule currentUser={currentUser} isAdmin={isAdmin} />
         ) : mainSection === 'kakovost' ? (
-          <OddelekModule config={ODDELKI_CONFIG.kakovost} currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} resetSignal={moduleResetCounters.kakovost || 0} />
+          <OddelekModule config={ODDELKI_CONFIG.kakovost} currentUser={currentUser} isAdmin={isAdmin} employees={employees} resetSignal={moduleResetCounters.kakovost || 0} />
         ) : mainSection === 'reports' ? (
-          <Reports currentUser={currentUser} employees={EMPLOYEES} />
+          <Reports currentUser={currentUser} employees={employees} />
      ) : mainSection === 'production' ? (
               <ProductionTab currentUser={currentUser} resetSignal={moduleResetCounters.production || 0} />
             ) : mainSection === 'proizvodnja-v2' ? (
@@ -1325,13 +1408,13 @@ mineUnseen: tasks.filter(t => {
             ) : mainSection === 'assembly' ? (
           <AssemblyTab currentUser={currentUser} resetSignal={moduleResetCounters.assembly || 0} />
       ) : mainSection === 'crm' ? (
-          <CRMTab currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
+          <CRMTab currentUser={currentUser} isAdmin={isAdmin} employees={employees} />
        ) : mainSection === 'notes' ? (
-          <Notes currentUser={currentUser} employees={EMPLOYEES} />
+          <Notes currentUser={currentUser} employees={employees} />
         ) : mainSection === 'gradiva' ? (
-          <Gradiva currentUser={currentUser} employees={EMPLOYEES} />
+          <Gradiva currentUser={currentUser} employees={employees} />
         ) : mainSection === 'chat' ? (
-          <Chat currentUser={currentUser} employees={EMPLOYEES} />
+          <Chat currentUser={currentUser} employees={employees} />
         ) : (
           <>
         {/* Statistike (vedno vidne) */}
@@ -1407,7 +1490,7 @@ mineUnseen: tasks.filter(t => {
                   className="px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 bg-white"
                 >
                   <option value="all">Vsi zaposleni</option>
-                  {EMPLOYEES.map(emp => (
+                  {employees.map(emp => (
                     <option key={emp.email} value={emp.email}>{emp.name}</option>
                   ))}
                 </select>
@@ -1495,7 +1578,7 @@ mineUnseen: tasks.filter(t => {
             setSelectedDay={setSelectedDay}
             filterPerson={filterPerson}
             setFilterPerson={setFilterPerson}
-            employees={EMPLOYEES}
+            employees={employees}
             onTaskClick={(task) => {
               setExpandedTask(task.id);
               setViewMode('list');
@@ -1509,10 +1592,10 @@ mineUnseen: tasks.filter(t => {
       </main>
 
       {/* Plavajoči klepet — vedno spodaj desno (skrije se na strani Klepet) */}
-      {mainSection !== 'chat' && <FloatingChat currentUser={currentUser} employees={EMPLOYEES} />}
+      {canSeeModule('chat') && mainSection !== 'chat' && <FloatingChat currentUser={currentUser} employees={employees} />}
 
       {/* Plavajoča Beležnica ikona — levo od Klepet ikone (skrije se na strani Beležnica) */}
-      {mainSection !== 'notes' && (
+      {canSeeModule('notes') && mainSection !== 'notes' && (
         <button
           onClick={() => setMainSection('notes')}
           className="fixed bottom-4 right-24 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-white transition hover:scale-105"
@@ -1523,10 +1606,19 @@ mineUnseen: tasks.filter(t => {
         </button>
       )}
 
+      {showUserAdmin && isAdmin && (
+        <UserAdmin
+          currentUser={currentUser}
+          legacyModulesFor={legacyModulesFor}
+          onClose={() => setShowUserAdmin(false)}
+          onChanged={loadUsersAndAccess}
+        />
+      )}
+
       {(showNewTask || editingTask) && (
         <TaskModal
           task={editingTask}
-          employees={EMPLOYEES}
+          employees={employees}
           areaSuggestions={AREA_SUGGESTIONS}
           currentUser={currentUser}
           onSave={(data) => {
