@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabase';
-import { FileText, Plus, Trash2, Download, Save, Bold, Italic, List, ListOrdered, Heading1, Heading2, Underline, Folder, FolderPlus, ChevronRight, ChevronDown, FolderOpen, Type, Palette, Move } from 'lucide-react';
+import { FileText, Plus, Trash2, Download, Save, Bold, Italic, List, ListOrdered, Heading1, Heading2, Underline, Folder, FolderPlus, ChevronRight, ChevronDown, FolderOpen, Type, Palette, Move, Users, Lock } from 'lucide-react';
 
 const FONT_OPTIONS = [
   { label: 'Sans-serif', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
@@ -9,7 +9,7 @@ const FONT_OPTIONS = [
   { label: 'Rokopis', value: '"Comic Sans MS", "Brush Script MT", cursive' }
 ];
 
-export default function Notes({ currentUser }) {
+export default function Notes({ currentUser, employees }) {
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState({});
@@ -23,29 +23,42 @@ export default function Notes({ currentUser }) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [folderVisibleToAll, setFolderVisibleToAll] = useState(false);
+  const [folderAllowedEmails, setFolderAllowedEmails] = useState([]);
+  const [editingFolder, setEditingFolder] = useState(null);
+  const [savingFolder, setSavingFolder] = useState(false);
   const [draggedNoteId, setDraggedNoteId] = useState(null);
   const [dragOverFolderId, setDragOverFolderId] = useState(null);
   const editorRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+
+  const canSeeFolder = (f) => {
+    if (!f) return false;
+    if ((f.created_by_email && f.created_by_email === currentUser?.email) || f.user_email === currentUser?.email) return true;
+    if (f.visible_to_all) return true;
+    return (f.allowed_emails || []).includes(currentUser?.email);
+  };
+  const canEditFolder = (f) => !!f && ((f.created_by_email && f.created_by_email === currentUser?.email) || f.user_email === currentUser?.email);
 
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
     setLoading(true);
     const [foldersRes, notesRes] = await Promise.all([
-      supabase.from('note_folders').select('*').eq('user_email', currentUser.email).order('created_at', { ascending: true }),
-      supabase.from('notes').select('*').eq('user_email', currentUser.email).order('updated_at', { ascending: false })
+      supabase.from('note_folders').select('*').order('created_at', { ascending: true }),
+      supabase.from('notes').select('*').order('updated_at', { ascending: false })
     ]);
-    if (!foldersRes.error && foldersRes.data) {
-      setFolders(foldersRes.data);
-      const exp = {};
-      foldersRes.data.forEach(f => { exp[f.id] = true; });
-      setExpandedFolders(exp);
-    }
-    if (!notesRes.error && notesRes.data) {
-      setNotes(notesRes.data);
-      if (notesRes.data.length > 0 && !selectedNote) selectNote(notesRes.data[0]);
-    }
+    const allFolders = (!foldersRes.error && foldersRes.data) ? foldersRes.data : [];
+    const myFolders = allFolders.filter(canSeeFolder);
+    const visibleFolderIds = new Set(myFolders.map(f => f.id));
+    setFolders(myFolders);
+    const exp = {};
+    myFolders.forEach(f => { exp[f.id] = true; });
+    setExpandedFolders(exp);
+    const allNotes = (!notesRes.error && notesRes.data) ? notesRes.data : [];
+    const myNotes = allNotes.filter(n => n.user_email === currentUser.email || (n.folder_id && visibleFolderIds.has(n.folder_id)));
+    setNotes(myNotes);
+    if (myNotes.length > 0 && !selectedNote) selectNote(myNotes[0]);
     setLoading(false);
   };
 
@@ -105,20 +118,57 @@ export default function Notes({ currentUser }) {
   };
 
   const openNewFolderModal = () => {
+    setEditingFolder(null);
     setNewFolderName('');
+    setFolderVisibleToAll(false);
+    setFolderAllowedEmails([]);
     setShowNewFolderModal(true);
   };
+  const openEditFolder = (f) => {
+    setEditingFolder(f);
+    setNewFolderName(f.name || '');
+    setFolderVisibleToAll(!!f.visible_to_all);
+    setFolderAllowedEmails(f.allowed_emails || []);
+    setShowNewFolderModal(true);
+  };
+  const closeFolderModal = () => {
+    setShowNewFolderModal(false);
+    setEditingFolder(null);
+    setNewFolderName('');
+    setFolderVisibleToAll(false);
+    setFolderAllowedEmails([]);
+  };
+  const toggleAllowed = (email) => {
+    setFolderAllowedEmails(prev => prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]);
+  };
 
-  const createFolder = async () => {
+  const saveFolder = async () => {
     const name = newFolderName.trim();
     if (!name) return;
-    const { data, error } = await supabase.from('note_folders').insert([{ user_email: currentUser.email, name }]).select().single();
-    if (!error && data) {
-      setFolders([...folders, data]);
-      setExpandedFolders({ ...expandedFolders, [data.id]: true });
-      setShowNewFolderModal(false);
-      setNewFolderName('');
+    setSavingFolder(true);
+    const payload = {
+      name,
+      visible_to_all: folderVisibleToAll,
+      allowed_emails: folderVisibleToAll ? [] : folderAllowedEmails
+    };
+    if (editingFolder) {
+      const { data, error } = await supabase.from('note_folders').update(payload).eq('id', editingFolder.id).select().single();
+      if (!error && data) {
+        setFolders(folders.map(f => f.id === data.id ? data : f));
+        closeFolderModal();
+      }
+    } else {
+      payload.user_email = currentUser.email;
+      payload.created_by_email = currentUser.email;
+      payload.created_by_name = currentUser.name || currentUser.email;
+      const { data, error } = await supabase.from('note_folders').insert([payload]).select().single();
+      if (!error && data) {
+        setFolders([...folders, data]);
+        setExpandedFolders({ ...expandedFolders, [data.id]: true });
+        closeFolderModal();
+      }
     }
+    setSavingFolder(false);
   };
 
   const deleteFolder = async (folderId, folderName) => {
@@ -272,8 +322,10 @@ export default function Notes({ currentUser }) {
                         {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-500" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500" />}
                         <Folder className="w-4 h-4 text-red-700" />
                         <span className="text-sm font-medium text-gray-800 flex-1 truncate">{folder.name}</span>
+                        {folder.visible_to_all ? <Users className="w-3.5 h-3.5 text-green-600" /> : ((folder.allowed_emails && folder.allowed_emails.length > 0) ? <Users className="w-3.5 h-3.5 text-blue-500" /> : <Lock className="w-3 h-3 text-gray-400" />)}
                         <span className="text-xs text-gray-400">{folderNotes.length}</span>
-                        <button onClick={(e) => { e.stopPropagation(); deleteFolder(folder.id, folder.name); }} className="text-gray-300 hover:text-red-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="Izbriši mapico"><Trash2 className="w-3.5 h-3.5" /></button>
+                        {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); openEditFolder(folder); }} className="text-gray-300 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="Kdo vidi mapo"><Users className="w-3.5 h-3.5" /></button>}
+                        {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); deleteFolder(folder.id, folder.name); }} className="text-gray-300 hover:text-red-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="Izbriši mapico"><Trash2 className="w-3.5 h-3.5" /></button>}
                       </div>
                       {isExpanded && folderNotes.map(n => renderNoteItem(n, true))}
                     </div>
@@ -348,39 +400,76 @@ export default function Notes({ currentUser }) {
           )}
         </div>
       </div>
-      {/* Modal za novo mapico */}
+      {/* Modal za novo/uredi mapico */}
       {showNewFolderModal && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowNewFolderModal(false); }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeFolderModal(); }}
         >
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
             <div className="flex items-center gap-2 mb-4">
               <FolderPlus className="w-6 h-6 text-red-700" />
-              <h3 className="text-lg font-bold text-gray-900">Nova mapica</h3>
+              <h3 className="text-lg font-bold text-gray-900">{editingFolder ? 'Uredi mapico' : 'Nova mapica'}</h3>
             </div>
             <input
               type="text"
               autoFocus
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') setShowNewFolderModal(false); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveFolder(); if (e.key === 'Escape') closeFolderModal(); }}
               placeholder="npr. SESTANKI, JAGROS, MONTAŽA..."
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-base"
             />
+
+            <div className="mt-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Kdo vidi mapo</label>
+              <div className="flex gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setFolderVisibleToAll(false)}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border flex items-center justify-center gap-2 ${!folderVisibleToAll ? 'text-white border-transparent bg-red-700' : 'bg-white text-gray-600 border-gray-200'}`}
+                >
+                  <Lock className="w-4 h-4" /> Samo izbrani
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFolderVisibleToAll(true)}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border flex items-center justify-center gap-2 ${folderVisibleToAll ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200'}`}
+                  style={folderVisibleToAll ? { backgroundColor: '#059669' } : {}}
+                >
+                  <Users className="w-4 h-4" /> Vsi
+                </button>
+              </div>
+              {!folderVisibleToAll && (
+                <div className="border border-gray-200 rounded-lg p-2 max-h-52 overflow-y-auto space-y-1">
+                  {(employees || []).filter(emp => emp.email !== currentUser?.email).map(emp => {
+                    const checked = folderAllowedEmails.includes(emp.email);
+                    return (
+                      <label key={emp.email} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer text-sm">
+                        <input type="checkbox" checked={checked} onChange={() => toggleAllowed(emp.email)} className="w-4 h-4" style={{ accentColor: '#C8102E' }} />
+                        <span className="text-gray-700 flex-1">{emp.name}</span>
+                        <span className="text-xs text-gray-400">{emp.department}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mt-1">Ti kot lastnik mapo vedno vidiš. Dokumenti brez mape so vedno zasebni.</p>
+            </div>
+
             <div className="flex items-center justify-end gap-2 mt-4">
               <button
-                onClick={() => setShowNewFolderModal(false)}
+                onClick={closeFolderModal}
                 className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 Prekliči
               </button>
               <button
-                onClick={createFolder}
-                disabled={!newFolderName.trim()}
+                onClick={saveFolder}
+                disabled={!newFolderName.trim() || savingFolder}
                 className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                Ustvari mapico
+                {savingFolder ? 'Shranjujem...' : (editingFolder ? 'Shrani' : 'Ustvari mapico')}
               </button>
             </div>
           </div>
