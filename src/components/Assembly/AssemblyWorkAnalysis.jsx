@@ -9,10 +9,11 @@ const AS_RED = '#C8102E';
 const num = (v) => Number(v) || 0;
 const h1 = (n) => (Math.round(num(n) * 10) / 10).toLocaleString('sl-SI');
 const pct = (kos, exp) => (exp > 0 ? Math.round((kos / exp) * 100) : null);
-const mqKos = (v) => (v && typeof v === 'object') ? Number(v.kos || 0) : Number(v || 0);
-const mqNorm = (v) => (v && typeof v === 'object') ? Number(v.normativ || 0) : 0;
-function oldKosOf(e) { let k = Number(e.total_kos || 0); if (!k) { for (const v of Object.values(e.machine_quantities || {})) k += mqKos(v); for (const v of Object.values(e.activity_data || {})) k += mqKos(v); } return k; }
-function oldExpOf(e) { let n = Number(e.normativ || 0); if (!n) { for (const v of Object.values(e.machine_quantities || {})) n += mqNorm(v); for (const v of Object.values(e.activity_data || {})) n += mqNorm(v); } return n; }
+const sn = (x) => { const n = Number(x); return Number.isFinite(n) ? n : 0; };
+const mqKos = (v) => (v && typeof v === 'object') ? sn(v.kos) : sn(v);
+const mqNorm = (v) => (v && typeof v === 'object') ? sn(v.normativ) : 0;
+function oldKosOf(e) { let k = sn(e.total_kos); if (!k) { for (const v of Object.values(e.machine_quantities || {})) k += mqKos(v); for (const v of Object.values(e.activity_data || {})) k += mqKos(v); } return sn(k); }
+function oldExpOf(e) { let n = sn(e.normativ); if (!n) { for (const v of Object.values(e.machine_quantities || {})) n += mqNorm(v); for (const v of Object.values(e.activity_data || {})) n += mqNorm(v); } return sn(n); }
 function parseBd(raw) { if (!raw) return { reason: '', cas: 0 }; let o = raw; if (typeof raw === 'string') { try { o = JSON.parse(raw); } catch { return { reason: String(raw), cas: 0 }; } } return { reason: o.zastoj || o.vzrok || '', cas: Number(o.cas || 0) || 0 }; }
 
 function addDays(dateStr, n) { const d = new Date(dateStr); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
@@ -85,7 +86,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
     }
     let oldNalogi = 0, oldStops = 0;
     for (const e of oldEntries) {
-      const k = oldKosOf(e), cd = num(e.total_hours), exp = oldExpOf(e);
+      const k = oldKosOf(e), cd = sn(num(e.total_hours)), exp = oldExpOf(e);
       if (k === 0 && cd === 0 && exp === 0) continue;
       kos += k; dela += cd; expected += exp; oldNalogi += 1;
       const wn = e.assembly_workers?.name || '(staro)';
