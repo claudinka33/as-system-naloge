@@ -1327,7 +1327,7 @@ mineUnseen: tasks.filter(t => {
       ) : mainSection === 'crm' ? (
           <CRMTab currentUser={currentUser} isAdmin={isAdmin} employees={EMPLOYEES} />
        ) : mainSection === 'notes' ? (
-          <Notes currentUser={currentUser} />
+          <Notes currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'gradiva' ? (
           <Gradiva currentUser={currentUser} employees={EMPLOYEES} />
         ) : mainSection === 'chat' ? (
