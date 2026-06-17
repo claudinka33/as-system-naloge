@@ -2580,25 +2580,31 @@ function StrankeView({ visits, loading, isAdmin }) {
           </button>
         ))}
       </div>
-      {mode === 'baza' ? <CustomerDirectory isAdmin={isAdmin} /> : <AnalysisView visits={visits} loading={loading} />}
+      {mode === 'baza' ? <CustomerDirectory isAdmin={isAdmin} visits={visits} /> : <AnalysisView visits={visits} loading={loading} />}
     </div>
   );
 }
 
 // ─── BAZA STRANK (direktorij: vse stranke, dodaj/uredi/izbriši) ───
-function CustomerDirectory({ isAdmin }) {
+function CustomerDirectory({ isAdmin, visits }) {
   const COLS = 'id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,email,telefon,splet,opombe,tags';
-  const PAGE = 50;
+  const PAGE = 100;
   const [q, setQ] = useState('');
   const [tagFilter, setTagFilter] = useState(null);
   const [list, setList] = useState([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [editing, setEditing] = useState(null); // 'new' | customer | null
-  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [flash, setFlash] = useState('');
+
+  // Navigacija: izbrano podjetje (poslovalnice) → izbrana stranka (detajl)
+  const [company, setCompany] = useState(null);   // { naziv, branches: [...] }
+  const [detail, setDetail] = useState(null);      // izbrana crm_customers vrstica
+  const [editing, setEditing] = useState(false);   // urejanje detajla
+  const [creating, setCreating] = useState(false); // nova stranka
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   async function load(reset, curOffset) {
     setLoading(true); setErr('');
@@ -2628,25 +2634,57 @@ function CustomerDirectory({ isAdmin }) {
   useEffect(() => { const t = setTimeout(() => load(true), 300); return () => clearTimeout(t); }, [q, tagFilter]);
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(''), 3000); return () => clearTimeout(t); }, [flash]);
 
-  async function handleSave(values) {
+  // Združi naložene vrstice po podjetju (davčna)
+  const companies = useMemo(() => {
+    const map = {};
+    list.forEach((c) => {
+      const key = (c.davcna && String(c.davcna).trim()) ? `d:${c.davcna}` : `id:${c.id}`;
+      if (!map[key]) map[key] = { key, naziv: c.naziv, davcna: c.davcna, panoga: c.panoga, tags: c.tags || [], rows: [] };
+      map[key].rows.push(c);
+      if (c.poslovalnica === 0) { map[key].naziv = c.naziv; map[key].tags = c.tags || []; map[key].panoga = c.panoga; }
+    });
+    return Object.values(map).sort((a, b) => a.naziv.localeCompare(b.naziv));
+  }, [list]);
+
+  const filterTags = [...new Set([...CUSTOMER_TAGS, ...list.flatMap((c) => c.tags || [])])];
+
+  // Odpri podjetje → naloži VSE poslovalnice (tudi če niso v trenutni strani)
+  async function openCompany(comp) {
+    setErr('');
+    try {
+      let qy = supabase.from('crm_customers').select(COLS);
+      qy = comp.davcna ? qy.eq('davcna', comp.davcna) : qy.eq('id', comp.rows[0].id);
+      const { data, error } = await qy.order('poslovalnica', { ascending: true });
+      if (error) throw error;
+      const branches = data || comp.rows;
+      if (branches.length <= 1) { setDetail(branches[0] || comp.rows[0]); setCompany(null); }
+      else { setCompany({ naziv: comp.naziv, branches }); }
+    } catch (e) { setErr(e.message); }
+    setShowAnalysis(false); setEditing(false);
+  }
+
+  function openDetail(row) { setDetail(row); setCompany(null); setEditing(false); setShowAnalysis(false); }
+  function backToList() { setDetail(null); setCompany(null); setEditing(false); setShowAnalysis(false); }
+
+  async function handleSaveNew(values) {
     setSaving(true); setErr('');
     try {
-      if (editing === 'new') {
-        const { error } = await supabase.from('crm_customers').insert([{ ...values, poslovalnica: 0 }]);
-        if (error) throw error;
-        setFlash('✓ Stranka dodana');
-      } else {
-        const { error } = await supabase.from('crm_customers').update(values).eq('id', editing.id);
-        if (error) throw error;
-        setFlash('✓ Stranka posodobljena');
-      }
-      setEditing(null);
-      load(true);
-    } catch (e) {
-      setErr(e.message || 'Napaka pri shranjevanju.');
-    } finally {
-      setSaving(false);
-    }
+      const { error } = await supabase.from('crm_customers').insert([{ ...values, poslovalnica: 0 }]);
+      if (error) throw error;
+      setCreating(false); setFlash('✓ Stranka dodana'); load(true);
+    } catch (e) { setErr(e.message || 'Napaka pri shranjevanju.'); }
+    finally { setSaving(false); }
+  }
+
+  async function handleSaveEdit(values) {
+    setSaving(true); setErr('');
+    try {
+      const { error } = await supabase.from('crm_customers').update(values).eq('id', detail.id);
+      if (error) throw error;
+      setDetail((d) => ({ ...d, ...values }));
+      setEditing(false); setFlash('✓ Stranka posodobljena'); load(true);
+    } catch (e) { setErr(e.message || 'Napaka pri shranjevanju.'); }
+    finally { setSaving(false); }
   }
 
   async function handleDelete(c) {
@@ -2654,25 +2692,12 @@ function CustomerDirectory({ isAdmin }) {
     try {
       const { error } = await supabase.from('crm_customers').delete().eq('id', c.id);
       if (error) throw error;
-      setFlash('Stranka izbrisana');
-      load(true);
+      setFlash('Stranka izbrisana'); backToList(); load(true);
     } catch (e) { setErr(e.message || 'Napaka pri brisanju.'); }
   }
 
-  const filterTags = [...new Set([...CUSTOMER_TAGS, ...list.flatMap((c) => c.tags || [])])];
-
-  return (
-    <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h3 className="font-bold text-as-gray-700">🗂️ Baza strank</h3>
-        {!editing && (
-          <button onClick={() => setEditing('new')}
-            className="px-4 py-2.5 text-white text-sm font-semibold rounded-xl inline-flex items-center gap-2" style={{ background: CRM_COLOR }}>
-            <Plus className="w-4 h-4" /> Nova stranka
-          </button>
-        )}
-      </div>
-
+  const banners = (
+    <>
       {flash && (
         <div className="flex items-center gap-2 p-3 rounded-xl border" style={{ background: '#DCFCE7', borderColor: '#86EFAC', color: '#166534' }}>
           <CheckCircle2 className="w-4 h-4 flex-shrink-0" /><span className="text-sm font-semibold flex-1">{flash}</span>
@@ -2684,21 +2709,108 @@ function CustomerDirectory({ isAdmin }) {
           <button onClick={() => setErr('')} className="text-as-gray-500"><X className="w-4 h-4" /></button>
         </div>
       )}
+    </>
+  );
 
-      {/* Forma za dodajanje/urejanje */}
-      {editing && (
-        <CustomerForm
-          initial={editing === 'new' ? {} : editing}
-          saving={saving}
-          onCancel={() => setEditing(null)}
-          onSave={handleSave}
-        />
-      )}
+  // ── DETAJL ENE STRANKE ──
+  if (detail) {
+    const custVisits = (visits || []).filter((v) => String(v.customer_id) === String(detail.id));
+    return (
+      <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+        <button onClick={backToList} className="text-sm font-semibold text-as-gray-500 hover:text-as-gray-700 inline-flex items-center gap-1">
+          <ChevronRight className="w-4 h-4 rotate-180" /> Nazaj na bazo
+        </button>
+        {banners}
+        {editing ? (
+          <CustomerForm initial={detail} saving={saving} onCancel={() => setEditing(false)} onSave={handleSaveEdit} />
+        ) : (
+          <div className="border border-as-gray-200 rounded-xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-as-gray-800 text-lg">{detail.naziv}{detail.poslovalnica ? <span className="text-sm text-as-gray-400 font-normal"> · posl. {detail.poslovalnica}</span> : ''}</div>
+                <div className="text-sm text-as-gray-500 mt-0.5">{[detail.ulica, detail.posta].filter(Boolean).join(', ') || '—'}{detail.davcna ? ` · DŠ ${detail.davcna}` : ''}{detail.panoga ? ` · ${detail.panoga}` : ''}</div>
+              </div>
+              <div className="flex flex-col gap-1.5 flex-shrink-0">
+                <button onClick={() => setEditing(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: CRM_BG, color: CRM_COLOR }}>Uredi</button>
+                {isAdmin && <button onClick={() => handleDelete(detail)} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50">Izbriši</button>}
+              </div>
+            </div>
+            {(detail.tags && detail.tags.length > 0) && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {detail.tags.map((t) => <span key={t} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: CRM_BG, color: CRM_COLOR }}>{t}</span>)}
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm mt-3">
+              <ProfRow label="Kontakt" value={detail.kontakt_oseba} />
+              <ProfRow label="Telefon" value={detail.telefon} href={detail.telefon ? `tel:${detail.telefon}` : null} />
+              <ProfRow label="Email" value={detail.email} href={detail.email ? `mailto:${detail.email}` : null} />
+              <ProfRow label="Splet" value={detail.splet} href={detail.splet ? (detail.splet.startsWith('http') ? detail.splet : `https://${detail.splet}`) : null} />
+              {detail.opombe && <div className="sm:col-span-2"><span className="text-as-gray-400 text-xs">Opombe: </span><span className="text-as-gray-700 whitespace-pre-wrap">{detail.opombe}</span></div>}
+            </div>
+          </div>
+        )}
 
-      {!editing && (
+        {/* Analiza SAMO za to stranko */}
+        {!editing && (
+          <div>
+            <button onClick={() => setShowAnalysis((s) => !s)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border-2 transition"
+              style={{ borderColor: showAnalysis ? CRM_COLOR : '#E5E7EB', background: showAnalysis ? CRM_BG : '#fff', color: showAnalysis ? CRM_COLOR : '#6B7280' }}>
+              <TrendingUp className="w-4 h-4" /> {showAnalysis ? 'Skrij analizo' : 'Analiza te stranke'}
+            </button>
+            {showAnalysis && <div className="mt-3"><CustomerAnalysis custVisits={custVisits} /></div>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── IZBIRA POSLOVALNICE ──
+  if (company) {
+    return (
+      <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+        <button onClick={() => setCompany(null)} className="text-sm font-semibold text-as-gray-500 hover:text-as-gray-700 inline-flex items-center gap-1">
+          <ChevronRight className="w-4 h-4 rotate-180" /> Nazaj na bazo
+        </button>
+        {banners}
+        <div>
+          <div className="font-bold text-as-gray-800 text-lg mb-1">{company.naziv}</div>
+          <div className="text-xs text-as-gray-500 mb-3">Izberi poslovalnico ({company.branches.length}):</div>
+          <div className="space-y-2">
+            {company.branches.map((b) => (
+              <button key={b.id} onClick={() => openDetail(b)}
+                className="w-full text-left border border-as-gray-200 rounded-xl p-3 hover:bg-as-gray-50 transition">
+                <div className="font-semibold text-as-gray-800 text-sm">{b.poslovalnica != null ? `Posl. ${b.poslovalnica}` : 'Glavna'}</div>
+                <div className="text-xs text-as-gray-500">{[b.ulica, b.posta].filter(Boolean).join(', ') || '—'}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── SEZNAM PODJETIJ ──
+  return (
+    <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h3 className="font-bold text-as-gray-700">🗂️ Baza strank</h3>
+        {!creating && (
+          <button onClick={() => setCreating(true)}
+            className="px-4 py-2.5 text-white text-sm font-semibold rounded-xl inline-flex items-center gap-2" style={{ background: CRM_COLOR }}>
+            <Plus className="w-4 h-4" /> Nova stranka
+          </button>
+        )}
+      </div>
+
+      {banners}
+
+      {creating ? (
+        <CustomerForm initial={{}} saving={saving} onCancel={() => setCreating(false)} onSave={handleSaveNew} />
+      ) : (
         <>
           <input type="text" value={q} onChange={(e) => setQ(e.target.value)} className={inputCls}
-            placeholder="Išči po nazivu, naslovu ali davčni…" />
+            placeholder="Išči stranko (npr. JAGROS) po nazivu, naslovu ali davčni…" />
 
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setTagFilter(null)}
@@ -2711,33 +2823,26 @@ function CustomerDirectory({ isAdmin }) {
             ))}
           </div>
 
-          {loading && list.length === 0 ? <LoadingBox /> : list.length === 0 ? (
+          {loading && list.length === 0 ? <LoadingBox /> : companies.length === 0 ? (
             <div className="text-center py-8 text-as-gray-400 text-sm">Ni najdenih strank.</div>
           ) : (
             <div className="space-y-2">
-              {list.map((c) => (
-                <div key={c.id} className="border border-as-gray-200 rounded-xl p-3 sm:p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-as-gray-800">{c.naziv}{c.poslovalnica ? <span className="text-xs text-as-gray-400 font-normal"> · posl. {c.poslovalnica}</span> : ''}</div>
-                      <div className="text-xs text-as-gray-500 mt-0.5">{[c.ulica, c.posta].filter(Boolean).join(', ') || '—'}{c.davcna ? ` · DŠ ${c.davcna}` : ''}{c.panoga ? ` · ${c.panoga}` : ''}</div>
-                      <div className="text-xs text-as-gray-600 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                        {c.kontakt_oseba && <span>👤 {c.kontakt_oseba}</span>}
-                        {c.telefon && <a href={`tel:${c.telefon}`} style={{ color: CRM_COLOR }}>📞 {c.telefon}</a>}
-                        {c.email && <a href={`mailto:${c.email}`} style={{ color: CRM_COLOR }}>✉️ {c.email}</a>}
+              {companies.map((comp) => (
+                <button key={comp.key} onClick={() => openCompany(comp)}
+                  className="w-full text-left border border-as-gray-200 rounded-xl p-3 sm:p-4 hover:bg-as-gray-50 transition flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-as-gray-800">{comp.naziv}</div>
+                    <div className="text-xs text-as-gray-500 mt-0.5">
+                      {comp.davcna ? `DŠ ${comp.davcna}` : ''}{comp.rows.length > 1 ? `${comp.davcna ? ' · ' : ''}${comp.rows.length} poslovalnic` : ''}{comp.panoga ? ` · ${comp.panoga}` : ''}
+                    </div>
+                    {(comp.tags && comp.tags.length > 0) && (
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {comp.tags.map((t) => <span key={t} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: CRM_BG, color: CRM_COLOR }}>{t}</span>)}
                       </div>
-                      {(c.tags && c.tags.length > 0) && (
-                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {c.tags.map((t) => <span key={t} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: CRM_BG, color: CRM_COLOR }}>{t}</span>)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-1.5 flex-shrink-0">
-                      <button onClick={() => setEditing(c)} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: CRM_BG, color: CRM_COLOR }}>Uredi</button>
-                      {isAdmin && <button onClick={() => handleDelete(c)} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50">Izbriši</button>}
-                    </div>
+                    )}
                   </div>
-                </div>
+                  <ChevronRight className="w-5 h-5 text-as-gray-300 flex-shrink-0" />
+                </button>
               ))}
               {hasMore && (
                 <button onClick={() => load(false)} disabled={loading}
@@ -2749,6 +2854,69 @@ function CustomerDirectory({ isAdmin }) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// ── Analiza ENE stranke (zgodovina + statistika) ──
+function CustomerAnalysis({ custVisits }) {
+  const list = (custVisits || []).filter((v) => v.entry_type === 'visit' || v.entry_type === 'call');
+  if (list.length === 0) {
+    return (
+      <div className="bg-as-gray-50 border border-as-gray-200 rounded-xl p-5 text-center">
+        <div className="text-sm font-semibold text-as-gray-500">Trenutno še ne aktivna stranka</div>
+        <div className="text-xs text-as-gray-400 mt-1">Ko vneseš prvi obisk ali klic, se bo tukaj prikazala zgodovina.</div>
+      </div>
+    );
+  }
+  const sorted = [...list].sort((a, b) => {
+    const d = (b.visit_date || '').localeCompare(a.visit_date || '');
+    if (d !== 0) return d;
+    return (b.arrival_time || '').localeCompare(a.arrival_time || '');
+  });
+  const kontakti = list.length;
+  const narocila = list.filter((v) => v.outcome === 'narocilo').length;
+  const ponudbe = list.filter((v) => v.outcome === 'ponudba' || v.create_offer).length;
+  const minutes = list.reduce((s, v) => s + Number(v.visit_duration_min || v.call_duration_min || diffMinutes(v.arrival_time, v.departure_time) || 0), 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-4 gap-2">
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3 text-center"><div className="text-lg font-bold text-as-gray-700">{kontakti}</div><div className="text-xs text-as-gray-500">kontaktov</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3 text-center"><div className="text-lg font-bold" style={{ color: '#16A34A' }}>{narocila}</div><div className="text-xs text-as-gray-500">naročil</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3 text-center"><div className="text-lg font-bold" style={{ color: '#D97706' }}>{ponudbe}</div><div className="text-xs text-as-gray-500">ponudb</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3 text-center"><div className="text-lg font-bold text-as-gray-700">{(minutes / 60).toFixed(1)}</div><div className="text-xs text-as-gray-500">ur</div></div>
+      </div>
+      <div className="text-xs font-semibold text-as-gray-500 uppercase tracking-wider">Zgodovina ({sorted.length})</div>
+      {sorted.map((e) => {
+        const isCall = e.entry_type === 'call';
+        const eIcon = isCall ? (e.channel === 'email' ? '✉️' : '📞') : '📍';
+        const dur = isCall ? (e.call_duration_min != null ? e.call_duration_min : null) : diffMinutes(e.arrival_time, e.departure_time);
+        const oc = e.outcome === 'narocilo' ? { t: 'Naročilo', c: '#16A34A', b: '#DCFCE7' }
+          : e.outcome === 'ponudba' ? { t: 'Ponudba', c: '#D97706', b: '#FEF3C7' } : null;
+        return (
+          <div key={e.id} className="bg-white border border-as-gray-200 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <span className="text-lg flex-shrink-0">{eIcon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap text-sm">
+                  <span className="font-semibold text-as-gray-800">{formatDate(e.visit_date)}</span>
+                  <span className="text-as-gray-500 text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> {formatTime(e.arrival_time)}{e.departure_time ? ' – ' + formatTime(e.departure_time) : ''}</span>
+                  {dur != null && dur >= 0 && <span className="text-xs font-semibold" style={{ color: '#0E7490' }}>{formatMinutes(dur)}</span>}
+                  {oc && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: oc.c, background: oc.b }}>{oc.t}</span>}
+                </div>
+                {e.notes && <div className="text-sm text-as-gray-600 mt-1.5 whitespace-pre-wrap">{e.notes}</div>}
+                {e.offer_description && (
+                  <div className="text-xs text-as-gray-500 mt-1.5 bg-yellow-50 border border-yellow-200 rounded p-2">
+                    <strong>Ponudba:</strong> {e.offer_description}{e.offer_due_date && <> · rok {formatDate(e.offer_due_date)}</>}
+                  </div>
+                )}
+                <div className="text-xs text-as-gray-400 mt-1">Vnesel: {e.created_by_name || e.created_by || '—'}</div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
