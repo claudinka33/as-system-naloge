@@ -2234,10 +2234,14 @@ function FunnelBar({ label, value, max, color, pct }) {
 }
 
 // ─── ANALIZA PO STRANKAH (z zgodovino vsake stranke) ───
+// Prednastavljeni tagi za stranke (lahko se dodajo lastni)
+const CUSTOMER_TAGS = ['vroč lead', 'obstoječa stranka', 'potencial', 'neaktivna', 'VIP', 'cenovno občutljiva'];
+
 function AnalysisView({ visits, loading }) {
   const [q, setQ] = useState('');
   const [custMap, setCustMap] = useState({});
   const [openKey, setOpenKey] = useState(null);
+  const [tagFilter, setTagFilter] = useState(null);
 
   useEffect(() => {
     const ids = [...new Set((visits || []).map((v) => v.customer_id).filter(Boolean))];
@@ -2247,7 +2251,7 @@ function AnalysisView({ visits, loading }) {
       const map = {};
       for (let i = 0; i < ids.length; i += 200) {
         const chunk = ids.slice(i, i + 200);
-        const { data } = await supabase.from('crm_customers').select('id,naziv,panoga,ulica,posta,davcna').in('id', chunk);
+        const { data } = await supabase.from('crm_customers').select('id,naziv,panoga,ulica,posta,davcna,kontakt_oseba,email,telefon,splet,opombe,tags').in('id', chunk);
         (data || []).forEach((c) => { map[c.id] = c; });
       }
       if (active) setCustMap(map);
@@ -2255,16 +2259,20 @@ function AnalysisView({ visits, loading }) {
     return () => { active = false; };
   }, [visits]);
 
+  function applyCustomerUpdate(id, patch) {
+    setCustMap((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch, id } }));
+  }
+
   const rows = useMemo(() => {
     const g = {};
     for (const v of (visits || [])) {
       if (v.entry_type !== 'visit' && v.entry_type !== 'call') continue;
       const cust = v.customer_id ? custMap[v.customer_id] : null;
       const key = (cust && cust.davcna) ? `d:${cust.davcna}` : (v.customer_id ? `id:${v.customer_id}` : `n:${(v.customer_name || '—').toLowerCase()}`);
-      if (!g[key]) g[key] = { key, naziv: cust?.naziv || v.customer_name || '—', panoga: cust?.panoga || '—', kontakti: 0, minutes: 0, narocila: 0, ponudbe: 0, zadnji: null, entries: [] };
+      if (!g[key]) g[key] = { key, custId: null, naziv: cust?.naziv || v.customer_name || '—', panoga: cust?.panoga || '—', kontakti: 0, minutes: 0, narocila: 0, ponudbe: 0, zadnji: null, entries: [], cust: null };
       const r = g[key];
-      if (cust?.naziv) r.naziv = cust.naziv;
-      if (cust?.panoga) r.panoga = cust.panoga;
+      if (!r.custId && v.customer_id) { r.custId = v.customer_id; }
+      if (cust) { r.cust = cust; if (cust.naziv) r.naziv = cust.naziv; if (cust.panoga) r.panoga = cust.panoga; }
       r.kontakti += 1;
       r.minutes += Number(v.visit_duration_min || v.call_duration_min || diffMinutes(v.arrival_time, v.departure_time) || 0);
       if (v.outcome === 'narocilo') r.narocila += 1;
@@ -2274,16 +2282,26 @@ function AnalysisView({ visits, loading }) {
       r.entries.push(v);
     }
     let arr = Object.values(g);
-    arr.forEach((r) => r.entries.sort((a, b) => {
-      const d = (b.visit_date || '').localeCompare(a.visit_date || '');
-      if (d !== 0) return d;
-      return (b.arrival_time || '').localeCompare(a.arrival_time || '');
-    }));
+    arr.forEach((r) => {
+      r.tags = (r.cust && Array.isArray(r.cust.tags)) ? r.cust.tags : [];
+      r.entries.sort((a, b) => {
+        const d = (b.visit_date || '').localeCompare(a.visit_date || '');
+        if (d !== 0) return d;
+        return (b.arrival_time || '').localeCompare(a.arrival_time || '');
+      });
+    });
     const term = q.trim().toLowerCase();
     if (term) arr = arr.filter((r) => r.naziv.toLowerCase().includes(term) || (r.panoga || '').toLowerCase().includes(term));
+    if (tagFilter) arr = arr.filter((r) => (r.tags || []).includes(tagFilter));
     arr.sort((a, b) => b.kontakti - a.kontakti || b.minutes - a.minutes);
     return arr;
-  }, [visits, custMap, q]);
+  }, [visits, custMap, q, tagFilter]);
+
+  const allTags = useMemo(() => {
+    const s = new Set();
+    Object.values(custMap).forEach((c) => (c?.tags || []).forEach((t) => s.add(t)));
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [custMap]);
 
   const totals = useMemo(() => rows.reduce((a, r) => {
     a.kontakti += r.kontakti; a.minutes += r.minutes; a.narocila += r.narocila; a.ponudbe += r.ponudbe;
@@ -2303,9 +2321,28 @@ function AnalysisView({ visits, loading }) {
 
       <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-          <h3 className="font-bold text-as-gray-700">👤 Stranke — klikni za zgodovino</h3>
+          <h3 className="font-bold text-as-gray-700">👤 Stranke — klikni za profil in zgodovino</h3>
           <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Išči stranko ali panogo…" className={inputCls + ' max-w-xs'} />
         </div>
+
+        {/* Filter po tagih */}
+        {allTags.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            <button onClick={() => setTagFilter(null)}
+              className="text-xs font-semibold px-3 py-1.5 rounded-full border transition"
+              style={{ borderColor: tagFilter === null ? CRM_COLOR : '#E5E7EB', background: tagFilter === null ? CRM_BG : '#fff', color: tagFilter === null ? CRM_COLOR : '#6B7280' }}>
+              Vsi
+            </button>
+            {allTags.map((t) => (
+              <button key={t} onClick={() => setTagFilter(tagFilter === t ? null : t)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-full border transition"
+                style={{ borderColor: tagFilter === t ? CRM_COLOR : '#E5E7EB', background: tagFilter === t ? CRM_BG : '#fff', color: tagFilter === t ? CRM_COLOR : '#6B7280' }}>
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+
         {rows.length === 0 ? (
           <div className="text-center py-8 text-as-gray-400 text-sm">Ni podatkov. Vnosi z izbrano stranko se bodo prikazali tukaj.</div>
         ) : (
@@ -2343,9 +2380,14 @@ function AnalysisView({ visits, loading }) {
                     </div>
                   </button>
 
-                  {/* Zgodovina stranke */}
+                  {/* Profil + zgodovina stranke */}
                   {isOpen && (
-                    <div className="border-t border-as-gray-100 bg-as-gray-50/50 p-3 sm:p-4 space-y-2">
+                    <div className="border-t border-as-gray-100 bg-as-gray-50/50 p-3 sm:p-4 space-y-3">
+                      {r.custId ? (
+                        <CustomerProfileEditor customer={r.cust || { id: r.custId, naziv: r.naziv }} onSaved={(patch) => applyCustomerUpdate(r.custId, patch)} />
+                      ) : (
+                        <div className="text-xs text-as-gray-400 bg-white border border-as-gray-200 rounded-lg p-3">Stranka ni povezana s šifrantom — profil ni na voljo. Pri vnosu jo izberi iz iskalnika strank.</div>
+                      )}
                       <div className="text-xs font-semibold text-as-gray-500 uppercase tracking-wider mb-1">Zgodovina ({r.entries.length})</div>
                       {r.entries.map((e) => {
                         const isCall = e.entry_type === 'call';
@@ -2393,6 +2435,133 @@ function AnalysisView({ visits, loading }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── PROFIL STRANKE (urejanje + tagi) ───
+function CustomerProfileEditor({ customer, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [kontakt, setKontakt] = useState(customer.kontakt_oseba || '');
+  const [email, setEmail] = useState(customer.email || '');
+  const [telefon, setTelefon] = useState(customer.telefon || '');
+  const [splet, setSplet] = useState(customer.splet || '');
+  const [opombe, setOpombe] = useState(customer.opombe || '');
+  const [tags, setTags] = useState(Array.isArray(customer.tags) ? customer.tags : []);
+  const [newTag, setNewTag] = useState('');
+
+  function toggleTag(t) {
+    setTags((arr) => arr.includes(t) ? arr.filter((x) => x !== t) : [...arr, t]);
+  }
+  function addCustomTag() {
+    const t = newTag.trim();
+    if (!t) return;
+    setTags((arr) => arr.includes(t) ? arr : [...arr, t]);
+    setNewTag('');
+  }
+
+  async function save() {
+    setSaving(true); setErr('');
+    const patch = {
+      kontakt_oseba: kontakt.trim() || null,
+      email: email.trim() || null,
+      telefon: telefon.trim() || null,
+      splet: splet.trim() || null,
+      opombe: opombe.trim() || null,
+      tags,
+    };
+    try {
+      const { error } = await supabase.from('crm_customers').update(patch).eq('id', customer.id);
+      if (error) throw error;
+      onSaved(patch);
+      setEditing(false);
+    } catch (e) {
+      setErr(e.message || 'Napaka pri shranjevanju.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const hasData = customer.kontakt_oseba || customer.email || customer.telefon || customer.splet || customer.opombe || (customer.tags && customer.tags.length);
+
+  if (!editing) {
+    return (
+      <div className="bg-white border border-as-gray-200 rounded-xl p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-semibold text-as-gray-500 uppercase tracking-wider">Profil stranke</div>
+          <button onClick={() => setEditing(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: CRM_BG, color: CRM_COLOR }}>Uredi</button>
+        </div>
+        {(customer.tags && customer.tags.length > 0) && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {customer.tags.map((t) => <span key={t} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: CRM_BG, color: CRM_COLOR }}>{t}</span>)}
+          </div>
+        )}
+        {hasData ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+            <ProfRow label="Kontakt" value={customer.kontakt_oseba} />
+            <ProfRow label="Telefon" value={customer.telefon} href={customer.telefon ? `tel:${customer.telefon}` : null} />
+            <ProfRow label="Email" value={customer.email} href={customer.email ? `mailto:${customer.email}` : null} />
+            <ProfRow label="Splet" value={customer.splet} href={customer.splet ? (customer.splet.startsWith('http') ? customer.splet : `https://${customer.splet}`) : null} />
+            {[customer.ulica, customer.posta].filter(Boolean).length > 0 && <ProfRow label="Naslov" value={[customer.ulica, customer.posta].filter(Boolean).join(', ')} />}
+            {customer.davcna && <ProfRow label="Davčna" value={customer.davcna} />}
+            {customer.opombe && <div className="sm:col-span-2"><span className="text-as-gray-400 text-xs">Opombe: </span><span className="text-as-gray-700 whitespace-pre-wrap">{customer.opombe}</span></div>}
+          </div>
+        ) : (
+          <div className="text-xs text-as-gray-400">Ni podatkov — klikni »Uredi« in dodaj kontakt, email, telefon, tage…</div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-as-gray-200 rounded-xl p-3 sm:p-4 space-y-3">
+      <div className="text-xs font-semibold text-as-gray-500 uppercase tracking-wider">Uredi profil — {customer.naziv}</div>
+      {err && <div className="text-xs text-red-600">{err}</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Kontaktna oseba</label><input className={inputCls} value={kontakt} onChange={(e) => setKontakt(e.target.value)} /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Telefon</label><input className={inputCls} value={telefon} onChange={(e) => setTelefon(e.target.value)} inputMode="tel" /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Email</label><input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Spletna stran</label><input className={inputCls} value={splet} onChange={(e) => setSplet(e.target.value)} placeholder="npr. www.stranka.si" /></div>
+      </div>
+      <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Opombe</label><textarea rows={2} className={inputCls + ' resize-none'} value={opombe} onChange={(e) => setOpombe(e.target.value)} placeholder="Posebnosti, dogovori, kontekst…" /></div>
+      <div>
+        <label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1.5">Tagi</label>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {[...new Set([...CUSTOMER_TAGS, ...tags])].map((t) => {
+            const on = tags.includes(t);
+            return (
+              <button key={t} type="button" onClick={() => toggleTag(t)}
+                className="text-xs font-semibold px-2.5 py-1 rounded-full border transition"
+                style={{ borderColor: on ? CRM_COLOR : '#E5E7EB', background: on ? CRM_BG : '#fff', color: on ? CRM_COLOR : '#6B7280' }}>
+                {on ? '✓ ' : ''}{t}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-2">
+          <input className={inputCls} value={newTag} onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag(); } }} placeholder="Dodaj svoj tag…" />
+          <button type="button" onClick={addCustomTag} className="px-4 rounded-xl text-sm font-semibold flex-shrink-0" style={{ background: CRM_BG, color: CRM_COLOR }}>Dodaj</button>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={save} disabled={saving} className="flex-1 justify-center px-4 py-2.5 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Shrani profil
+        </button>
+        <button onClick={() => setEditing(false)} className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-as-gray-200 text-as-gray-600">Prekliči</button>
+      </div>
+    </div>
+  );
+}
+
+function ProfRow({ label, value, href }) {
+  if (!value) return null;
+  return (
+    <div className="flex gap-1.5">
+      <span className="text-as-gray-400 text-xs whitespace-nowrap">{label}:</span>
+      {href ? <a href={href} className="break-all" style={{ color: CRM_COLOR }}>{value}</a> : <span className="text-as-gray-700 break-all">{value}</span>}
     </div>
   );
 }
