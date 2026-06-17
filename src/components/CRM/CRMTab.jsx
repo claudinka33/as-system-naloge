@@ -3,7 +3,7 @@
 // analiza z zgodovino po posamezni stranki.
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2, TrendingUp } from 'lucide-react';
+import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2, TrendingUp, Target } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { syncTaskWebhook } from '../../webhooks.js';
 
@@ -166,6 +166,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 mb-5">
         <div className="grid grid-cols-2 sm:flex gap-1.5 bg-as-gray-100 rounded-xl p-1.5 border border-as-gray-200">
           <SubTab active={view === 'entry'} onClick={() => setView('entry')} icon={<Plus className="w-4 h-4" />} label="Vnos" />
+          <SubTab active={view === 'pipeline'} onClick={() => setView('pipeline')} icon={<Target className="w-4 h-4" />} label="Pipeline" />
           <SubTab active={view === 'daily'} onClick={() => setView('daily')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
           <SubTab active={view === 'monthly'} onClick={() => setView('monthly')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
           <SubTab active={view === 'reports'} onClick={() => setView('reports')} icon={<TrendingUp className="w-4 h-4" />} label="Poročila" />
@@ -204,6 +205,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       )}
 
       {view === 'entry' && <EntryView currentUser={currentUser} employees={employees} onSaved={handleSaved} setError={setError} />}
+      {view === 'pipeline' && <PipelineView currentUser={currentUser} isAdmin={isAdmin} employees={employees} />}
       {view === 'daily' && <DailyView visits={scopedVisits} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
       {view === 'monthly' && <MonthlyView visits={scopedVisits} loading={loading} />}
       {view === 'reports' && <ReportsView visits={scopedVisits} loading={loading} />}
@@ -1682,6 +1684,299 @@ function OutcomePicker({ value, onChange }) {
         );
       })}
     </div>
+  );
+}
+
+// ─── PIPELINE / POSLI ───
+const DEAL_STAGES = [
+  { id: 'nov_stik', name: 'Nov stik', color: '#6B7280', bg: '#F3F4F6', prob: 10 },
+  { id: 'ponudba', name: 'Ponudba', color: '#D97706', bg: '#FEF3C7', prob: 40 },
+  { id: 'pogajanja', name: 'Pogajanja', color: '#1E40AF', bg: '#DBEAFE', prob: 70 },
+  { id: 'narocilo', name: 'Naročilo', color: '#16A34A', bg: '#DCFCE7', prob: 100 },
+  { id: 'izgubljeno', name: 'Izgubljeno', color: '#DC2626', bg: '#FEE2E2', prob: 0 },
+];
+const stageById = (id) => DEAL_STAGES.find((s) => s.id === id) || DEAL_STAGES[0];
+function statusForStage(stage) {
+  if (stage === 'narocilo') return 'won';
+  if (stage === 'izgubljeno') return 'lost';
+  return 'open';
+}
+function formatEur(n) {
+  if (n === null || n === undefined || n === '') return '—';
+  return Number(n).toLocaleString('sl-SI', { maximumFractionDigits: 0 }) + ' €';
+}
+
+function PipelineView({ currentUser, isAdmin, employees }) {
+  const [deals, setDeals] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
+
+  const isTeamLead = !isAdmin && CRM_TEAM_LEADS.includes(currentUser?.email);
+
+  async function load() {
+    setLoading(true); setError('');
+    try {
+      let qy = supabase.from('crm_deals').select('*').order('created_at', { ascending: false }).limit(2000);
+      if (!isAdmin) {
+        if (isTeamLead) qy = qy.in('created_by', [currentUser?.email, CRM_TEAM_MEMBER]);
+        else qy = qy.eq('created_by', currentUser?.email);
+      }
+      const { data, error } = await qy;
+      if (error) throw error;
+      setDeals(data || []);
+    } catch (e) {
+      setError(e.message || 'Napaka pri nalaganju poslov.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  // KPI
+  const open = deals.filter((d) => d.status === 'open');
+  const valueOpen = open.reduce((s, d) => s + (Number(d.value_eur) || 0), 0);
+  const forecast = open.reduce((s, d) => s + (Number(d.value_eur) || 0) * ((d.probability ?? stageById(d.stage).prob) / 100), 0);
+  const won = deals.filter((d) => d.status === 'won');
+  const valueWon = won.reduce((s, d) => s + (Number(d.value_eur) || 0), 0);
+
+  const byStage = DEAL_STAGES.map((st) => ({
+    ...st,
+    items: deals.filter((d) => d.stage === st.id),
+  }));
+
+  async function moveStage(deal, newStage) {
+    const st = stageById(newStage);
+    let lost_reason = deal.lost_reason || null;
+    if (newStage === 'izgubljeno') {
+      const r = window.prompt('Razlog izgube posla:', lost_reason || '');
+      if (r === null) return;
+      lost_reason = r || null;
+    }
+    try {
+      const { error } = await supabase.from('crm_deals').update({
+        stage: newStage,
+        status: statusForStage(newStage),
+        probability: st.prob,
+        lost_reason,
+        updated_at: new Date().toISOString(),
+      }).eq('id', deal.id);
+      if (error) throw error;
+      load();
+    } catch (e) { setError(e.message || 'Napaka pri premiku.'); }
+  }
+
+  async function saveEdit(deal, patch) {
+    try {
+      const { error } = await supabase.from('crm_deals').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', deal.id);
+      if (error) throw error;
+      load();
+    } catch (e) { setError(e.message || 'Napaka pri shranjevanju.'); }
+  }
+
+  async function removeDeal(deal) {
+    if (!confirm('Izbrišem ta posel?')) return;
+    try {
+      const { error } = await supabase.from('crm_deals').delete().eq('id', deal.id);
+      if (error) throw error;
+      load();
+    } catch (e) { setError(e.message || 'Napaka pri brisanju.'); }
+  }
+
+  return (
+    <div className="space-y-5 max-w-6xl mx-auto">
+      {error && (
+        <div className="flex items-center gap-2 p-3 rounded-lg border" style={{ background: '#fee', borderColor: '#fcc', color: '#900' }}>
+          <AlertCircle className="w-4 h-4 flex-shrink-0" /><span className="text-sm flex-1">{error}</span>
+          <button onClick={() => setError('')} className="text-as-gray-500"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {/* KPI */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <BigStat icon="📂" label="Odprti posli" value={open.length} unit="" color="#1E40AF" bgColor="#DBEAFE" />
+        <BigStat icon="💼" label="Vrednost odprtih" value={formatEur(valueOpen)} unit="" color={CRM_COLOR} bgColor={CRM_BG} />
+        <BigStat icon="🎯" label="Forecast (tehtan)" value={formatEur(Math.round(forecast))} unit="" color="#854D0E" bgColor="#FEF3C7" />
+        <BigStat icon="✓" label="Dobljeno" value={formatEur(valueWon)} unit="" color="#16A34A" bgColor="#DCFCE7" />
+      </div>
+
+      {/* Nov posel */}
+      <div>
+        <button onClick={() => setShowForm((s) => !s)}
+          className="w-full sm:w-auto justify-center px-5 py-3 text-white text-base font-semibold rounded-xl inline-flex items-center gap-2"
+          style={{ background: CRM_COLOR }}>
+          <Plus className="w-5 h-5" /> Nov posel
+        </button>
+      </div>
+      {showForm && <DealForm currentUser={currentUser} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} setError={setError} />}
+
+      {loading ? <LoadingBox /> : (
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+          {byStage.map((col) => {
+            const sum = col.items.reduce((s, d) => s + (Number(d.value_eur) || 0), 0);
+            return (
+              <div key={col.id} className="bg-as-gray-50 border border-as-gray-200 rounded-2xl p-3">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <span className="text-sm font-bold" style={{ color: col.color }}>{col.name}</span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: col.bg, color: col.color }}>{col.items.length}</span>
+                </div>
+                {sum > 0 && <div className="text-xs text-as-gray-500 mb-2 px-1">{formatEur(sum)}</div>}
+                <div className="space-y-2">
+                  {col.items.length === 0 ? (
+                    <div className="text-xs text-as-gray-400 px-1 py-3 text-center">—</div>
+                  ) : col.items.map((d) => (
+                    <DealCard key={d.id} deal={d} onMove={moveStage} onSave={saveEdit} onDelete={removeDeal} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DealCard({ deal, onMove, onSave, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(deal.value_eur ?? '');
+  const [prob, setProb] = useState(deal.probability ?? stageById(deal.stage).prob);
+  const [close, setClose] = useState(deal.expected_close || '');
+  const [notes, setNotes] = useState(deal.notes || '');
+  const st = stageById(deal.stage);
+
+  return (
+    <div className="bg-white border border-as-gray-200 rounded-xl shadow-sm">
+      <button onClick={() => setOpen((o) => !o)} className="w-full text-left p-3">
+        <div className="font-semibold text-as-gray-800 text-sm leading-tight">{deal.naziv}</div>
+        {deal.customer_name && <div className="text-xs text-as-gray-500 mt-0.5 truncate">{deal.customer_name}</div>}
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          {deal.value_eur != null && deal.value_eur !== '' && (
+            <span className="text-xs font-bold" style={{ color: CRM_COLOR }}>{formatEur(deal.value_eur)}</span>
+          )}
+          <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: st.bg, color: st.color }}>{deal.probability ?? st.prob}%</span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 pt-1 border-t border-as-gray-100 space-y-2.5">
+          {/* Premik faze */}
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Faza</label>
+            <select value={deal.stage} onChange={(e) => onMove(deal, e.target.value)} className={inputCls}>
+              {DEAL_STAGES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          {deal.stage === 'izgubljeno' && deal.lost_reason && (
+            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">Razlog: {deal.lost_reason}</div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Vrednost €</label>
+              <input type="number" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} placeholder="npr. 5000" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Verjetnost %</label>
+              <input type="number" inputMode="numeric" min="0" max="100" value={prob} onChange={(e) => setProb(e.target.value)} className={inputCls} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Pričakovan zaključek</label>
+            <input type="date" value={close} onChange={(e) => setClose(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Opombe</label>
+            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls + ' resize-none'} />
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => onSave(deal, { value_eur: value === '' ? null : Number(value), probability: prob === '' ? null : Number(prob), expected_close: close || null, notes: notes || null })}
+              className="flex-1 justify-center px-3 py-2.5 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2" style={{ background: CRM_COLOR }}>
+              <Save className="w-4 h-4" /> Shrani
+            </button>
+            <button onClick={() => onDelete(deal)} className="p-2.5 text-as-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
+          {deal.created_by_name && <div className="text-xs text-as-gray-400">Lastnik: {deal.created_by_name}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DealForm({ currentUser, onClose, onSaved, setError }) {
+  const [naziv, setNaziv] = useState('');
+  const [customer, setCustomer] = useState(null);
+  const [customerName, setCustomerName] = useState('');
+  const [value, setValue] = useState('');
+  const [stage, setStage] = useState('nov_stik');
+  const [close, setClose] = useState('');
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!naziv.trim()) { setError('Vnesi naziv posla.'); return; }
+    setLoading(true); setError('');
+    try {
+      const st = stageById(stage);
+      const { error } = await supabase.from('crm_deals').insert([{
+        naziv: naziv.trim(),
+        customer_id: customer?.id ? String(customer.id) : null,
+        customer_name: customerName || customer?.naziv || null,
+        stage,
+        status: statusForStage(stage),
+        value_eur: value === '' ? null : Number(value),
+        probability: st.prob,
+        expected_close: close || null,
+        notes: notes || null,
+        created_by: currentUser?.email,
+        created_by_name: currentUser?.name,
+      }]);
+      if (error) throw error;
+      onSaved();
+    } catch (e) {
+      setError(e.message || 'Napaka pri shranjevanju posla.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-as-gray-700">Nov posel</h3>
+        <button type="button" onClick={onClose} className="text-as-gray-400 hover:text-as-gray-700"><X className="w-5 h-5" /></button>
+      </div>
+      <FormField label="Naziv posla *">
+        <input type="text" value={naziv} onChange={(e) => setNaziv(e.target.value)} className={inputCls} placeholder="npr. Sidra za projekt XY" />
+      </FormField>
+      <FormField label="Stranka">
+        <CustomerPicker
+          selected={customer}
+          onSelect={(c) => { setCustomer(c); setCustomerName(c.naziv); }}
+          onClear={() => { setCustomer(null); setCustomerName(''); }}
+        />
+      </FormField>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Vrednost € (neobvezno)">
+          <input type="number" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} placeholder="npr. 5000" />
+        </FormField>
+        <FormField label="Pričakovan zaključek">
+          <input type="date" value={close} onChange={(e) => setClose(e.target.value)} className={inputCls} />
+        </FormField>
+      </div>
+      <FormField label="Faza">
+        <select value={stage} onChange={(e) => setStage(e.target.value)} className={inputCls}>
+          {DEAL_STAGES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </FormField>
+      <FormField label="Opombe">
+        <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls + ' resize-none'} placeholder="Kratek opis posla, dogovori..." />
+      </FormField>
+      <SubmitBtn loading={loading} color={CRM_COLOR} label="Shrani posel" />
+    </form>
   );
 }
 
