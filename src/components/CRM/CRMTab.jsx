@@ -1,7 +1,9 @@
-// CRMTab.jsx — CRM modul za komercialistko (obiski strank + kilometrina + ponudbe)
+// CRMTab.jsx — CRM modul za komercialiste (obiski strank + kilometrina + ponudbe)
+// Mobilno/tablično prijazno: privzeti pogled je Vnos, živ izračun časa, jasna potrditev shranjevanja,
+// analiza z zgodovino po posamezni stranki.
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail } from 'lucide-react';
+import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { syncTaskWebhook } from '../../webhooks.js';
 
@@ -105,12 +107,20 @@ function isLocked(entryDate, createdBy, currentUserEmail, isAdmin) {
 }
 
 export default function CRMTab({ currentUser, isAdmin, employees }) {
-  const [view, setView] = useState('daily');
+  const [view, setView] = useState('entry'); // privzeto: takojšen vnos
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [flash, setFlash] = useState('');
   const isTeamLead = !isAdmin && CRM_TEAM_LEADS.includes(currentUser?.email);
   const [personFilter, setPersonFilter] = useState((isAdmin || isTeamLead) ? 'all' : (currentUser?.email || 'all'));
+
+  // Zelena potrditev se sama skrije
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(''), 3500);
+    return () => clearTimeout(t);
+  }, [flash]);
 
   async function loadAll() {
     setLoading(true);
@@ -141,22 +151,28 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
 
   useEffect(() => { loadAll(); }, []);
 
+  // Skupna funkcija po shranjevanju: osveži + pokaži zeleno potrditev
+  function handleSaved(msg) {
+    loadAll();
+    setFlash(msg || '✓ Shranjeno');
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   const scopedVisits = (personFilter === 'all') ? visits : visits.filter((v) => v.created_by === personFilter);
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3 mb-6 justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex gap-1 bg-as-gray-100 rounded-lg p-1 border border-as-gray-200">
-            <SubTab active={view === 'entry'} onClick={() => setView('entry')} icon={<Plus className="w-4 h-4" />} label="Vnos" />
-            <SubTab active={view === 'daily'} onClick={() => setView('daily')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
-            <SubTab active={view === 'monthly'} onClick={() => setView('monthly')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
-            <SubTab active={view === 'analysis'} onClick={() => setView('analysis')} icon={<User className="w-4 h-4" />} label="Analiza strank" />
-          </div>
+      {/* Navigacija + filtri */}
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 mb-5">
+        <div className="grid grid-cols-2 sm:flex gap-1.5 bg-as-gray-100 rounded-xl p-1.5 border border-as-gray-200">
+          <SubTab active={view === 'entry'} onClick={() => setView('entry')} icon={<Plus className="w-4 h-4" />} label="Vnos" />
+          <SubTab active={view === 'daily'} onClick={() => setView('daily')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
+          <SubTab active={view === 'monthly'} onClick={() => setView('monthly')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+          <SubTab active={view === 'analysis'} onClick={() => setView('analysis')} icon={<User className="w-4 h-4" />} label="Stranke" />
         </div>
         {(isAdmin || isTeamLead) && (
           <select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}
-            className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm">
+            className="px-3 py-2.5 border border-as-gray-200 rounded-lg bg-white text-base sm:text-sm">
             <option value="all">Vsi komercialisti</option>
             {(employees || [])
               .filter((e) => isAdmin ? canAccessCRM(e.email) : [currentUser?.email, CRM_TEAM_MEMBER].includes(e.email))
@@ -165,8 +181,18 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
             ))}
           </select>
         )}
-        <div id="crm-controls-slot" className="flex flex-wrap items-center gap-3 ml-auto"></div>
+        <div id="crm-controls-slot" className="flex flex-wrap items-center gap-2 sm:ml-auto"></div>
       </div>
+
+      {/* Zelena potrditev */}
+      {flash && (
+        <div className="flex items-center gap-2 p-3.5 mb-4 rounded-xl border shadow-sm animate-pulse"
+          style={{ background: '#DCFCE7', borderColor: '#86EFAC', color: '#166534' }}>
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+          <span className="text-sm font-semibold flex-1">{flash}</span>
+          <button onClick={() => setFlash('')} className="text-green-700"><X className="w-4 h-4" /></button>
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-2 p-3 mb-4 rounded-lg border" style={{ background: '#fee', borderColor: '#fcc', color: '#900' }}>
@@ -176,7 +202,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
         </div>
       )}
 
-      {view === 'entry' && <EntryView currentUser={currentUser} employees={employees} onSaved={loadAll} setError={setError} />}
+      {view === 'entry' && <EntryView currentUser={currentUser} employees={employees} onSaved={handleSaved} setError={setError} />}
       {view === 'daily' && <DailyView visits={scopedVisits} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
       {view === 'monthly' && <MonthlyView visits={scopedVisits} loading={loading} />}
       {view === 'analysis' && <AnalysisView visits={scopedVisits} loading={loading} />}
@@ -188,7 +214,7 @@ function SubTab({ active, onClick, icon, label }) {
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold rounded transition ${
+      className={`inline-flex items-center justify-center gap-1.5 px-4 py-3 sm:py-2.5 text-sm font-semibold rounded-lg transition ${
         active ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'
       }`}
       style={active ? { backgroundColor: AS_RED } : {}}
@@ -201,22 +227,25 @@ function SubTab({ active, onClick, icon, label }) {
 
 // ─── ENTRY VIEW ───
 function EntryView({ currentUser, employees, onSaved, setError }) {
-  const [entryType, setEntryType] = useState('visit');
+  const [entryType, setEntryType] = useState('visit'); // takoj pripravljen vnos stranke
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-5 max-w-4xl mx-auto">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <SectionPill active={entryType === 'home_start'} onClick={() => setEntryType('home_start')}
-          icon={<Home className="w-4 h-4" />} label="Začetek dneva (doma)" color="#1E40AF" bgColor="#DBEAFE" />
+          icon={<Home className="w-4 h-4" />} label="Začetek (doma)" color="#1E40AF" bgColor="#DBEAFE" />
         <SectionPill active={entryType === 'visit'} onClick={() => setEntryType('visit')}
           icon={<MapPin className="w-4 h-4" />} label="Obisk stranke" color={CRM_COLOR} bgColor={CRM_BG} />
         <SectionPill active={entryType === 'call'} onClick={() => setEntryType('call')}
-          icon={<Phone className="w-4 h-4" />} label="Klic / Email stranke" color="#6D28D9" bgColor="#EDE9FE" />
+          icon={<Phone className="w-4 h-4" />} label="Klic / Email" color="#6D28D9" bgColor="#EDE9FE" />
         <SectionPill active={entryType === 'home_end'} onClick={() => setEntryType('home_end')}
-          icon={<Home className="w-4 h-4" />} label="Konec dneva (doma)" color="#065F46" bgColor="#A7F3D0" />
+          icon={<Home className="w-4 h-4" />} label="Konec (doma)" color="#065F46" bgColor="#A7F3D0" />
       </div>
 
-      {entryType === 'home_start' && <HomeStartForm currentUser={currentUser} onSaved={onSaved} setError={setError} />}
+      {entryType === 'home_start' && (
+        <HomeStartForm currentUser={currentUser} onSaved={onSaved} setError={setError}
+          onAfterSave={() => setEntryType('visit')} />
+      )}
       {entryType === 'visit' && <VisitForm currentUser={currentUser} employees={employees} onSaved={onSaved} setError={setError} />}
       {entryType === 'call' && <CallForm currentUser={currentUser} employees={employees} onSaved={onSaved} setError={setError} />}
       {entryType === 'home_end' && <HomeEndForm currentUser={currentUser} onSaved={onSaved} setError={setError} />}
@@ -228,20 +257,20 @@ function SectionPill({ active, onClick, icon, label, color, bgColor }) {
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border-2 transition"
+      className="inline-flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold border-2 transition"
       style={{
         borderColor: active ? color : '#E5E7EB',
         background: active ? bgColor : '#fff',
         color: active ? color : '#6B7280',
       }}
     >
-      {icon} {label}
+      {icon} <span className="truncate">{label}</span>
     </button>
   );
 }
 
 // ─── HOME START FORM ───
-function HomeStartForm({ currentUser, onSaved, setError }) {
+function HomeStartForm({ currentUser, onSaved, setError, onAfterSave }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState(() => {
     const now = new Date();
@@ -265,7 +294,8 @@ function HomeStartForm({ currentUser, onSaved, setError }) {
       }]);
       if (error) throw error;
       setKm('');
-      onSaved();
+      onSaved('✓ Začetek dneva shranjen — zdaj vnesi prvo stranko 👇');
+      if (onAfterSave) onAfterSave();
     } catch (e) {
       setError(e.message || 'Napaka pri shranjevanju.');
     } finally {
@@ -274,14 +304,14 @@ function HomeStartForm({ currentUser, onSaved, setError }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
       <h3 className="font-bold text-as-gray-700 flex items-center gap-2">
         <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#DBEAFE', color: '#1E40AF' }}>🏠</span>
         Začetek dneva (zjutraj doma)
       </h3>
-      <p className="text-xs text-as-gray-500 italic">💡 Vnesi km stanje, preden zapustiš dom.</p>
+      <p className="text-xs text-as-gray-500 italic">💡 Vnesi km stanje, preden zapustiš dom. Po shranjevanju te program preusmeri na vnos stranke.</p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <FormField label="Datum *">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
         </FormField>
@@ -289,16 +319,11 @@ function HomeStartForm({ currentUser, onSaved, setError }) {
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required className={inputCls} />
         </FormField>
         <FormField label="Km števec *">
-          <input type="number" min="0" value={km} onChange={(e) => setKm(e.target.value)} required className={inputCls} placeholder="npr. 45230" />
+          <input type="number" inputMode="numeric" min="0" value={km} onChange={(e) => setKm(e.target.value)} required className={inputCls} placeholder="npr. 45230" />
         </FormField>
       </div>
 
-      <button type="submit" disabled={loading}
-        className="px-5 py-2.5 text-white font-semibold rounded-lg shadow-sm inline-flex items-center gap-2 transition disabled:opacity-50"
-        style={{ background: '#1E40AF' }}>
-        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-        Shrani začetek dneva
-      </button>
+      <SubmitBtn loading={loading} color="#1E40AF" label="Shrani začetek dneva" />
     </form>
   );
 }
@@ -310,7 +335,6 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
   const [customerAddress, setCustomerAddress] = useState('');
   const [customer, setCustomer] = useState(null);
   const [outcome, setOutcome] = useState('nic');
-  const [minutes, setMinutes] = useState('');
   const [arrivalTime, setArrivalTime] = useState(() => {
     const now = new Date();
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -330,12 +354,14 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
   const [responsibleEmail, setResponsibleEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // ŽIV IZRAČUN ČASA pri stranki
+  const liveDuration = diffMinutes(arrivalTime, departureTime);
+
   function reset() {
     setNotify(false);
     setResponsibleEmail('');
     setCustomer(null);
     setOutcome('nic');
-    setMinutes('');
     setCustomerName('');
     setCustomerAddress('');
     setArrivalTime(() => {
@@ -418,7 +444,8 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
         });
       }
 
-      // Potem shrani obisk
+      // Potem shrani obisk (čas pri stranki se izračuna samodejno)
+      const computedMin = (liveDuration != null && liveDuration >= 0) ? liveDuration : null;
       const { error: visitError } = await supabase.from('crm_visits').insert([{
         visit_date: date,
         entry_type: 'visit',
@@ -429,7 +456,7 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
         odometer_km: parseInt(km),
         customer_id: customer?.id || null,
         outcome,
-        visit_duration_min: minutes ? parseInt(minutes) : null,
+        visit_duration_min: computedMin,
         notes: notes || null,
         create_offer: createOffer,
         offer_description: createOffer ? offerDescription : null,
@@ -446,8 +473,9 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
       }]);
       if (visitError) throw visitError;
 
+      const savedName = customerName.trim();
       reset();
-      onSaved();
+      onSaved(`✓ Obisk shranjen: ${savedName}${createOffer ? ' + naloga za ponudbo' : ''}. Vnesi naslednjo stranko 👇`);
     } catch (e) {
       setError(e.message || 'Napaka pri shranjevanju.');
     } finally {
@@ -456,21 +484,13 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
       <h3 className="font-bold text-as-gray-700 flex items-center gap-2">
         <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: CRM_BG, color: CRM_COLOR }}>📍</span>
         Nov obisk stranke
       </h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <FormField label="Datum *">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
-        </FormField>
-        <FormField label="Km števec ob prihodu *">
-          <input type="number" min="0" value={km} onChange={(e) => setKm(e.target.value)} required className={inputCls} placeholder="npr. 45255" />
-        </FormField>
-      </div>
-
+      {/* STRANKA — najprej, ker je najpomembnejše */}
       <FormField label="Stranka *">
         <CustomerPicker
           selected={customer}
@@ -479,23 +499,41 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
         />
       </FormField>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* ČASI + ŽIV IZRAČUN */}
+      <div className="grid grid-cols-2 gap-3">
         <FormField label="Čas prihoda *">
           <input type="time" value={arrivalTime} onChange={(e) => setArrivalTime(e.target.value)} required className={inputCls} />
         </FormField>
-        <FormField label="Čas odhoda (neobvezno)">
+        <FormField label="Čas odhoda">
           <input type="time" value={departureTime} onChange={(e) => setDepartureTime(e.target.value)} className={inputCls} />
         </FormField>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <FormField label="Čas pri stranki (min)">
-          <input type="number" min="0" value={minutes} onChange={(e) => setMinutes(e.target.value)} className={inputCls} placeholder="npr. 45" />
+      {/* Živ prikaz trajanja */}
+      {departureTime && (
+        liveDuration != null && liveDuration >= 0 ? (
+          <div className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold" style={{ background: '#CFFAFE', color: '#0E7490' }}>
+            <Clock className="w-5 h-5" /> Čas pri stranki: {formatMinutes(liveDuration)}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+            <AlertCircle className="w-5 h-5" /> Čas odhoda je pred prihodom — preveri ure.
+          </div>
+        )
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Datum *">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
         </FormField>
-        <FormField label="Izid obiska *">
-          <OutcomePicker value={outcome} onChange={setOutcome} />
+        <FormField label="Km števec ob prihodu *">
+          <input type="number" inputMode="numeric" min="0" value={km} onChange={(e) => setKm(e.target.value)} required className={inputCls} placeholder="npr. 45255" />
         </FormField>
       </div>
+
+      <FormField label="Izid obiska *">
+        <OutcomePicker value={outcome} onChange={setOutcome} />
+      </FormField>
 
       <FormField label="Dogovori / kaj se je dogovorilo">
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={inputCls + ' resize-none'}
@@ -503,13 +541,13 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
       </FormField>
 
       {/* PONUDBA */}
-      <div className="border-2 border-dashed border-as-gray-200 rounded-lg p-4 space-y-3" style={{ background: createOffer ? '#FEF3C7' : '#fafafa' }}>
+      <div className="border-2 border-dashed border-as-gray-200 rounded-xl p-4 space-y-3" style={{ background: createOffer ? '#FEF3C7' : '#fafafa' }}>
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
             checked={createOffer}
             onChange={(e) => setCreateOffer(e.target.checked)}
-            className="w-5 h-5 rounded border-as-gray-300 cursor-pointer"
+            className="w-6 h-6 rounded border-as-gray-300 cursor-pointer flex-shrink-0"
             style={{ accentColor: CRM_COLOR }}
           />
           <div className="flex-1">
@@ -530,7 +568,7 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
                 placeholder="Kaj naj se ponudi? Količine, izdelki, posebnosti..." />
             </FormField>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Komu dodeli pripravo *">
                 <select value={offerAssignedTo} onChange={(e) => setOfferAssignedTo(e.target.value)} required className={inputCls}>
                   <option value="">-- izberi osebo --</option>
@@ -549,12 +587,7 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
 
       <NotifyBlock notify={notify} setNotify={setNotify} responsibleEmail={responsibleEmail} setResponsibleEmail={setResponsibleEmail} employees={employees} />
 
-      <button type="submit" disabled={loading}
-        className="px-5 py-2.5 text-white font-semibold rounded-lg shadow-sm inline-flex items-center gap-2 transition disabled:opacity-50"
-        style={{ background: CRM_COLOR }}>
-        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-        Shrani obisk {createOffer && '+ kreiraj nalogo'}
-      </button>
+      <SubmitBtn loading={loading} color={CRM_COLOR} label={`Shrani obisk${createOffer ? ' + kreiraj nalogo' : ''}`} />
     </form>
   );
 }
@@ -584,7 +617,7 @@ function HomeEndForm({ currentUser, onSaved, setError }) {
       }]);
       if (error) throw error;
       setKm('');
-      onSaved();
+      onSaved('✓ Konec dneva shranjen. Lep dan!');
     } catch (e) {
       setError(e.message || 'Napaka pri shranjevanju.');
     } finally {
@@ -593,14 +626,14 @@ function HomeEndForm({ currentUser, onSaved, setError }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
       <h3 className="font-bold text-as-gray-700 flex items-center gap-2">
         <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#A7F3D0', color: '#065F46' }}>🏠</span>
         Konec dneva (zvečer doma)
       </h3>
       <p className="text-xs text-as-gray-500 italic">💡 Vnesi km stanje, ko prideš domov.</p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <FormField label="Datum *">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
         </FormField>
@@ -608,16 +641,11 @@ function HomeEndForm({ currentUser, onSaved, setError }) {
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required className={inputCls} />
         </FormField>
         <FormField label="Km števec *">
-          <input type="number" min="0" value={km} onChange={(e) => setKm(e.target.value)} required className={inputCls} placeholder="npr. 45310" />
+          <input type="number" inputMode="numeric" min="0" value={km} onChange={(e) => setKm(e.target.value)} required className={inputCls} placeholder="npr. 45310" />
         </FormField>
       </div>
 
-      <button type="submit" disabled={loading}
-        className="px-5 py-2.5 text-white font-semibold rounded-lg shadow-sm inline-flex items-center gap-2 transition disabled:opacity-50"
-        style={{ background: '#065F46' }}>
-        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-        Shrani konec dneva
-      </button>
+      <SubmitBtn loading={loading} color="#065F46" label="Shrani konec dneva" />
     </form>
   );
 }
@@ -625,10 +653,10 @@ function HomeEndForm({ currentUser, onSaved, setError }) {
 // ─── NOTIFY BLOCK (obvestilo odgovorni osebi: email + Outlook) ───
 function NotifyBlock({ notify, setNotify, responsibleEmail, setResponsibleEmail, employees }) {
   return (
-    <div className="border-2 border-dashed border-as-gray-200 rounded-lg p-4 space-y-3" style={{ background: notify ? '#EFF6FF' : '#fafafa' }}>
+    <div className="border-2 border-dashed border-as-gray-200 rounded-xl p-4 space-y-3" style={{ background: notify ? '#EFF6FF' : '#fafafa' }}>
       <label className="flex items-center gap-3 cursor-pointer">
         <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)}
-          className="w-5 h-5 rounded border-as-gray-300 cursor-pointer" style={{ accentColor: '#1E40AF' }} />
+          className="w-6 h-6 rounded border-as-gray-300 cursor-pointer flex-shrink-0" style={{ accentColor: '#1E40AF' }} />
         <div className="flex-1">
           <div className="text-sm font-bold text-as-gray-700 flex items-center gap-1.5">
             <Mail className="w-4 h-4" /> Obvesti odgovorno osebo (email + Outlook)
@@ -771,8 +799,10 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
       }]);
       if (callError) throw callError;
 
+      const savedName = customerName.trim();
+      const kanal = channel === 'email' ? 'Email' : 'Klic';
       reset();
-      onSaved();
+      onSaved(`✓ ${kanal} shranjen: ${savedName}${createOffer ? ' + naloga za ponudbo' : ''}.`);
     } catch (e) {
       setError(e.message || 'Napaka pri shranjevanju.');
     } finally {
@@ -781,20 +811,11 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
       <h3 className="font-bold text-as-gray-700 flex items-center gap-2">
         <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#EDE9FE', color: '#6D28D9' }}>📞</span>
         Klic / Email stranke
       </h3>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <FormField label="Datum *">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
-        </FormField>
-        <FormField label="Čas">
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={inputCls} />
-        </FormField>
-      </div>
 
       <FormField label="Stranka *">
         <CustomerPicker
@@ -807,21 +828,30 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
       <FormField label="Vrsta stika *">
         <div className="flex gap-2">
           <button type="button" onClick={() => setChannel('phone')}
-            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border-2 transition"
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border-2 transition"
             style={{ borderColor: channel === 'phone' ? '#6D28D9' : '#E5E7EB', background: channel === 'phone' ? '#EDE9FE' : '#fff', color: channel === 'phone' ? '#6D28D9' : '#6B7280' }}>
             <Phone className="w-4 h-4" /> Klic
           </button>
           <button type="button" onClick={() => setChannel('email')}
-            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border-2 transition"
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border-2 transition"
             style={{ borderColor: channel === 'email' ? '#6D28D9' : '#E5E7EB', background: channel === 'email' ? '#EDE9FE' : '#fff', color: channel === 'email' ? '#6D28D9' : '#6B7280' }}>
             <Mail className="w-4 h-4" /> Email
           </button>
         </div>
       </FormField>
 
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Datum *">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
+        </FormField>
+        <FormField label="Čas">
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={inputCls} />
+        </FormField>
+      </div>
+
       {channel === 'phone' && (
         <FormField label="Trajanje klica (min)">
-          <input type="number" min="0" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} className={inputCls} placeholder="npr. 15" />
+          <input type="number" inputMode="numeric" min="0" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} className={inputCls} placeholder="npr. 15" />
         </FormField>
       )}
 
@@ -835,10 +865,10 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
       </FormField>
 
       {/* PONUDBA */}
-      <div className="border-2 border-dashed border-as-gray-200 rounded-lg p-4 space-y-3" style={{ background: createOffer ? '#FEF3C7' : '#fafafa' }}>
+      <div className="border-2 border-dashed border-as-gray-200 rounded-xl p-4 space-y-3" style={{ background: createOffer ? '#FEF3C7' : '#fafafa' }}>
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" checked={createOffer} onChange={(e) => setCreateOffer(e.target.checked)}
-            className="w-5 h-5 rounded border-as-gray-300 cursor-pointer" style={{ accentColor: CRM_COLOR }} />
+            className="w-6 h-6 rounded border-as-gray-300 cursor-pointer flex-shrink-0" style={{ accentColor: CRM_COLOR }} />
           <div className="flex-1">
             <div className="text-sm font-bold text-as-gray-700 flex items-center gap-1.5">
               <Briefcase className="w-4 h-4" /> Naredi ponudbo za to stranko
@@ -852,7 +882,7 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
               <textarea value={offerDescription} onChange={(e) => setOfferDescription(e.target.value)} rows={2} className={inputCls + ' resize-none'}
                 placeholder="Kaj naj se ponudi? Količine, izdelki, posebnosti..." />
             </FormField>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Komu dodeli pripravo *">
                 <select value={offerAssignedTo} onChange={(e) => setOfferAssignedTo(e.target.value)} required className={inputCls}>
                   <option value="">-- izberi osebo --</option>
@@ -871,12 +901,7 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
 
       <NotifyBlock notify={notify} setNotify={setNotify} responsibleEmail={responsibleEmail} setResponsibleEmail={setResponsibleEmail} employees={employees} />
 
-      <button type="submit" disabled={loading}
-        className="px-5 py-2.5 text-white font-semibold rounded-lg shadow-sm inline-flex items-center gap-2 transition disabled:opacity-50"
-        style={{ background: '#6D28D9' }}>
-        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-        Shrani {channel === 'email' ? 'email' : 'klic'} {createOffer && '+ kreiraj nalogo'}
-      </button>
+      <SubmitBtn loading={loading} color="#6D28D9" label={`Shrani ${channel === 'email' ? 'email' : 'klic'}${createOffer ? ' + kreiraj nalogo' : ''}`} />
     </form>
   );
 }
@@ -943,12 +968,11 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
       <div className="flex items-center gap-2">
         <Calendar className="w-5 h-5 text-as-gray-400" />
         <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
-          className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm" />
-        <span className="text-sm text-as-gray-500 hidden sm:inline">{formatDate(filterDate)}</span>
+          className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-base sm:text-sm" />
       </div>
       {isAdmin && uniqueUsers.length > 1 && (
         <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)}
-          className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm">
+          className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-base sm:text-sm">
           <option value="all">Vsi komercialisti</option>
           {uniqueUsers.map((u) => <option key={u.email} value={u.email}>{u.name}</option>)}
         </select>
@@ -957,7 +981,7 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
         onClick={() => exportDailyCSV(filterDate, dayVisits, kmData)}
         className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
       >
-        <Download className="w-4 h-4" /> Izvoz CSV
+        <Download className="w-4 h-4" /> CSV
       </button>
     </>
   );
@@ -975,20 +999,20 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-5 max-w-6xl mx-auto">
       {slotEl && createPortal(controls, slotEl)}
 
       {loading ? (
         <LoadingBox />
       ) : (
         <>
-          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+          <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-1">📅 {formatLongDate(filterDate)}</h3>
             <p className="text-xs text-as-gray-500">Vnosov: {dayVisits.length}</p>
           </div>
 
           {/* Statistike */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <BigStat icon="📍" label="Obiski" value={visitCount} unit="" color={CRM_COLOR} bgColor={CRM_BG} />
             <BigStat icon="📞" label="Klici / emaili" value={callCount} unit="" color="#6D28D9" bgColor="#EDE9FE" />
             <BigStat icon="🚗" label="Skupaj km" value={formatNumber(kmData.totalKm)} unit="km" color="#1E40AF" bgColor="#DBEAFE" />
@@ -998,16 +1022,14 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
 
           {/* Časovnica dneva */}
           {dayVisits.length === 0 ? (
-            <div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center">
+            <div className="bg-white border border-as-gray-200 rounded-2xl p-12 text-center">
               <p className="text-as-gray-500">Ni vnosov za ta dan.</p>
             </div>
           ) : (
-            <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+            <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm">
               <h3 className="font-bold text-as-gray-700 mb-4">🕐 Časovnica dneva</h3>
               <div className="space-y-3">
                 {dayVisits.map((v, idx) => {
-                  const isFirst = idx === 0;
-                  const isLast = idx === dayVisits.length - 1;
                   // Razdalja od prejšnjega vnosa
                   const prevWithKm = dayVisits.slice(0, idx).reverse().find((x) => x.odometer_km != null);
                   const segmentKm = (v.odometer_km != null && prevWithKm) ? v.odometer_km - prevWithKm.odometer_km : null;
@@ -1074,7 +1096,7 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
     : null;
 
   return (
-    <div className="border border-as-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-as-gray-200 rounded-xl overflow-hidden">
       <div className="flex items-center gap-3 p-3" style={{ background: bg + '40' }}>
         <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-lg" style={{ background: bg, color }}>{icon}</div>
         <div className="flex-1 min-w-0">
@@ -1082,15 +1104,17 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
           <div className="text-xs text-as-gray-500 flex items-center gap-3 flex-wrap mt-0.5">
             <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {timeStr}</span>
             {visit.odometer_km != null && <span className="flex items-center gap-1"><Car className="w-3 h-3" /> {formatNumber(visit.odometer_km)} km</span>}
-            {duration != null && <span>{formatMinutes(duration)} pri stranki</span>}
+            {duration != null && duration >= 0 && <span className="font-semibold" style={{ color: '#0E7490' }}>{formatMinutes(duration)} pri stranki</span>}
             {visit.entry_type === 'call' && (
               <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#EDE9FE', color: '#6D28D9' }}>
                 {visit.channel === 'email' ? '✉️ Email' : '📞 Klic'}{visit.channel === 'phone' && visit.call_duration_min != null ? ` · ${formatMinutes(visit.call_duration_min)}` : ''}
               </span>
             )}
+            {visit.outcome === 'narocilo' && <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#DCFCE7', color: '#16A34A' }}>✓ Naročilo</span>}
+            {visit.outcome === 'ponudba' && <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#FEF3C7', color: '#D97706' }}>Ponudba</span>}
             {visit.create_offer && (
               <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#FEF3C7', color: '#854D0E' }}>
-                📝 Ponudba
+                📝 Naloga
               </span>
             )}
             {visit.notify_responsible && (
@@ -1101,13 +1125,13 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
           </div>
         </div>
         {(visit.notes || visit.customer_address || visit.offer_description) && (
-          <button onClick={() => setOpen((o) => !o)} className="p-1.5 hover:bg-white rounded transition text-as-gray-400">
-            {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          <button onClick={() => setOpen((o) => !o)} className="p-2 hover:bg-white rounded transition text-as-gray-400">
+            {open ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
           </button>
         )}
         {canDelete && (
-          <button onClick={onDelete} className="p-1.5 text-as-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition">
-            <Trash2 className="w-4 h-4" />
+          <button onClick={onDelete} className="p-2 text-as-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition">
+            <Trash2 className="w-5 h-5" />
           </button>
         )}
       </div>
@@ -1226,10 +1250,10 @@ function MonthlyView({ visits, loading }) {
     <>
       <div className="flex items-center gap-2">
         <Calendar className="w-5 h-5 text-as-gray-400" />
-        <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm">
+        <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-base sm:text-sm">
           {SLOVENIAN_MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
-        <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm">
+        <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-base sm:text-sm">
           {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
@@ -1237,20 +1261,20 @@ function MonthlyView({ visits, loading }) {
         onClick={() => exportMonthlyCSV(year, month, byDay, topCustomers)}
         className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
       >
-        <Download className="w-4 h-4" /> Izvoz CSV
+        <Download className="w-4 h-4" /> CSV
       </button>
     </>
   );
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-5 max-w-6xl mx-auto">
       {slotEl && createPortal(controls, slotEl)}
 
       {loading ? (
         <LoadingBox />
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
             <BigStat icon="📍" label="Obiski" value={totalVisits} unit="" color={CRM_COLOR} bgColor={CRM_BG} />
             <BigStat icon="📞" label="Klici / emaili" value={totalCalls} unit="" color="#6D28D9" bgColor="#EDE9FE" />
             <BigStat icon="🚗" label="Skupaj km" value={formatNumber(totalKm)} unit="km" color="#1E40AF" bgColor="#DBEAFE" />
@@ -1260,7 +1284,7 @@ function MonthlyView({ visits, loading }) {
           </div>
 
           {/* Top stranke */}
-          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+          <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-4">🏆 Top stranke — {SLOVENIAN_MONTHS[month - 1]} {year}</h3>
             {topCustomers.length === 0 ? <Empty /> : (
               <div className="space-y-2">
@@ -1284,7 +1308,7 @@ function MonthlyView({ visits, loading }) {
           </div>
 
           {/* Po dnevih */}
-          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+          <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-4">📅 Po dnevih</h3>
             {byDay.length === 0 ? <Empty /> : (
               <div className="overflow-x-auto">
@@ -1320,14 +1344,14 @@ function MonthlyView({ visits, loading }) {
 // ─── BUILDING BLOCKS ───
 function BigStat({ icon, label, value, unit, color, bgColor }) {
   return (
-    <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: bgColor, color }}>{icon}</div>
-        <div className="text-xs uppercase text-as-gray-500 font-semibold tracking-wider">{label}</div>
+    <div className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm">
+      <div className="flex items-center gap-2.5 mb-2">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl flex-shrink-0" style={{ backgroundColor: bgColor, color }}>{icon}</div>
+        <div className="text-xs uppercase text-as-gray-500 font-semibold tracking-wider leading-tight">{label}</div>
       </div>
       <div>
-        <span className="text-3xl font-bold text-as-gray-700">{value}</span>
-        {unit && <span className="text-sm text-as-gray-400 ml-2">{unit}</span>}
+        <span className="text-2xl sm:text-3xl font-bold text-as-gray-700">{value}</span>
+        {unit && <span className="text-sm text-as-gray-400 ml-1">{unit}</span>}
       </div>
     </div>
   );
@@ -1336,9 +1360,20 @@ function BigStat({ icon, label, value, unit, color, bgColor }) {
 function FormField({ label, children }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">{label}</label>
+      <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">{label}</label>
       {children}
     </div>
+  );
+}
+
+function SubmitBtn({ loading, color, label }) {
+  return (
+    <button type="submit" disabled={loading}
+      className="w-full sm:w-auto justify-center px-6 py-3.5 text-white text-base font-semibold rounded-xl shadow-sm inline-flex items-center gap-2 transition disabled:opacity-50 active:scale-[0.99]"
+      style={{ background: color }}>
+      {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+      {label}
+    </button>
   );
 }
 
@@ -1355,7 +1390,7 @@ function LoadingBox() {
   );
 }
 
-const inputCls = "w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:border-as-red-600 disabled:bg-as-gray-50 disabled:text-as-gray-400";
+const inputCls = "w-full px-3 py-3 border border-as-gray-200 rounded-xl bg-white text-base focus:outline-none focus:border-as-red-600 focus:ring-2 focus:ring-red-100 disabled:bg-as-gray-50 disabled:text-as-gray-400";
 
 // ─── CSV EXPORT ───
 function exportDailyCSV(date, visits, kmData) {
@@ -1528,7 +1563,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
 
   if (selected) {
     return (
-      <div className="flex items-start justify-between gap-3 border border-as-gray-200 rounded-lg p-3 bg-as-gray-50">
+      <div className="flex items-start justify-between gap-3 border border-as-gray-200 rounded-xl p-3 bg-as-gray-50">
         <div className="text-sm">
           <div className="font-bold text-as-gray-800">{selected.naziv}</div>
           <div className="text-as-gray-500">{selected.poslovalnica ? `Posl. ${selected.poslovalnica} · ` : ''}{[selected.ulica, selected.posta].filter(Boolean).join(', ') || '—'}</div>
@@ -1558,38 +1593,38 @@ function CustomerPicker({ selected, onSelect, onClear }) {
 
   if (adding) {
     return (
-      <div className="border border-as-gray-200 rounded-lg p-4 bg-as-gray-50 space-y-3">
+      <div className="border border-as-gray-200 rounded-xl p-4 bg-as-gray-50 space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-sm font-bold text-as-gray-800">➕ Nova stranka</div>
           <button type="button" onClick={() => setAdding(false)} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold">Prekliči</button>
         </div>
         {addErr && <div className="text-xs text-red-600">{addErr}</div>}
         <div>
-          <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Naziv *</label>
+          <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Naziv *</label>
           <input type="text" value={nNaziv} onChange={(e) => setNNaziv(e.target.value)} className={inputCls} placeholder="Naziv stranke" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Ulica</label>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Ulica</label>
             <input type="text" value={nUlica} onChange={(e) => setNUlica(e.target.value)} className={inputCls} placeholder="Ulica in hišna št." />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Pošta</label>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Pošta</label>
             <input type="text" value={nPosta} onChange={(e) => setNPosta(e.target.value)} className={inputCls} placeholder="npr. 3000 Celje" />
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Davčna</label>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Davčna</label>
             <input type="text" value={nDavcna} onChange={(e) => setNDavcna(e.target.value)} className={inputCls} placeholder="brez SI" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1">Panoga</label>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Panoga</label>
             <input type="text" value={nPanoga} onChange={(e) => setNPanoga(e.target.value)} className={inputCls} placeholder="neobvezno" />
           </div>
         </div>
         <button type="button" onClick={saveNewCustomer} disabled={savingNew}
-          className="px-4 py-2 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
+          className="w-full sm:w-auto justify-center px-4 py-3 text-white text-base font-semibold rounded-xl inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
           {savingNew ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Shrani stranko in izberi
         </button>
@@ -1603,19 +1638,19 @@ function CustomerPicker({ selected, onSelect, onClear }) {
       <input type="text" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
         className={inputCls} placeholder="Išči stranko po nazivu, naslovu ali davčni (min. 2 znaka)..." />
       {open && q.trim().length >= 2 && (
-        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-as-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-as-gray-200 rounded-xl shadow-lg max-h-72 overflow-y-auto">
           {loading && <div className="px-3 py-2 text-sm text-as-gray-400">Iščem…</div>}
           {!loading && results.length === 0 && <div className="px-3 py-2 text-sm text-as-gray-400">Ni zadetkov.</div>}
           {results.map((c) => (
             <button key={c.key} type="button" onClick={() => chooseCustomer(c)}
-              className="w-full text-left px-3 py-2 hover:bg-as-gray-50 border-b border-as-gray-100 last:border-0">
+              className="w-full text-left px-3 py-3 hover:bg-as-gray-50 border-b border-as-gray-100 last:border-0">
               <div className="text-sm font-semibold text-as-gray-800">{c.naziv}</div>
               <div className="text-xs text-as-gray-500">{c.davcna ? `Davčna ${c.davcna}` : ''}{c.count > 1 ? ` · ${c.count} poslovalnic` : ''} · {c.panoga || '—'}</div>
             </button>
           ))}
           {!loading && (
             <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={startAdd}
-              className="w-full text-left px-3 py-2.5 hover:bg-orange-50 border-t border-as-gray-200 text-sm font-semibold flex items-center gap-2" style={{ color: CRM_COLOR }}>
+              className="w-full text-left px-3 py-3 hover:bg-orange-50 border-t border-as-gray-200 text-sm font-semibold flex items-center gap-2" style={{ color: CRM_COLOR }}>
               <Plus className="w-4 h-4" /> Dodaj novo stranko{q.trim() ? `: "${q.trim()}"` : ''}
             </button>
           )}
@@ -1638,7 +1673,7 @@ function OutcomePicker({ value, onChange }) {
         const active = value === o.id;
         return (
           <button key={o.id} type="button" onClick={() => onChange(o.id)}
-            className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold border-2 transition"
+            className="flex-1 px-3 py-3 rounded-xl text-sm font-semibold border-2 transition"
             style={{ borderColor: active ? o.color : '#E5E7EB', background: active ? o.bg : '#fff', color: active ? o.color : '#6B7280' }}>
             {o.label}
           </button>
@@ -1648,10 +1683,11 @@ function OutcomePicker({ value, onChange }) {
   );
 }
 
-// ─── ANALIZA PO STRANKAH ───
+// ─── ANALIZA PO STRANKAH (z zgodovino vsake stranke) ───
 function AnalysisView({ visits, loading }) {
   const [q, setQ] = useState('');
   const [custMap, setCustMap] = useState({});
+  const [openKey, setOpenKey] = useState(null);
 
   useEffect(() => {
     const ids = [...new Set((visits || []).map((v) => v.customer_id).filter(Boolean))];
@@ -1675,7 +1711,7 @@ function AnalysisView({ visits, loading }) {
       if (v.entry_type !== 'visit' && v.entry_type !== 'call') continue;
       const cust = v.customer_id ? custMap[v.customer_id] : null;
       const key = (cust && cust.davcna) ? `d:${cust.davcna}` : (v.customer_id ? `id:${v.customer_id}` : `n:${(v.customer_name || '—').toLowerCase()}`);
-      if (!g[key]) g[key] = { key, naziv: cust?.naziv || v.customer_name || '—', panoga: cust?.panoga || '—', kontakti: 0, minutes: 0, narocila: 0, ponudbe: 0, zadnji: null };
+      if (!g[key]) g[key] = { key, naziv: cust?.naziv || v.customer_name || '—', panoga: cust?.panoga || '—', kontakti: 0, minutes: 0, narocila: 0, ponudbe: 0, zadnji: null, entries: [] };
       const r = g[key];
       if (cust?.naziv) r.naziv = cust.naziv;
       if (cust?.panoga) r.panoga = cust.panoga;
@@ -1685,8 +1721,14 @@ function AnalysisView({ visits, loading }) {
       else if (v.outcome === 'ponudba') r.ponudbe += 1;
       else if (v.create_offer && !v.outcome) r.ponudbe += 1;
       if (!r.zadnji || (v.visit_date && v.visit_date > r.zadnji)) r.zadnji = v.visit_date;
+      r.entries.push(v);
     }
     let arr = Object.values(g);
+    arr.forEach((r) => r.entries.sort((a, b) => {
+      const d = (b.visit_date || '').localeCompare(a.visit_date || '');
+      if (d !== 0) return d;
+      return (b.arrival_time || '').localeCompare(a.arrival_time || '');
+    }));
     const term = q.trim().toLowerCase();
     if (term) arr = arr.filter((r) => r.naziv.toLowerCase().includes(term) || (r.panoga || '').toLowerCase().includes(term));
     arr.sort((a, b) => b.kontakti - a.kontakti || b.minutes - a.minutes);
@@ -1701,60 +1743,103 @@ function AnalysisView({ visits, loading }) {
   if (loading) return <div className="text-center py-10 text-as-gray-400">Nalagam…</div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-5xl mx-auto">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Strank z aktivnostjo</div><div className="text-2xl font-bold text-as-gray-700 mt-1">{rows.length}</div></div>
-        <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Skupaj kontaktov</div><div className="text-2xl font-bold text-as-gray-700 mt-1">{totals.kontakti}</div></div>
-        <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Naročila</div><div className="text-2xl font-bold mt-1" style={{ color: '#16A34A' }}>{totals.narocila}</div></div>
-        <div className="bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Ponudbe</div><div className="text-2xl font-bold mt-1" style={{ color: '#D97706' }}>{totals.ponudbe}</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Strank z aktivnostjo</div><div className="text-2xl font-bold text-as-gray-700 mt-1">{rows.length}</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Skupaj kontaktov</div><div className="text-2xl font-bold text-as-gray-700 mt-1">{totals.kontakti}</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Naročila</div><div className="text-2xl font-bold mt-1" style={{ color: '#16A34A' }}>{totals.narocila}</div></div>
+        <div className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Ponudbe</div><div className="text-2xl font-bold mt-1" style={{ color: '#D97706' }}>{totals.ponudbe}</div></div>
       </div>
 
-      <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+      <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-          <h3 className="font-bold text-as-gray-700">👤 Analiza po strankah</h3>
+          <h3 className="font-bold text-as-gray-700">👤 Stranke — klikni za zgodovino</h3>
           <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Išči stranko ali panogo…" className={inputCls + ' max-w-xs'} />
         </div>
         {rows.length === 0 ? (
           <div className="text-center py-8 text-as-gray-400 text-sm">Ni podatkov. Vnosi z izbrano stranko se bodo prikazali tukaj.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-as-gray-50 text-as-gray-500 text-xs uppercase">
-                <tr>
-                  <th className="text-left p-2">Stranka</th>
-                  <th className="text-left p-2">Panoga</th>
-                  <th className="text-right p-2">Kontakti</th>
-                  <th className="text-right p-2">Čas (h)</th>
-                  <th className="text-right p-2">Naročila</th>
-                  <th className="text-right p-2">Ponudbe</th>
-                  <th className="text-left p-2">Ocena</th>
-                  <th className="text-right p-2">Zadnji kontakt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const naroca = r.narocila > 0;
-                  const ponudbeBrez = r.ponudbe > 0 && r.narocila === 0;
-                  const badge = naroca
-                    ? { t: 'Naroča', c: '#16A34A', b: '#DCFCE7' }
-                    : ponudbeBrez
-                      ? { t: 'Ponudbe, brez naročila', c: '#DC2626', b: '#FEE2E2' }
-                      : { t: 'Brez izida', c: '#6B7280', b: '#F3F4F6' };
-                  return (
-                    <tr key={r.key} className="border-t border-as-gray-100 hover:bg-as-gray-50">
-                      <td className="p-2 font-semibold text-as-gray-800">{r.naziv}</td>
-                      <td className="p-2 text-as-gray-500 text-xs">{r.panoga}</td>
-                      <td className="p-2 text-right">{r.kontakti}</td>
-                      <td className="p-2 text-right">{(r.minutes / 60).toFixed(1)}</td>
-                      <td className="p-2 text-right font-semibold" style={{ color: r.narocila > 0 ? '#16A34A' : '#9CA3AF' }}>{r.narocila}</td>
-                      <td className="p-2 text-right font-semibold" style={{ color: r.ponudbe > 0 ? '#D97706' : '#9CA3AF' }}>{r.ponudbe}</td>
-                      <td className="p-2"><span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: badge.c, background: badge.b }}>{badge.t}</span></td>
-                      <td className="p-2 text-right text-as-gray-500">{r.zadnji ? formatDate(r.zadnji) : '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="space-y-2.5">
+            {rows.map((r) => {
+              const naroca = r.narocila > 0;
+              const ponudbeBrez = r.ponudbe > 0 && r.narocila === 0;
+              const badge = naroca
+                ? { t: 'Naroča', c: '#16A34A', b: '#DCFCE7' }
+                : ponudbeBrez
+                  ? { t: 'Ponudbe, brez naročila', c: '#DC2626', b: '#FEE2E2' }
+                  : { t: 'Brez izida', c: '#6B7280', b: '#F3F4F6' };
+              const isOpen = openKey === r.key;
+              return (
+                <div key={r.key} className="border border-as-gray-200 rounded-xl overflow-hidden">
+                  {/* Glava stranke */}
+                  <button type="button" onClick={() => setOpenKey(isOpen ? null : r.key)}
+                    className="w-full text-left p-4 hover:bg-as-gray-50 transition flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-as-gray-800">{r.naziv}</span>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: badge.c, background: badge.b }}>{badge.t}</span>
+                      </div>
+                      <div className="text-xs text-as-gray-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                        <span>📞 {r.kontakti} kontaktov</span>
+                        <span>⏱️ {(r.minutes / 60).toFixed(1)} h</span>
+                        <span style={{ color: r.narocila > 0 ? '#16A34A' : undefined }}>✓ {r.narocila} naročil</span>
+                        <span style={{ color: r.ponudbe > 0 ? '#D97706' : undefined }}>📝 {r.ponudbe} ponudb</span>
+                        <span>🗓️ zadnji: {r.zadnji ? formatDate(r.zadnji) : '—'}</span>
+                        {r.panoga && r.panoga !== '—' && <span className="text-as-gray-400">{r.panoga}</span>}
+                      </div>
+                    </div>
+                    <div className="text-as-gray-400 flex-shrink-0 mt-0.5">
+                      {isOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                    </div>
+                  </button>
+
+                  {/* Zgodovina stranke */}
+                  {isOpen && (
+                    <div className="border-t border-as-gray-100 bg-as-gray-50/50 p-3 sm:p-4 space-y-2">
+                      <div className="text-xs font-semibold text-as-gray-500 uppercase tracking-wider mb-1">Zgodovina ({r.entries.length})</div>
+                      {r.entries.map((e) => {
+                        const isCall = e.entry_type === 'call';
+                        const eIcon = isCall ? (e.channel === 'email' ? '✉️' : '📞') : '📍';
+                        const dur = isCall
+                          ? (e.call_duration_min != null ? e.call_duration_min : null)
+                          : diffMinutes(e.arrival_time, e.departure_time);
+                        const oc = e.outcome === 'narocilo'
+                          ? { t: 'Naročilo', c: '#16A34A', b: '#DCFCE7' }
+                          : e.outcome === 'ponudba'
+                            ? { t: 'Ponudba', c: '#D97706', b: '#FEF3C7' }
+                            : null;
+                        return (
+                          <div key={e.id} className="bg-white border border-as-gray-200 rounded-lg p-3">
+                            <div className="flex items-start gap-2">
+                              <span className="text-lg flex-shrink-0">{eIcon}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap text-sm">
+                                  <span className="font-semibold text-as-gray-800">{formatDate(e.visit_date)}</span>
+                                  <span className="text-as-gray-500 text-xs flex items-center gap-1">
+                                    <Clock className="w-3 h-3" /> {formatTime(e.arrival_time)}{e.departure_time ? ' – ' + formatTime(e.departure_time) : ''}
+                                  </span>
+                                  {dur != null && dur >= 0 && <span className="text-xs font-semibold" style={{ color: '#0E7490' }}>{formatMinutes(dur)}</span>}
+                                  {oc && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: oc.c, background: oc.b }}>{oc.t}</span>}
+                                  {e.create_offer && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: '#854D0E', background: '#FEF3C7' }}>📝 Naloga</span>}
+                                </div>
+                                {e.notes && <div className="text-sm text-as-gray-600 mt-1.5 whitespace-pre-wrap">{e.notes}</div>}
+                                {e.offer_description && (
+                                  <div className="text-xs text-as-gray-500 mt-1.5 bg-yellow-50 border border-yellow-200 rounded p-2">
+                                    <strong>Ponudba:</strong> {e.offer_description}
+                                    {e.offer_due_date && <> · rok {formatDate(e.offer_due_date)}</>}
+                                  </div>
+                                )}
+                                <div className="text-xs text-as-gray-400 mt-1">Vnesel: {e.created_by_name || e.created_by || '—'}</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
