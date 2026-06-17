@@ -2955,6 +2955,7 @@ function CustomerAnalysis({ custVisits, branches }) {
       return {
         id: b.id,
         label: (b.poslovalnica != null ? `Posl. ${b.poslovalnica}` : 'Glavna'),
+        loc: [b.ulica, b.posta].filter(Boolean).join(', '),
         kontakti: bl.length,
         narocila: bl.filter((v) => v.outcome === 'narocilo').length,
       };
@@ -3005,9 +3006,12 @@ function CustomerAnalysis({ custVisits, branches }) {
           <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2">Po poslovalnici</div>
           <div className="space-y-1.5">
             {branchRows.map((r) => (
-              <div key={r.id} className="flex items-center justify-between text-sm">
-                <span className="text-as-gray-700 font-medium">{r.label}</span>
-                <span className="text-as-gray-500 text-xs">{r.kontakti} kontaktov · <span style={{ color: '#16A34A' }}>{r.narocila} naročil</span></span>
+              <div key={r.id} className="flex items-center justify-between text-sm gap-2">
+                <div className="min-w-0">
+                  <div className="text-as-gray-700 font-medium">{r.label}</div>
+                  {r.loc && <div className="text-xs text-as-gray-400 truncate">{r.loc}</div>}
+                </div>
+                <span className="text-as-gray-500 text-xs flex-shrink-0 text-right">{r.kontakti} kontaktov · <span style={{ color: '#16A34A' }}>{r.narocila} naročil</span></span>
               </div>
             ))}
           </div>
