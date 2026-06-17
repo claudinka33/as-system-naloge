@@ -3,7 +3,7 @@
 // analiza z zgodovino po posamezni stranki.
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2 } from 'lucide-react';
+import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2, TrendingUp } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { syncTaskWebhook } from '../../webhooks.js';
 
@@ -168,6 +168,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
           <SubTab active={view === 'entry'} onClick={() => setView('entry')} icon={<Plus className="w-4 h-4" />} label="Vnos" />
           <SubTab active={view === 'daily'} onClick={() => setView('daily')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
           <SubTab active={view === 'monthly'} onClick={() => setView('monthly')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
+          <SubTab active={view === 'reports'} onClick={() => setView('reports')} icon={<TrendingUp className="w-4 h-4" />} label="Poročila" />
           <SubTab active={view === 'analysis'} onClick={() => setView('analysis')} icon={<User className="w-4 h-4" />} label="Stranke" />
         </div>
         {(isAdmin || isTeamLead) && (
@@ -205,6 +206,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       {view === 'entry' && <EntryView currentUser={currentUser} employees={employees} onSaved={handleSaved} setError={setError} />}
       {view === 'daily' && <DailyView visits={scopedVisits} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
       {view === 'monthly' && <MonthlyView visits={scopedVisits} loading={loading} />}
+      {view === 'reports' && <ReportsView visits={scopedVisits} loading={loading} />}
       {view === 'analysis' && <AnalysisView visits={scopedVisits} loading={loading} />}
     </div>
   );
@@ -1679,6 +1681,259 @@ function OutcomePicker({ value, onChange }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// ─── POROČILA / DASHBOARD (analitika iz obstoječih podatkov) ───
+function ReportsView({ visits, loading }) {
+  const [period, setPeriod] = useState('3m'); // 'month' | '3m' | 'year' | 'all'
+  const [custMap, setCustMap] = useState({});
+
+  // panoga iz crm_customers
+  useEffect(() => {
+    const ids = [...new Set((visits || []).map((v) => v.customer_id).filter(Boolean))];
+    if (ids.length === 0) { setCustMap({}); return; }
+    let active = true;
+    (async () => {
+      const map = {};
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const { data } = await supabase.from('crm_customers').select('id,naziv,panoga').in('id', chunk);
+        (data || []).forEach((c) => { map[c.id] = c; });
+      }
+      if (active) setCustMap(map);
+    })();
+    return () => { active = false; };
+  }, [visits]);
+
+  const fromDate = useMemo(() => {
+    const now = new Date();
+    if (period === 'all') return '0000-01-01';
+    if (period === 'year') return `${now.getFullYear()}-01-01`;
+    if (period === 'month') return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const d = new Date(now); d.setMonth(d.getMonth() - 2); d.setDate(1);
+    return d.toISOString().slice(0, 10);
+  }, [period]);
+
+  // kontakti (obiski + klici) v obdobju
+  const contacts = useMemo(() =>
+    (visits || []).filter((v) => (v.entry_type === 'visit' || v.entry_type === 'call') && (v.visit_date || '') >= fromDate),
+  [visits, fromDate]);
+
+  // vsi vnosi v obdobju (za km)
+  const periodAll = useMemo(() =>
+    (visits || []).filter((v) => (v.visit_date || '') >= fromDate),
+  [visits, fromDate]);
+
+  // LIJAK / izidi
+  const funnel = useMemo(() => {
+    const kontakti = contacts.length;
+    const obiski = contacts.filter((v) => v.entry_type === 'visit').length;
+    const klici = contacts.filter((v) => v.entry_type === 'call').length;
+    const ponudbe = contacts.filter((v) => v.outcome === 'ponudba' || v.create_offer).length;
+    const narocila = contacts.filter((v) => v.outcome === 'narocilo').length;
+    const konvPonudba = kontakti ? Math.round((ponudbe / kontakti) * 100) : 0;
+    const konvNarocilo = kontakti ? Math.round((narocila / kontakti) * 100) : 0;
+    const winRate = (narocila + ponudbe) ? Math.round((narocila / (narocila + ponudbe)) * 100) : 0;
+    return { kontakti, obiski, klici, ponudbe, narocila, konvPonudba, konvNarocilo, winRate };
+  }, [contacts]);
+
+  // PO PRODAJALCU
+  const bySales = useMemo(() => {
+    const g = {};
+    contacts.forEach((v) => {
+      const key = v.created_by || '—';
+      if (!g[key]) g[key] = { email: key, name: v.created_by_name || key, kontakti: 0, obiski: 0, klici: 0, narocila: 0, ponudbe: 0, minutes: 0, km: 0 };
+      const r = g[key];
+      r.kontakti += 1;
+      if (v.entry_type === 'visit') r.obiski += 1; else r.klici += 1;
+      if (v.outcome === 'narocilo') r.narocila += 1;
+      if (v.outcome === 'ponudba' || v.create_offer) r.ponudbe += 1;
+      r.minutes += Number(v.visit_duration_min || v.call_duration_min || diffMinutes(v.arrival_time, v.departure_time) || 0);
+    });
+    // km: po (prodajalec + dan), max - min
+    const dayMap = {};
+    periodAll.forEach((v) => {
+      if (v.odometer_km == null) return;
+      const k = `${v.created_by}|${v.visit_date}`;
+      if (!dayMap[k]) dayMap[k] = { email: v.created_by, min: v.odometer_km, max: v.odometer_km };
+      dayMap[k].min = Math.min(dayMap[k].min, v.odometer_km);
+      dayMap[k].max = Math.max(dayMap[k].max, v.odometer_km);
+    });
+    Object.values(dayMap).forEach((d) => {
+      const km = d.max - d.min;
+      if (km > 0 && g[d.email]) g[d.email].km += km;
+    });
+    return Object.values(g).sort((a, b) => b.narocila - a.narocila || b.kontakti - a.kontakti);
+  }, [contacts, periodAll]);
+
+  // TREND po mesecih (zadnjih do 12)
+  const trend = useMemo(() => {
+    const m = {};
+    contacts.forEach((v) => {
+      const key = (v.visit_date || '').slice(0, 7);
+      if (!key) return;
+      if (!m[key]) m[key] = { month: key, kontakti: 0, ponudbe: 0, narocila: 0 };
+      m[key].kontakti += 1;
+      if (v.outcome === 'ponudba' || v.create_offer) m[key].ponudbe += 1;
+      if (v.outcome === 'narocilo') m[key].narocila += 1;
+    });
+    return Object.values(m).sort((a, b) => a.month.localeCompare(b.month)).slice(-12);
+  }, [contacts]);
+
+  // PO PANOGI
+  const byPanoga = useMemo(() => {
+    const g = {};
+    contacts.forEach((v) => {
+      const pan = (v.customer_id && custMap[v.customer_id]?.panoga) || '—';
+      if (!g[pan]) g[pan] = { panoga: pan, kontakti: 0, narocila: 0 };
+      g[pan].kontakti += 1;
+      if (v.outcome === 'narocilo') g[pan].narocila += 1;
+    });
+    return Object.values(g).sort((a, b) => b.kontakti - a.kontakti).slice(0, 8);
+  }, [contacts, custMap]);
+
+  if (loading) return <LoadingBox />;
+
+  const periods = [
+    { id: 'month', label: 'Ta mesec' },
+    { id: '3m', label: '3 mesece' },
+    { id: 'year', label: 'Letos' },
+    { id: 'all', label: 'Vse' },
+  ];
+
+  return (
+    <div className="space-y-5 max-w-5xl mx-auto">
+      {/* Obdobje */}
+      <div className="grid grid-cols-4 gap-2">
+        {periods.map((p) => (
+          <button key={p.id} onClick={() => setPeriod(p.id)}
+            className="px-2 py-2.5 rounded-xl text-sm font-semibold border-2 transition"
+            style={{ borderColor: period === p.id ? CRM_COLOR : '#E5E7EB', background: period === p.id ? CRM_BG : '#fff', color: period === p.id ? CRM_COLOR : '#6B7280' }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* KPI */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <BigStat icon="📞" label="Kontakti" value={funnel.kontakti} unit="" color="#6D28D9" bgColor="#EDE9FE" />
+        <BigStat icon="📝" label="Ponudbe" value={funnel.ponudbe} unit="" color="#854D0E" bgColor="#FEF3C7" />
+        <BigStat icon="✓" label="Naročila" value={funnel.narocila} unit="" color="#16A34A" bgColor="#DCFCE7" />
+        <BigStat icon="🎯" label="Uspešnost" value={funnel.winRate} unit="%" color={CRM_COLOR} bgColor={CRM_BG} />
+      </div>
+
+      {/* LIJAK */}
+      <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm">
+        <h3 className="font-bold text-as-gray-700 mb-4">📊 Prodajni lijak</h3>
+        <FunnelBar label="Kontakti" value={funnel.kontakti} max={funnel.kontakti} color="#6D28D9" pct={100} />
+        <FunnelBar label="Ponudbe" value={funnel.ponudbe} max={funnel.kontakti} color="#D97706" pct={funnel.konvPonudba} />
+        <FunnelBar label="Naročila" value={funnel.narocila} max={funnel.kontakti} color="#16A34A" pct={funnel.konvNarocilo} />
+        <p className="text-xs text-as-gray-500 mt-3">
+          Kontakt → ponudba: <strong>{funnel.konvPonudba}%</strong> · kontakt → naročilo: <strong>{funnel.konvNarocilo}%</strong> · uspešnost: <strong>{funnel.winRate}%</strong> (naročila / naročila+ponudbe)
+        </p>
+      </div>
+
+      {/* PO PRODAJALCU */}
+      <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm">
+        <h3 className="font-bold text-as-gray-700 mb-4">🏅 Po prodajalcu</h3>
+        {bySales.length === 0 ? <Empty /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-as-gray-50 text-as-gray-500 text-xs uppercase">
+                <tr>
+                  <th className="text-left p-2">Prodajalec</th>
+                  <th className="text-right p-2">Kont.</th>
+                  <th className="text-right p-2">Naročila</th>
+                  <th className="text-right p-2">Ponudbe</th>
+                  <th className="text-right p-2">Čas (h)</th>
+                  <th className="text-right p-2">Km</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bySales.map((r) => (
+                  <tr key={r.email} className="border-t border-as-gray-100">
+                    <td className="p-2 font-semibold text-as-gray-800">{r.name}</td>
+                    <td className="p-2 text-right">{r.kontakti}</td>
+                    <td className="p-2 text-right font-semibold" style={{ color: r.narocila > 0 ? '#16A34A' : '#9CA3AF' }}>{r.narocila}</td>
+                    <td className="p-2 text-right" style={{ color: r.ponudbe > 0 ? '#D97706' : '#9CA3AF' }}>{r.ponudbe}</td>
+                    <td className="p-2 text-right">{(r.minutes / 60).toFixed(1)}</td>
+                    <td className="p-2 text-right">{formatNumber(r.km)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* TREND */}
+      <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm">
+        <h3 className="font-bold text-as-gray-700 mb-4">📈 Trend po mesecih</h3>
+        {trend.length === 0 ? <Empty /> : (
+          <div className="space-y-2.5">
+            {(() => {
+              const maxK = Math.max(...trend.map((t) => t.kontakti), 1);
+              return trend.map((t) => {
+                const [y, mo] = t.month.split('-');
+                const label = `${(SLOVENIAN_MONTHS[Number(mo) - 1] || '').slice(0, 3)} ${y.slice(2)}`;
+                return (
+                  <div key={t.month} className="flex items-center gap-3 text-sm">
+                    <div className="w-14 text-xs text-as-gray-500 flex-shrink-0">{label}</div>
+                    <div className="flex-1 bg-as-gray-100 rounded h-6 overflow-hidden relative">
+                      <div className="h-full" style={{ width: `${(t.kontakti / maxK) * 100}%`, backgroundColor: '#EDE9FE' }} />
+                      <div className="absolute inset-0 flex items-center px-2 gap-3 text-xs">
+                        <span className="text-as-gray-600">{t.kontakti} kont.</span>
+                        {t.ponudbe > 0 && <span style={{ color: '#D97706' }}>{t.ponudbe} pon.</span>}
+                        {t.narocila > 0 && <span style={{ color: '#16A34A' }} className="font-semibold">{t.narocila} nar.</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        )}
+      </div>
+
+      {/* PO PANOGI */}
+      <div className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm">
+        <h3 className="font-bold text-as-gray-700 mb-4">🏢 Po panogi</h3>
+        {byPanoga.length === 0 ? <Empty /> : (
+          <div className="space-y-2">
+            {(() => {
+              const maxK = Math.max(...byPanoga.map((p) => p.kontakti), 1);
+              return byPanoga.map((p) => (
+                <div key={p.panoga} className="grid grid-cols-12 gap-2 items-center text-sm">
+                  <div className="col-span-4 text-as-gray-700 truncate" title={p.panoga}>{p.panoga}</div>
+                  <div className="col-span-6 bg-as-gray-100 rounded h-5 overflow-hidden">
+                    <div className="h-full" style={{ width: `${(p.kontakti / maxK) * 100}%`, backgroundColor: CRM_COLOR }} />
+                  </div>
+                  <div className="col-span-2 text-right font-semibold text-as-gray-700">
+                    {p.kontakti}{p.narocila > 0 && <span className="text-xs ml-1" style={{ color: '#16A34A' }}>({p.narocila}✓)</span>}
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FunnelBar({ label, value, max, color, pct }) {
+  const width = max ? Math.max((value / max) * 100, value > 0 ? 6 : 0) : 0;
+  return (
+    <div className="mb-2.5">
+      <div className="flex items-center justify-between text-sm mb-1">
+        <span className="font-semibold text-as-gray-700">{label}</span>
+        <span className="text-as-gray-500">{value} <span className="text-xs">({pct}%)</span></span>
+      </div>
+      <div className="bg-as-gray-100 rounded-lg h-7 overflow-hidden">
+        <div className="h-full rounded-lg transition-all" style={{ width: `${width}%`, backgroundColor: color }} />
+      </div>
     </div>
   );
 }
