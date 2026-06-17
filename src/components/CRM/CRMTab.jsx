@@ -209,7 +209,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       {view === 'daily' && <DailyView visits={scopedVisits} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
       {view === 'monthly' && <MonthlyView visits={scopedVisits} loading={loading} />}
       {view === 'reports' && <ReportsView visits={scopedVisits} loading={loading} />}
-      {view === 'analysis' && <AnalysisView visits={scopedVisits} loading={loading} />}
+      {view === 'analysis' && <StrankeView visits={scopedVisits} loading={loading} isAdmin={isAdmin} />}
     </div>
   );
 }
@@ -2563,5 +2563,275 @@ function ProfRow({ label, value, href }) {
       <span className="text-as-gray-400 text-xs whitespace-nowrap">{label}:</span>
       {href ? <a href={href} className="break-all" style={{ color: CRM_COLOR }}>{value}</a> : <span className="text-as-gray-700 break-all">{value}</span>}
     </div>
+  );
+}
+
+// ─── STRANKE: preklop Baza / Analiza ───
+function StrankeView({ visits, loading, isAdmin }) {
+  const [mode, setMode] = useState('baza');
+  return (
+    <div className="space-y-4 max-w-5xl mx-auto">
+      <div className="grid grid-cols-2 sm:inline-grid sm:grid-flow-col gap-1.5 bg-as-gray-100 rounded-xl p-1.5 border border-as-gray-200">
+        {[['baza', 'Baza strank'], ['analiza', 'Analiza']].map(([id, label]) => (
+          <button key={id} onClick={() => setMode(id)}
+            className="px-4 py-2.5 text-sm font-semibold rounded-lg transition"
+            style={mode === id ? { background: AS_RED, color: '#fff' } : { color: '#6B7280' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === 'baza' ? <CustomerDirectory isAdmin={isAdmin} /> : <AnalysisView visits={visits} loading={loading} />}
+    </div>
+  );
+}
+
+// ─── BAZA STRANK (direktorij: vse stranke, dodaj/uredi/izbriši) ───
+function CustomerDirectory({ isAdmin }) {
+  const COLS = 'id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,email,telefon,splet,opombe,tags';
+  const PAGE = 50;
+  const [q, setQ] = useState('');
+  const [tagFilter, setTagFilter] = useState(null);
+  const [list, setList] = useState([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(null); // 'new' | customer | null
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [flash, setFlash] = useState('');
+
+  async function load(reset, curOffset) {
+    setLoading(true); setErr('');
+    try {
+      const from = reset ? 0 : (curOffset ?? offset);
+      let qy = supabase.from('crm_customers').select(COLS).order('naziv', { ascending: true }).range(from, from + PAGE - 1);
+      const term = q.trim();
+      if (term) {
+        const safe = term.replace(/[(),%]/g, ' ').trim();
+        const pat = `%${safe}%`;
+        qy = qy.or(`naziv.ilike.${pat},ulica.ilike.${pat},posta.ilike.${pat},davcna.ilike.${pat}`);
+      }
+      if (tagFilter) qy = qy.contains('tags', [tagFilter]);
+      const { data, error } = await qy;
+      if (error) throw error;
+      const rows = data || [];
+      setList((prev) => reset ? rows : [...prev, ...rows]);
+      setOffset(from + rows.length);
+      setHasMore(rows.length === PAGE);
+    } catch (e) {
+      setErr(e.message || 'Napaka pri nalaganju strank.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { const t = setTimeout(() => load(true), 300); return () => clearTimeout(t); }, [q, tagFilter]);
+  useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(''), 3000); return () => clearTimeout(t); }, [flash]);
+
+  async function handleSave(values) {
+    setSaving(true); setErr('');
+    try {
+      if (editing === 'new') {
+        const { error } = await supabase.from('crm_customers').insert([{ ...values, poslovalnica: 0 }]);
+        if (error) throw error;
+        setFlash('✓ Stranka dodana');
+      } else {
+        const { error } = await supabase.from('crm_customers').update(values).eq('id', editing.id);
+        if (error) throw error;
+        setFlash('✓ Stranka posodobljena');
+      }
+      setEditing(null);
+      load(true);
+    } catch (e) {
+      setErr(e.message || 'Napaka pri shranjevanju.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(c) {
+    if (!confirm(`Izbrišem stranko "${c.naziv}"? Tega ni mogoče razveljaviti.`)) return;
+    try {
+      const { error } = await supabase.from('crm_customers').delete().eq('id', c.id);
+      if (error) throw error;
+      setFlash('Stranka izbrisana');
+      load(true);
+    } catch (e) { setErr(e.message || 'Napaka pri brisanju.'); }
+  }
+
+  const filterTags = [...new Set([...CUSTOMER_TAGS, ...list.flatMap((c) => c.tags || [])])];
+
+  return (
+    <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h3 className="font-bold text-as-gray-700">🗂️ Baza strank</h3>
+        {!editing && (
+          <button onClick={() => setEditing('new')}
+            className="px-4 py-2.5 text-white text-sm font-semibold rounded-xl inline-flex items-center gap-2" style={{ background: CRM_COLOR }}>
+            <Plus className="w-4 h-4" /> Nova stranka
+          </button>
+        )}
+      </div>
+
+      {flash && (
+        <div className="flex items-center gap-2 p-3 rounded-xl border" style={{ background: '#DCFCE7', borderColor: '#86EFAC', color: '#166534' }}>
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" /><span className="text-sm font-semibold flex-1">{flash}</span>
+        </div>
+      )}
+      {err && (
+        <div className="flex items-center gap-2 p-3 rounded-lg border" style={{ background: '#fee', borderColor: '#fcc', color: '#900' }}>
+          <AlertCircle className="w-4 h-4 flex-shrink-0" /><span className="text-sm flex-1">{err}</span>
+          <button onClick={() => setErr('')} className="text-as-gray-500"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {/* Forma za dodajanje/urejanje */}
+      {editing && (
+        <CustomerForm
+          initial={editing === 'new' ? {} : editing}
+          saving={saving}
+          onCancel={() => setEditing(null)}
+          onSave={handleSave}
+        />
+      )}
+
+      {!editing && (
+        <>
+          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} className={inputCls}
+            placeholder="Išči po nazivu, naslovu ali davčni…" />
+
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setTagFilter(null)}
+              className="text-xs font-semibold px-3 py-1.5 rounded-full border transition"
+              style={{ borderColor: tagFilter === null ? CRM_COLOR : '#E5E7EB', background: tagFilter === null ? CRM_BG : '#fff', color: tagFilter === null ? CRM_COLOR : '#6B7280' }}>Vsi</button>
+            {filterTags.map((t) => (
+              <button key={t} onClick={() => setTagFilter(tagFilter === t ? null : t)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-full border transition"
+                style={{ borderColor: tagFilter === t ? CRM_COLOR : '#E5E7EB', background: tagFilter === t ? CRM_BG : '#fff', color: tagFilter === t ? CRM_COLOR : '#6B7280' }}>{t}</button>
+            ))}
+          </div>
+
+          {loading && list.length === 0 ? <LoadingBox /> : list.length === 0 ? (
+            <div className="text-center py-8 text-as-gray-400 text-sm">Ni najdenih strank.</div>
+          ) : (
+            <div className="space-y-2">
+              {list.map((c) => (
+                <div key={c.id} className="border border-as-gray-200 rounded-xl p-3 sm:p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-as-gray-800">{c.naziv}{c.poslovalnica ? <span className="text-xs text-as-gray-400 font-normal"> · posl. {c.poslovalnica}</span> : ''}</div>
+                      <div className="text-xs text-as-gray-500 mt-0.5">{[c.ulica, c.posta].filter(Boolean).join(', ') || '—'}{c.davcna ? ` · DŠ ${c.davcna}` : ''}{c.panoga ? ` · ${c.panoga}` : ''}</div>
+                      <div className="text-xs text-as-gray-600 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                        {c.kontakt_oseba && <span>👤 {c.kontakt_oseba}</span>}
+                        {c.telefon && <a href={`tel:${c.telefon}`} style={{ color: CRM_COLOR }}>📞 {c.telefon}</a>}
+                        {c.email && <a href={`mailto:${c.email}`} style={{ color: CRM_COLOR }}>✉️ {c.email}</a>}
+                      </div>
+                      {(c.tags && c.tags.length > 0) && (
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {c.tags.map((t) => <span key={t} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: CRM_BG, color: CRM_COLOR }}>{t}</span>)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5 flex-shrink-0">
+                      <button onClick={() => setEditing(c)} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: CRM_BG, color: CRM_COLOR }}>Uredi</button>
+                      {isAdmin && <button onClick={() => handleDelete(c)} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50">Izbriši</button>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {hasMore && (
+                <button onClick={() => load(false)} disabled={loading}
+                  className="w-full py-3 rounded-xl border border-as-gray-200 text-sm font-semibold text-as-gray-600 hover:bg-as-gray-50 disabled:opacity-50">
+                  {loading ? 'Nalagam…' : 'Naloži več'}
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CustomerForm({ initial, onSave, onCancel, saving }) {
+  const [naziv, setNaziv] = useState(initial.naziv || '');
+  const [ulica, setUlica] = useState(initial.ulica || '');
+  const [posta, setPosta] = useState(initial.posta || '');
+  const [davcna, setDavcna] = useState(initial.davcna || '');
+  const [panoga, setPanoga] = useState(initial.panoga || '');
+  const [kontakt, setKontakt] = useState(initial.kontakt_oseba || '');
+  const [email, setEmail] = useState(initial.email || '');
+  const [telefon, setTelefon] = useState(initial.telefon || '');
+  const [splet, setSplet] = useState(initial.splet || '');
+  const [opombe, setOpombe] = useState(initial.opombe || '');
+  const [tags, setTags] = useState(Array.isArray(initial.tags) ? initial.tags : []);
+  const [newTag, setNewTag] = useState('');
+
+  function toggleTag(t) { setTags((arr) => arr.includes(t) ? arr.filter((x) => x !== t) : [...arr, t]); }
+  function addCustomTag() { const t = newTag.trim(); if (!t) return; setTags((arr) => arr.includes(t) ? arr : [...arr, t]); setNewTag(''); }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!naziv.trim()) return;
+    onSave({
+      naziv: naziv.trim(),
+      ulica: ulica.trim() || null,
+      posta: posta.trim() || null,
+      davcna: davcna.trim() || null,
+      panoga: panoga.trim() || null,
+      kontakt_oseba: kontakt.trim() || null,
+      email: email.trim() || null,
+      telefon: telefon.trim() || null,
+      splet: splet.trim() || null,
+      opombe: opombe.trim() || null,
+      tags,
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className="border-2 border-dashed rounded-xl p-4 space-y-3" style={{ borderColor: CRM_BG, background: '#fffdf9' }}>
+      <div className="text-sm font-bold text-as-gray-800">{initial.id ? `Uredi: ${initial.naziv}` : '➕ Nova stranka'}</div>
+      <div>
+        <label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Naziv *</label>
+        <input className={inputCls} value={naziv} onChange={(e) => setNaziv(e.target.value)} placeholder="Naziv stranke" />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Ulica</label><input className={inputCls} value={ulica} onChange={(e) => setUlica(e.target.value)} /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Pošta</label><input className={inputCls} value={posta} onChange={(e) => setPosta(e.target.value)} placeholder="npr. 3000 Celje" /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Davčna</label><input className={inputCls} value={davcna} onChange={(e) => setDavcna(e.target.value)} placeholder="brez SI" /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Panoga</label><input className={inputCls} value={panoga} onChange={(e) => setPanoga(e.target.value)} /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Kontaktna oseba</label><input className={inputCls} value={kontakt} onChange={(e) => setKontakt(e.target.value)} /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Telefon</label><input className={inputCls} value={telefon} onChange={(e) => setTelefon(e.target.value)} inputMode="tel" /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Email</label><input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} inputMode="email" /></div>
+        <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Spletna stran</label><input className={inputCls} value={splet} onChange={(e) => setSplet(e.target.value)} placeholder="npr. www.stranka.si" /></div>
+      </div>
+      <div><label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1">Opombe</label><textarea rows={2} className={inputCls + ' resize-none'} value={opombe} onChange={(e) => setOpombe(e.target.value)} /></div>
+      <div>
+        <label className="block text-xs font-semibold text-as-gray-600 uppercase mb-1.5">Tagi</label>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {[...new Set([...CUSTOMER_TAGS, ...tags])].map((t) => {
+            const on = tags.includes(t);
+            return (
+              <button key={t} type="button" onClick={() => toggleTag(t)}
+                className="text-xs font-semibold px-2.5 py-1 rounded-full border transition"
+                style={{ borderColor: on ? CRM_COLOR : '#E5E7EB', background: on ? CRM_BG : '#fff', color: on ? CRM_COLOR : '#6B7280' }}>
+                {on ? '✓ ' : ''}{t}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-2">
+          <input className={inputCls} value={newTag} onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag(); } }} placeholder="Dodaj svoj tag…" />
+          <button type="button" onClick={addCustomTag} className="px-4 rounded-xl text-sm font-semibold flex-shrink-0" style={{ background: CRM_BG, color: CRM_COLOR }}>Dodaj</button>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button type="submit" disabled={saving} className="flex-1 justify-center px-4 py-3 text-white text-sm font-semibold rounded-xl inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Shrani stranko
+        </button>
+        <button type="button" onClick={onCancel} className="px-4 py-3 text-sm font-semibold rounded-xl border border-as-gray-200 text-as-gray-600">Prekliči</button>
+      </div>
+    </form>
   );
 }
