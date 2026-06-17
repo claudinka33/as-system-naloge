@@ -2605,6 +2605,8 @@ function CustomerDirectory({ isAdmin, visits }) {
   const [creating, setCreating] = useState(false); // nova stranka
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [siblings, setSiblings] = useState([]);        // vse poslovalnice istega podjetja (po davčni)
+  const [analysisScope, setAnalysisScope] = useState('all'); // 'all' = vse poslovalnice, 'this' = samo ta
 
   async function load(reset, curOffset) {
     setLoading(true); setErr('');
@@ -2633,6 +2635,20 @@ function CustomerDirectory({ isAdmin, visits }) {
 
   useEffect(() => { const t = setTimeout(() => load(true), 300); return () => clearTimeout(t); }, [q, tagFilter]);
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(''), 3000); return () => clearTimeout(t); }, [flash]);
+
+  // Naloži vse poslovalnice istega podjetja (po davčni), za skupno analizo v detajlu
+  useEffect(() => {
+    if (!detail) { setSiblings([]); return; }
+    let active = true;
+    setAnalysisScope('all');
+    (async () => {
+      if (detail.davcna && String(detail.davcna).trim()) {
+        const { data } = await supabase.from('crm_customers').select(COLS).eq('davcna', detail.davcna).order('poslovalnica', { ascending: true });
+        if (active) setSiblings(data && data.length ? data : [detail]);
+      } else if (active) { setSiblings([detail]); }
+    })();
+    return () => { active = false; };
+  }, [detail ? detail.id : null]);
 
   // Združi naložene vrstice po podjetju (davčna)
   const companies = useMemo(() => {
@@ -2714,7 +2730,12 @@ function CustomerDirectory({ isAdmin, visits }) {
 
   // ── DETAJL ENE STRANKE ──
   if (detail) {
-    const custVisits = (visits || []).filter((v) => String(v.customer_id) === String(detail.id));
+    const sibList = siblings.length ? siblings : [detail];
+    const sibIds = sibList.map((b) => String(b.id));
+    const allVisits = (visits || []).filter((v) => sibIds.includes(String(v.customer_id)));
+    const thisVisits = (visits || []).filter((v) => String(v.customer_id) === String(detail.id));
+    const multi = sibList.length > 1;
+    const scopeVisits = analysisScope === 'this' ? thisVisits : allVisits;
     return (
       <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
         <button onClick={backToList} className="text-sm font-semibold text-as-gray-500 hover:text-as-gray-700 inline-flex items-center gap-1">
@@ -2750,13 +2771,27 @@ function CustomerDirectory({ isAdmin, visits }) {
           </div>
         )}
 
-        {/* Analiza SAMO za to stranko — samodejno */}
+        {/* Analiza te stranke — privzeto VSE poslovalnice skupaj */}
         {!editing && (
           <div>
-            <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <TrendingUp className="w-4 h-4" /> Analiza te stranke{detail.poslovalnica ? ` (posl. ${detail.poslovalnica})` : ''}
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+              <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                <TrendingUp className="w-4 h-4" /> Analiza stranke {detail.naziv}
+              </div>
+              {multi && (
+                <div className="inline-flex rounded-lg border border-as-gray-200 overflow-hidden text-xs font-semibold">
+                  <button onClick={() => setAnalysisScope('all')} className="px-3 py-1.5 transition"
+                    style={analysisScope === 'all' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>
+                    Vse poslovalnice ({sibList.length})
+                  </button>
+                  <button onClick={() => setAnalysisScope('this')} className="px-3 py-1.5 transition"
+                    style={analysisScope === 'this' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>
+                    Samo ta{detail.poslovalnica ? ` (posl. ${detail.poslovalnica})` : ''}
+                  </button>
+                </div>
+              )}
             </div>
-            <CustomerAnalysis custVisits={custVisits} />
+            <CustomerAnalysis custVisits={scopeVisits} branches={analysisScope === 'all' && multi ? sibList : null} />
           </div>
         )}
       </div>
