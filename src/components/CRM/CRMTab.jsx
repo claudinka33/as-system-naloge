@@ -2750,23 +2750,23 @@ function CustomerDirectory({ isAdmin, visits }) {
           </div>
         )}
 
-        {/* Analiza SAMO za to stranko */}
+        {/* Analiza SAMO za to stranko — samodejno */}
         {!editing && (
           <div>
-            <button onClick={() => setShowAnalysis((s) => !s)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border-2 transition"
-              style={{ borderColor: showAnalysis ? CRM_COLOR : '#E5E7EB', background: showAnalysis ? CRM_BG : '#fff', color: showAnalysis ? CRM_COLOR : '#6B7280' }}>
-              <TrendingUp className="w-4 h-4" /> {showAnalysis ? 'Skrij analizo' : 'Analiza te stranke'}
-            </button>
-            {showAnalysis && <div className="mt-3"><CustomerAnalysis custVisits={custVisits} /></div>}
+            <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4" /> Analiza te stranke{detail.poslovalnica ? ` (posl. ${detail.poslovalnica})` : ''}
+            </div>
+            <CustomerAnalysis custVisits={custVisits} />
           </div>
         )}
       </div>
     );
   }
 
-  // ── IZBIRA POSLOVALNICE ──
+  // ── IZBIRA POSLOVALNICE + ANALIZA CELEGA PODJETJA ──
   if (company) {
+    const branchIds = company.branches.map((b) => String(b.id));
+    const compVisits = (visits || []).filter((v) => branchIds.includes(String(v.customer_id)));
     return (
       <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
         <button onClick={() => setCompany(null)} className="text-sm font-semibold text-as-gray-500 hover:text-as-gray-700 inline-flex items-center gap-1">
@@ -2774,16 +2774,27 @@ function CustomerDirectory({ isAdmin, visits }) {
         </button>
         {banners}
         <div>
-          <div className="font-bold text-as-gray-800 text-lg mb-1">{company.naziv}</div>
-          <div className="text-xs text-as-gray-500 mb-3">Izberi poslovalnico ({company.branches.length}):</div>
+          <div className="font-bold text-as-gray-800 text-lg">{company.naziv}</div>
+          <div className="text-xs text-as-gray-500">{company.branches.length} poslovalnic · analiza vseh skupaj</div>
+        </div>
+        <CustomerAnalysis custVisits={compVisits} branches={company.branches} />
+        <div className="pt-1">
+          <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2">Poslovalnice — klikni za podrobno</div>
           <div className="space-y-2">
-            {company.branches.map((b) => (
-              <button key={b.id} onClick={() => openDetail(b)}
-                className="w-full text-left border border-as-gray-200 rounded-xl p-3 hover:bg-as-gray-50 transition">
-                <div className="font-semibold text-as-gray-800 text-sm">{b.poslovalnica != null ? `Posl. ${b.poslovalnica}` : 'Glavna'}</div>
-                <div className="text-xs text-as-gray-500">{[b.ulica, b.posta].filter(Boolean).join(', ') || '—'}</div>
-              </button>
-            ))}
+            {company.branches.map((b) => {
+              const n = (visits || []).filter((v) => String(v.customer_id) === String(b.id)).length;
+              return (
+                <button key={b.id} onClick={() => openDetail(b)}
+                  className="w-full text-left border border-as-gray-200 rounded-xl p-3 hover:bg-as-gray-50 transition flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-as-gray-800 text-sm">{b.poslovalnica != null ? `Posl. ${b.poslovalnica}` : 'Glavna'}{b.naziv && b.naziv !== company.naziv ? ` — ${b.naziv}` : ''}</div>
+                    <div className="text-xs text-as-gray-500">{[b.ulica, b.posta].filter(Boolean).join(', ') || '—'}</div>
+                  </div>
+                  <span className="text-xs font-semibold flex-shrink-0" style={{ color: n ? CRM_COLOR : '#9CA3AF' }}>{n ? `${n} vnosov` : 'ni vnosov'}</span>
+                  <ChevronRight className="w-4 h-4 text-as-gray-300 flex-shrink-0" />
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -2859,13 +2870,13 @@ function CustomerDirectory({ isAdmin, visits }) {
 }
 
 // ── Analiza ENE stranke (zgodovina + statistika) ──
-function CustomerAnalysis({ custVisits }) {
+function CustomerAnalysis({ custVisits, branches }) {
   const list = (custVisits || []).filter((v) => v.entry_type === 'visit' || v.entry_type === 'call');
   if (list.length === 0) {
     return (
       <div className="bg-as-gray-50 border border-as-gray-200 rounded-xl p-5 text-center">
         <div className="text-sm font-semibold text-as-gray-500">Trenutno še ne aktivna stranka</div>
-        <div className="text-xs text-as-gray-400 mt-1">Ko vneseš prvi obisk ali klic, se bo tukaj prikazala zgodovina.</div>
+        <div className="text-xs text-as-gray-400 mt-1">Ko vneseš prvi obisk ali klic, se bo tukaj prikazala zgodovina in statistika.</div>
       </div>
     );
   }
@@ -2874,26 +2885,139 @@ function CustomerAnalysis({ custVisits }) {
     if (d !== 0) return d;
     return (b.arrival_time || '').localeCompare(a.arrival_time || '');
   });
+
   const kontakti = list.length;
+  const obiski = list.filter((v) => v.entry_type === 'visit').length;
+  const klici = list.filter((v) => v.entry_type === 'call').length;
   const narocila = list.filter((v) => v.outcome === 'narocilo').length;
   const ponudbe = list.filter((v) => v.outcome === 'ponudba' || v.create_offer).length;
+  const brezIzida = kontakti - narocila - ponudbe;
   const minutes = list.reduce((s, v) => s + Number(v.visit_duration_min || v.call_duration_min || diffMinutes(v.arrival_time, v.departure_time) || 0), 0);
+  const konverzija = kontakti ? Math.round((narocila / kontakti) * 100) : 0;
+
+  const dates = list.map((v) => v.visit_date).filter(Boolean).sort();
+  const prvi = dates[0];
+  const zadnji = dates[dates.length - 1];
+  let dniOd = null;
+  if (zadnji) { dniOd = Math.round((Date.now() - new Date(zadnji + 'T00:00:00').getTime()) / 86400000); }
+
+  // Po prodajalcu
+  const bySeller = {};
+  list.forEach((v) => { const k = v.created_by_name || v.created_by || '—'; bySeller[k] = (bySeller[k] || 0) + 1; });
+  const sellers = Object.entries(bySeller).sort((a, b) => b[1] - a[1]);
+
+  // Po mesecih (zadnjih 12)
+  const byMonth = {};
+  list.forEach((v) => { if (!v.visit_date) return; const m = v.visit_date.slice(0, 7); byMonth[m] = (byMonth[m] || 0) + 1; });
+  const months = Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
+  const maxMonth = Math.max(1, ...months.map((m) => m[1]));
+
+  // Po poslovalnici (samo na nivoju podjetja)
+  let branchRows = null;
+  if (branches && branches.length > 1) {
+    branchRows = branches.map((b) => {
+      const bl = list.filter((v) => String(v.customer_id) === String(b.id));
+      return {
+        id: b.id,
+        label: (b.poslovalnica != null ? `Posl. ${b.poslovalnica}` : 'Glavna'),
+        kontakti: bl.length,
+        narocila: bl.filter((v) => v.outcome === 'narocilo').length,
+      };
+    }).filter((r) => r.kontakti > 0).sort((a, b) => b.kontakti - a.kontakti);
+  }
+
+  const KPI = ({ v, l, c }) => (
+    <div className="bg-white border border-as-gray-200 rounded-xl p-3 text-center">
+      <div className="text-lg font-bold" style={c ? { color: c } : { color: '#374151' }}>{v}</div>
+      <div className="text-[11px] text-as-gray-500 leading-tight">{l}</div>
+    </div>
+  );
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-4 gap-2">
-        <div className="bg-white border border-as-gray-200 rounded-xl p-3 text-center"><div className="text-lg font-bold text-as-gray-700">{kontakti}</div><div className="text-xs text-as-gray-500">kontaktov</div></div>
-        <div className="bg-white border border-as-gray-200 rounded-xl p-3 text-center"><div className="text-lg font-bold" style={{ color: '#16A34A' }}>{narocila}</div><div className="text-xs text-as-gray-500">naročil</div></div>
-        <div className="bg-white border border-as-gray-200 rounded-xl p-3 text-center"><div className="text-lg font-bold" style={{ color: '#D97706' }}>{ponudbe}</div><div className="text-xs text-as-gray-500">ponudb</div></div>
-        <div className="bg-white border border-as-gray-200 rounded-xl p-3 text-center"><div className="text-lg font-bold text-as-gray-700">{(minutes / 60).toFixed(1)}</div><div className="text-xs text-as-gray-500">ur</div></div>
+      {/* KPI */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <KPI v={kontakti} l="kontaktov" />
+        <KPI v={obiski} l="obiskov" />
+        <KPI v={klici} l="klicev" />
+        <KPI v={narocila} l="naročil" c="#16A34A" />
+        <KPI v={ponudbe} l="ponudb" c="#D97706" />
+        <KPI v={(minutes / 60).toFixed(1)} l="ur skupaj" />
       </div>
-      <div className="text-xs font-semibold text-as-gray-500 uppercase tracking-wider">Zgodovina ({sorted.length})</div>
+
+      {/* Povzetek */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3">
+          <div className="text-xs text-as-gray-500">Uspešnost (naročila)</div>
+          <div className="text-base font-bold" style={{ color: CRM_COLOR }}>{konverzija}%</div>
+          <div className="h-1.5 bg-as-gray-100 rounded-full mt-1 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${konverzija}%`, background: CRM_COLOR }} /></div>
+        </div>
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3">
+          <div className="text-xs text-as-gray-500">Zadnji kontakt</div>
+          <div className="text-base font-bold text-as-gray-700">{zadnji ? formatDate(zadnji) : '—'}</div>
+          <div className="text-xs text-as-gray-400">{dniOd != null ? (dniOd === 0 ? 'danes' : `pred ${dniOd} dni`) : ''}</div>
+        </div>
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3">
+          <div className="text-xs text-as-gray-500">Prvi kontakt</div>
+          <div className="text-base font-bold text-as-gray-700">{prvi ? formatDate(prvi) : '—'}</div>
+          <div className="text-xs text-as-gray-400">{brezIzida} brez izida</div>
+        </div>
+      </div>
+
+      {/* Po poslovalnici (nivo podjetja) */}
+      {branchRows && branchRows.length > 0 && (
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3">
+          <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2">Po poslovalnici</div>
+          <div className="space-y-1.5">
+            {branchRows.map((r) => (
+              <div key={r.id} className="flex items-center justify-between text-sm">
+                <span className="text-as-gray-700 font-medium">{r.label}</span>
+                <span className="text-as-gray-500 text-xs">{r.kontakti} kontaktov · <span style={{ color: '#16A34A' }}>{r.narocila} naročil</span></span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Po prodajalcu */}
+      {sellers.length > 0 && (
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3">
+          <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2">Po prodajalcu</div>
+          <div className="space-y-1.5">
+            {sellers.map(([name, n]) => (
+              <div key={name} className="flex items-center justify-between text-sm">
+                <span className="text-as-gray-700">{name}</span>
+                <span className="text-as-gray-500 text-xs">{n} kontaktov</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Trend po mesecih */}
+      {months.length > 1 && (
+        <div className="bg-white border border-as-gray-200 rounded-xl p-3">
+          <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2">Aktivnost po mesecih</div>
+          <div className="flex items-end gap-1 h-20">
+            {months.map(([m, n]) => (
+              <div key={m} className="flex-1 flex flex-col items-center justify-end gap-1">
+                <div className="w-full rounded-t" style={{ height: `${(n / maxMonth) * 100}%`, background: CRM_COLOR, minHeight: '3px' }} title={`${m}: ${n}`} />
+                <div className="text-[9px] text-as-gray-400">{m.slice(5)}.{m.slice(2, 4)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Zgodovina */}
+      <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider pt-1">Zgodovina ({sorted.length})</div>
       {sorted.map((e) => {
         const isCall = e.entry_type === 'call';
         const eIcon = isCall ? (e.channel === 'email' ? '✉️' : '📞') : '📍';
         const dur = isCall ? (e.call_duration_min != null ? e.call_duration_min : null) : diffMinutes(e.arrival_time, e.departure_time);
         const oc = e.outcome === 'narocilo' ? { t: 'Naročilo', c: '#16A34A', b: '#DCFCE7' }
           : e.outcome === 'ponudba' ? { t: 'Ponudba', c: '#D97706', b: '#FEF3C7' } : null;
+        const branchTag = (branches && branches.length > 1) ? (branches.find((b) => String(b.id) === String(e.customer_id))) : null;
         return (
           <div key={e.id} className="bg-white border border-as-gray-200 rounded-lg p-3">
             <div className="flex items-start gap-2">
@@ -2904,6 +3028,7 @@ function CustomerAnalysis({ custVisits }) {
                   <span className="text-as-gray-500 text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> {formatTime(e.arrival_time)}{e.departure_time ? ' – ' + formatTime(e.departure_time) : ''}</span>
                   {dur != null && dur >= 0 && <span className="text-xs font-semibold" style={{ color: '#0E7490' }}>{formatMinutes(dur)}</span>}
                   {oc && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: oc.c, background: oc.b }}>{oc.t}</span>}
+                  {branchTag && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-as-gray-100 text-as-gray-500">{branchTag.poslovalnica != null ? `Posl. ${branchTag.poslovalnica}` : 'Glavna'}</span>}
                 </div>
                 {e.notes && <div className="text-sm text-as-gray-600 mt-1.5 whitespace-pre-wrap">{e.notes}</div>}
                 {e.offer_description && (
