@@ -1174,10 +1174,10 @@ mineUnseen: tasks.filter(t => {
 
             <div className="flex items-center gap-2 flex-wrap">
               {/* GLAVNO Stikalo: Naloge / Gradiva / Poročila / Proizvodnja / Montaža / Računovodstvo */}
-              <div className="bg-as-gray-100 rounded-lg p-1 flex border border-as-gray-200 flex-wrap">
+              <div className="bg-as-gray-100 rounded-lg p-1 flex flex-nowrap overflow-x-auto border border-as-gray-200 [&>*]:flex-shrink-0 max-w-full" style={{scrollbarWidth:'none', WebkitOverflowScrolling:'touch'}}>
                 <button
                   onClick={() => handleModuleClick('tasks')}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'tasks' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${mainSection === 'tasks' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   style={mainSection === 'tasks' ? {backgroundColor: '#C8102E'} : {}}
                 >
                   <ClipboardList className="w-4 h-4" />
@@ -1186,7 +1186,7 @@ mineUnseen: tasks.filter(t => {
                 {canSeeModule('gradiva') && (
                   <button
                     onClick={() => handleModuleClick('gradiva')}
-                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'gradiva' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${mainSection === 'gradiva' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                     style={mainSection === 'gradiva' ? {backgroundColor: '#C8102E'} : {}}
                   >
                     <FileText className="w-4 h-4" />
@@ -1198,7 +1198,7 @@ mineUnseen: tasks.filter(t => {
                 {false && (
                 <button
                   onClick={() => handleModuleClick('reports')}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'reports' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${mainSection === 'reports' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   style={mainSection === 'reports' ? {backgroundColor: '#C8102E'} : {}}
                 >
                   <BarChart3 className="w-4 h-4" />
@@ -1208,7 +1208,7 @@ mineUnseen: tasks.filter(t => {
                 {false && canAccessProduction(currentUser?.email) && (
                   <button
                     onClick={() => handleModuleClick('production')}
-                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'production' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${mainSection === 'production' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                     style={mainSection === 'production' ? {backgroundColor: '#C8102E'} : {}}
                   >
                     <Factory className="w-4 h-4" />
@@ -1218,7 +1218,7 @@ mineUnseen: tasks.filter(t => {
                 {canSeeModule('proizvodnja-v2') && (
               <button
   onClick={() => handleModuleClick('proizvodnja-v2')}
-  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'proizvodnja-v2' ? 'text-white' : ''}`}
+  className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${mainSection === 'proizvodnja-v2' ? 'text-white' : ''}`}
   style={mainSection === 'proizvodnja-v2' ? {backgroundColor: '#C8102E'} : {}}
 >
   <Factory className="w-4 h-4" />
@@ -1228,7 +1228,7 @@ mineUnseen: tasks.filter(t => {
                 {canSeeModule('assembly') && (
                   <button
                     onClick={() => handleModuleClick('assembly')}
-                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'assembly' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${mainSection === 'assembly' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                     style={mainSection === 'assembly' ? {backgroundColor: '#C8102E'} : {}}
                   >
                     <Wrench className="w-4 h-4" />
@@ -1238,7 +1238,7 @@ mineUnseen: tasks.filter(t => {
                 {canSeeModule('crm') && (
                   <button
                     onClick={() => handleModuleClick('crm')}
-                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'crm' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${mainSection === 'crm' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                     style={mainSection === 'crm' ? {backgroundColor: '#C8102E'} : {}}
                   >
                     <Briefcase className="w-4 h-4" />
@@ -1253,7 +1253,7 @@ mineUnseen: tasks.filter(t => {
                     <button
                       key={key}
                       onClick={() => handleModuleClick(key)}
-                      className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === key ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                      className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${mainSection === key ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                       style={mainSection === key ? {backgroundColor: '#C8102E'} : {}}
                     >
                       <Icon className="w-4 h-4" />
@@ -1262,7 +1262,7 @@ mineUnseen: tasks.filter(t => {
                   );
                 })}
                 {canSeeModule('racunovodstvo') && (
-                  <div className="relative">
+                  <div className="relative flex-shrink-0">
                     <button
                       onClick={() => {
                         if (mainSection !== 'racunovodstvo') {
@@ -1276,7 +1276,7 @@ mineUnseen: tasks.filter(t => {
                           triggerModuleReset('racunovodstvo');
                         }
                       }}
-                      className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'racunovodstvo' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                      className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${mainSection === 'racunovodstvo' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                       style={mainSection === 'racunovodstvo' ? {backgroundColor: '#C8102E'} : {}}
                     >
                       <Wallet className="w-4 h-4" />
@@ -1331,14 +1331,14 @@ mineUnseen: tasks.filter(t => {
                 <div className="bg-as-gray-100 rounded-lg p-1 flex">
                   <button
                     onClick={() => setViewMode('list')}
-                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${viewMode === 'list' ? 'bg-white text-as-gray-700 shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${viewMode === 'list' ? 'bg-white text-as-gray-700 shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   >
                     <List className="w-4 h-4" />
                     <span className="hidden sm:inline">Seznam</span>
                   </button>
                   <button
                     onClick={() => setViewMode('calendar')}
-                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${viewMode === 'calendar' ? 'bg-white text-as-gray-700 shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 flex-shrink-0 ${viewMode === 'calendar' ? 'bg-white text-as-gray-700 shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   >
                     <CalendarDays className="w-4 h-4" />
                     <span className="hidden sm:inline">Koledar</span>
