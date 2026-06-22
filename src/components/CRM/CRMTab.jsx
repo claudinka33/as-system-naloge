@@ -45,7 +45,6 @@ export const CRM_ALLOWED_EMAILS = [
   'tjasa.mihevc@as-system.si',
   'zan.seidl@as-system.si',
 ];
-];
 
 // Komercialista, ki poleg svojih vidita tudi Herminine vnose
 const CRM_TEAM_LEADS = ['alen.drofenik@as-system.si', 'tjasa.mihevc@as-system.si'];
