@@ -38,6 +38,7 @@ export default function Notes({ currentUser, employees }) {
   const [folderAllowedEmails, setFolderAllowedEmails] = useState([]);
   const [folderColor, setFolderColor] = useState('');
   const [folderParentId, setFolderParentId] = useState(null);
+  const [authorTags, setAuthorTags] = useState(true);
   const [editingFolder, setEditingFolder] = useState(null);
   const [savingFolder, setSavingFolder] = useState(false);
   const [draggedNoteId, setDraggedNoteId] = useState(null);
@@ -289,6 +290,7 @@ export default function Notes({ currentUser, employees }) {
   };
   // Samodejno označi avtorja odstavka, kjer pišeš (brez barvanja besedila)
   const tagCurrentBlock = () => {
+    if (!authorTags) return;
     const editor = editorRef.current; if (!editor) return;
     const sel = window.getSelection(); if (!sel || !sel.rangeCount) return;
     let el = sel.anchorNode; if (!el) return;
@@ -303,6 +305,26 @@ export default function Notes({ currentUser, employees }) {
     }
   };
   const handleEditorInput = () => { tagCurrentBlock(); handleContentChange(); };
+  // Odstrani oznako avtorja na trenutnem odstavku
+  const removeAuthorHere = () => {
+    const editor = editorRef.current; if (!editor) return;
+    const sel = window.getSelection();
+    let el = sel && sel.rangeCount ? sel.anchorNode : null;
+    if (el) {
+      el = el.nodeType === 3 ? el.parentElement : el;
+      while (el && el.parentElement && el.parentElement !== editor) el = el.parentElement;
+      if (el && el !== editor && el.parentElement === editor) {
+        el.removeAttribute('data-author');
+        el.style.removeProperty('--author-color');
+        handleContentChange();
+        editor.focus();
+        return;
+      }
+    }
+    // če kurzorja ni v odstavku → odstrani z vseh
+    editor.querySelectorAll('[data-author]').forEach(n => { n.removeAttribute('data-author'); n.style.removeProperty('--author-color'); });
+    handleContentChange();
+  };
   const insertSymbol = (s) => {
     editorRef.current?.focus();
     document.execCommand('insertText', false, s);
@@ -555,6 +577,9 @@ export default function Notes({ currentUser, employees }) {
                 </div>
                 <button onClick={() => exec('removeFormat')} className="p-2 hover:bg-gray-100 rounded" title="Počisti oblikovanje"><RemoveFormatting className="w-4 h-4" /></button>
                 <div className="w-px h-6 bg-gray-300 mx-1" />
+                <button onClick={() => setAuthorTags(v => !v)} className={`px-2 py-1.5 rounded text-xs font-semibold border ${authorTags ? 'bg-gray-100 border-gray-300 text-gray-700' : 'bg-white border-gray-200 text-gray-400'}`} title="Vklop/izklop samodejnih oznak avtorja">{authorTags ? '🏷️ Avtor: ON' : '🏷️ Avtor: OFF'}</button>
+                <button onClick={removeAuthorHere} className="p-2 hover:bg-gray-100 rounded text-gray-500" title="Odstrani oznako avtorja (na tem odstavku; če kurzorja ni v odstavku, z vseh)"><Trash2 className="w-4 h-4" /></button>
+                <div className="w-px h-6 bg-gray-300 mx-1" />
                 <div className="flex items-center gap-1">
                   <Type className="w-4 h-4 text-gray-600" />
                   <select onChange={(e) => setFontFamily(e.target.value)} className="text-sm border border-gray-300 rounded px-1 py-1 bg-white hover:bg-gray-50 cursor-pointer" defaultValue="" title="Pisava">
@@ -594,7 +619,7 @@ export default function Notes({ currentUser, employees }) {
                   </div>
                 );
               })()}
-              <div ref={editorRef} contentEditable onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onBlur={() => saveNote()} className="flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none" style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
+              <div ref={editorRef} contentEditable onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onBlur={() => saveNote()} className={`flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none ${authorTags ? '' : 'hide-authors'}`} style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -726,6 +751,7 @@ export default function Notes({ currentUser, employees }) {
           margin-bottom: 2px;
           user-select: none;
         }
+        [contenteditable].hide-authors [data-author]::before { display: none; }
         [contenteditable]:empty:before { content: 'Začni pisati...'; color: #9ca3af; }
       `}</style>
     </div>
