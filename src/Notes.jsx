@@ -38,7 +38,6 @@ export default function Notes({ currentUser, employees }) {
   const [folderAllowedEmails, setFolderAllowedEmails] = useState([]);
   const [folderColor, setFolderColor] = useState('');
   const [folderParentId, setFolderParentId] = useState(null);
-  const [writeInMyColor, setWriteInMyColor] = useState(true);
   const [editingFolder, setEditingFolder] = useState(null);
   const [savingFolder, setSavingFolder] = useState(false);
   const [draggedNoteId, setDraggedNoteId] = useState(null);
@@ -127,7 +126,7 @@ export default function Notes({ currentUser, employees }) {
     setLastSaved(null);
     markSeen(note);
     setTimeout(() => {
-      if (editorRef.current) editorRef.current.innerHTML = note.content || '';
+      if (editorRef.current) editorRef.current.innerHTML = note.content || '<div><br></div>';
     }, 0);
   };
 
@@ -288,16 +287,22 @@ export default function Notes({ currentUser, employees }) {
     document.execCommand('styleWithCSS', false, false);
     handleContentChange();
   };
-  const applyMyColor = () => {
-    document.execCommand('styleWithCSS', false, true);
-    document.execCommand('foreColor', false, myColor);
+  // Samodejno označi avtorja odstavka, kjer pišeš (brez barvanja besedila)
+  const tagCurrentBlock = () => {
+    const editor = editorRef.current; if (!editor) return;
+    const sel = window.getSelection(); if (!sel || !sel.rangeCount) return;
+    let el = sel.anchorNode; if (!el) return;
+    el = el.nodeType === 3 ? el.parentElement : el;
+    while (el && el.parentElement && el.parentElement !== editor) el = el.parentElement;
+    if (el && el !== editor && el.parentElement === editor) {
+      const name = currentUser?.name || currentUser?.email || '';
+      if (el.getAttribute('data-author') !== name) {
+        el.setAttribute('data-author', name);
+        el.style.setProperty('--author-color', colorForEmail(currentUser?.email));
+      }
+    }
   };
-  const handleEditorFocus = () => { if (writeInMyColor) applyMyColor(); };
-  const toggleMyColor = () => {
-    const next = !writeInMyColor;
-    setWriteInMyColor(next);
-    if (next) { editorRef.current?.focus(); applyMyColor(); }
-  };
+  const handleEditorInput = () => { tagCurrentBlock(); handleContentChange(); };
   const insertSymbol = (s) => {
     editorRef.current?.focus();
     document.execCommand('insertText', false, s);
@@ -549,10 +554,6 @@ export default function Notes({ currentUser, employees }) {
                   </datalist>
                 </div>
                 <button onClick={() => exec('removeFormat')} className="p-2 hover:bg-gray-100 rounded" title="Počisti oblikovanje"><RemoveFormatting className="w-4 h-4" /></button>
-                <button onClick={toggleMyColor} className={`p-1.5 rounded border-2 flex items-center gap-1 ${writeInMyColor ? 'border-gray-400' : 'border-transparent hover:bg-gray-100'}`} title="Piši v svoji barvi (da se vidi, kdo je kaj napisal)">
-                  <span className="w-4 h-4 rounded-full border border-white" style={{ backgroundColor: myColor }} />
-                  <span className="text-xs hidden sm:inline" style={{ color: myColor }}>moja</span>
-                </button>
                 <div className="w-px h-6 bg-gray-300 mx-1" />
                 <div className="flex items-center gap-1">
                   <Type className="w-4 h-4 text-gray-600" />
@@ -587,20 +588,13 @@ export default function Notes({ currentUser, employees }) {
                 const cf = folders.find(f => f.id === selectedNote.folder_id);
                 const mem = cf ? folderMembers(cf) : [];
                 if (!cf || !(cf.visible_to_all || mem.length > 1)) return null;
-                const show = cf.visible_to_all ? (employees || []).map(e => e.email) : mem;
                 return (
-                  <div className="flex items-center gap-x-3 gap-y-1 px-4 py-1.5 border-b border-gray-100 bg-gray-50 flex-wrap text-xs">
-                    <span className="text-gray-400 font-semibold">Kdo piše:</span>
-                    {show.slice(0, 14).map(em => (
-                      <span key={em} className="inline-flex items-center gap-1">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colorForEmail(em) }} />
-                        <span className="text-gray-600">{personName(em)}</span>
-                      </span>
-                    ))}
+                  <div className="px-4 py-1.5 border-b border-gray-100 bg-amber-50 text-xs text-amber-800 flex items-center gap-1">
+                    ✍️ Skupna mapa — ob vsakem odstavku se samodejno zapiše, kdo ga je napisal.
                   </div>
                 );
               })()}
-              <div ref={editorRef} contentEditable onInput={handleContentChange} onKeyDown={handleEditorKeyDown} onFocus={handleEditorFocus} onBlur={() => saveNote()} className="flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none" style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
+              <div ref={editorRef} contentEditable onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onBlur={() => saveNote()} className="flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none" style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -719,6 +713,19 @@ export default function Notes({ currentUser, employees }) {
         [contenteditable] ol ol ol { list-style: lower-roman; }
         [contenteditable] li { margin: 0.25rem 0; }
         [contenteditable] blockquote { margin: 0.5rem 0 0.5rem 1.5rem; padding-left: 0.75rem; border-left: 3px solid #e5e7eb; color: #374151; }
+        [contenteditable] [data-author] { position: relative; }
+        [contenteditable] [data-author]::before {
+          content: attr(data-author);
+          display: block;
+          font-size: 10px;
+          line-height: 1;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          color: var(--author-color, #9ca3af);
+          opacity: 0.85;
+          margin-bottom: 2px;
+          user-select: none;
+        }
         [contenteditable]:empty:before { content: 'Začni pisati...'; color: #9ca3af; }
       `}</style>
     </div>
