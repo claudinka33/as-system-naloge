@@ -3,9 +3,17 @@ import { supabase } from './supabase';
 import { FileText, Plus, Trash2, Download, Save, Bold, Italic, List, ListOrdered, Heading1, Heading2, Underline, Folder, FolderPlus, ChevronRight, ChevronDown, FolderOpen, Type, Palette, Move, Users, Lock, Undo2, Redo2, AlignLeft, AlignCenter, AlignRight, IndentIncrease, IndentDecrease, Highlighter, Smile, RemoveFormatting } from 'lucide-react';
 
 const FONT_OPTIONS = [
-  { label: 'Sans-serif', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  { label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
-  { label: 'Mono', value: '"Courier New", Consolas, monospace' },
+  { label: 'Privzeta (Sans)', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Calibri', value: 'Calibri, Candara, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Tahoma', value: 'Tahoma, sans-serif' },
+  { label: 'Trebuchet', value: '"Trebuchet MS", sans-serif' },
+  { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Garamond', value: 'Garamond, "Times New Roman", serif' },
+  { label: 'Courier (Mono)', value: '"Courier New", Consolas, monospace' },
+  { label: 'Impact', value: 'Impact, Charcoal, sans-serif' },
   { label: 'Rokopis', value: '"Comic Sans MS", "Brush Script MT", cursive' }
 ];
 
@@ -28,6 +36,9 @@ export default function Notes({ currentUser, employees }) {
   const [newFolderName, setNewFolderName] = useState('');
   const [folderVisibleToAll, setFolderVisibleToAll] = useState(false);
   const [folderAllowedEmails, setFolderAllowedEmails] = useState([]);
+  const [folderColor, setFolderColor] = useState('');
+  const [folderParentId, setFolderParentId] = useState(null);
+  const [writeInMyColor, setWriteInMyColor] = useState(true);
   const [editingFolder, setEditingFolder] = useState(null);
   const [savingFolder, setSavingFolder] = useState(false);
   const [draggedNoteId, setDraggedNoteId] = useState(null);
@@ -76,6 +87,12 @@ export default function Notes({ currentUser, employees }) {
     return nm.split(/[ .@]/).filter(Boolean).slice(0, 2).map(x => x[0]?.toUpperCase()).join('');
   };
   const personName = (email) => ((employees || []).find(e => e.email === email)?.name) || email;
+
+  // Barva uporabnika (vsak svojo barvo pri pisanju)
+  const USER_COLORS = ['#C8102E', '#2563eb', '#16a34a', '#9333ea', '#ca8a04', '#0891b2', '#db2777', '#ea580c', '#4f46e5', '#0d9488', '#65a30d', '#7c3aed', '#dc2626'];
+  const colorForEmail = (email) => { let h = 0; const s = email || ''; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return USER_COLORS[h % USER_COLORS.length]; };
+  const myColor = colorForEmail(currentUser?.email);
+  const FOLDER_COLORS = ['#C8102E', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#2563eb', '#9333ea', '#db2777', '#6b7280', '#0d9488'];
 
   useEffect(() => { loadAll(); }, []);
 
@@ -161,11 +178,13 @@ export default function Notes({ currentUser, employees }) {
     saveTimeoutRef.current = setTimeout(() => { saveNote(e.target.value); }, 1500);
   };
 
-  const openNewFolderModal = () => {
+  const openNewFolderModal = (parentId = null) => {
     setEditingFolder(null);
     setNewFolderName('');
     setFolderVisibleToAll(false);
     setFolderAllowedEmails([]);
+    setFolderColor('');
+    setFolderParentId(parentId || null);
     setShowNewFolderModal(true);
   };
   const openEditFolder = (f) => {
@@ -173,6 +192,8 @@ export default function Notes({ currentUser, employees }) {
     setNewFolderName(f.name || '');
     setFolderVisibleToAll(!!f.visible_to_all);
     setFolderAllowedEmails(f.allowed_emails || []);
+    setFolderColor(f.color || '');
+    setFolderParentId(f.parent_id || null);
     setShowNewFolderModal(true);
   };
   const closeFolderModal = () => {
@@ -181,6 +202,8 @@ export default function Notes({ currentUser, employees }) {
     setNewFolderName('');
     setFolderVisibleToAll(false);
     setFolderAllowedEmails([]);
+    setFolderColor('');
+    setFolderParentId(null);
   };
   const toggleAllowed = (email) => {
     setFolderAllowedEmails(prev => prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]);
@@ -193,7 +216,9 @@ export default function Notes({ currentUser, employees }) {
     const payload = {
       name,
       visible_to_all: folderVisibleToAll,
-      allowed_emails: folderVisibleToAll ? [] : folderAllowedEmails
+      allowed_emails: folderVisibleToAll ? [] : folderAllowedEmails,
+      color: folderColor || null,
+      parent_id: folderParentId || null
     };
     if (editingFolder) {
       const { data, error } = await supabase.from('note_folders').update(payload).eq('id', editingFolder.id).select().single();
@@ -254,7 +279,25 @@ export default function Notes({ currentUser, employees }) {
     document.execCommand('styleWithCSS', false, false);
     setShowColorPicker(false);
   };
-  const setFontSize = (size) => exec('fontSize', size);
+  const applyFontSizePx = (val) => {
+    const n = Math.max(3, Math.min(250, parseInt(val, 10) || 16));
+    editorRef.current?.focus();
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand('fontSize', false, '7');
+    (editorRef.current?.querySelectorAll('font[size="7"]') || []).forEach(f => { f.removeAttribute('size'); f.style.fontSize = n + 'px'; });
+    document.execCommand('styleWithCSS', false, false);
+    handleContentChange();
+  };
+  const applyMyColor = () => {
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand('foreColor', false, myColor);
+  };
+  const handleEditorFocus = () => { if (writeInMyColor) applyMyColor(); };
+  const toggleMyColor = () => {
+    const next = !writeInMyColor;
+    setWriteInMyColor(next);
+    if (next) { editorRef.current?.focus(); applyMyColor(); }
+  };
   const insertSymbol = (s) => {
     editorRef.current?.focus();
     document.execCommand('insertText', false, s);
@@ -324,15 +367,75 @@ export default function Notes({ currentUser, employees }) {
 
   const notesInFolder = (folderId) => notes.filter(n => n.folder_id === folderId);
   const unfiledNotes = notes.filter(n => !n.folder_id);
+  const childFolders = (parentId) => folders.filter(f => (f.parent_id || null) === parentId);
+  const rootFolders = folders.filter(f => !f.parent_id || !folders.some(p => p.id === f.parent_id));
 
-  const renderNoteItem = (note, indent = false) => (
+  const renderFolderNode = (folder, depth) => {
+    const folderNotes = notesInFolder(folder.id);
+    const isExpanded = expandedFolders[folder.id];
+    const members = folderMembers(folder);
+    const shared = folder.visible_to_all || members.length > 1;
+    const newCount = folderNewCount(folder.id);
+    const kids = childFolders(folder.id);
+    const fColor = folder.color || '#b91c1c';
+    return (
+      <div key={folder.id}>
+        <div
+          className={`flex items-center gap-1 p-2 cursor-pointer border-b border-gray-100 group transition-colors ${dragOverFolderId === folder.id ? 'bg-red-100 border-2 border-red-500' : 'hover:bg-gray-100'}`}
+          style={{ paddingLeft: `${8 + depth * 14}px` }}
+          onClick={() => toggleFolder(folder.id)}
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverFolderId(folder.id); }}
+          onDragLeave={() => setDragOverFolderId(null)}
+          onDrop={(e) => { e.preventDefault(); if (draggedNoteId) { moveNoteToFolder(draggedNoteId, folder.id); } setDragOverFolderId(null); setDraggedNoteId(null); }}
+        >
+          {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />}
+          <Folder className="w-4 h-4 flex-shrink-0" style={{ color: fColor }} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-medium text-gray-800 truncate">{folder.name}</span>
+              {newCount > 0 && <span className="flex-shrink-0 text-[10px] font-bold text-white bg-red-600 rounded-full px-1.5 py-0.5 leading-none" title={`${newCount} novih/posodobljenih`}>{newCount} novo</span>}
+            </div>
+            {shared && (
+              <div className="flex items-center gap-1 mt-0.5">
+                <div className="flex -space-x-1">
+                  {members.slice(0, 3).map(em => (
+                    <span key={em} className="w-4 h-4 rounded-full border border-white text-[8px] font-bold text-white flex items-center justify-center" style={{ backgroundColor: colorForEmail(em) }} title={personName(em)}>{personInitials(em)}</span>
+                  ))}
+                </div>
+                <span className="text-[10px] text-gray-400">{folder.visible_to_all ? 'vsi' : `${members.length} ${members.length === 1 ? 'oseba' : members.length === 2 ? 'osebi' : 'oseb'}`}</span>
+              </div>
+            )}
+          </div>
+          {folder.visible_to_all ? <Users className="w-3.5 h-3.5 text-green-600 flex-shrink-0" /> : ((folder.allowed_emails && folder.allowed_emails.length > 0) ? <Users className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" /> : <Lock className="w-3 h-3 text-gray-400 flex-shrink-0" />)}
+          <span className="text-xs text-gray-400 flex-shrink-0">{folderNotes.length}</span>
+          {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); openNewFolderModal(folder.id); }} className="text-gray-300 hover:text-green-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="Dodaj podmapo"><FolderPlus className="w-3.5 h-3.5" /></button>}
+          {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); openEditFolder(folder); }} className="text-gray-300 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="Uredi mapo (dostop, barva)"><Users className="w-3.5 h-3.5" /></button>}
+          {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); deleteFolder(folder.id, folder.name); }} className="text-gray-300 hover:text-red-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="Izbriši mapico"><Trash2 className="w-3.5 h-3.5" /></button>}
+        </div>
+        {isExpanded && (
+          <>
+            {shared && (
+              <div className="py-1 text-[11px] text-gray-500 bg-gray-50 border-b border-gray-100" style={{ paddingLeft: `${24 + depth * 14}px`, paddingRight: '8px' }}>
+                👥 V mapi: {folder.visible_to_all ? 'vsi zaposleni' : members.map(personName).join(', ')}
+              </div>
+            )}
+            {kids.map(k => renderFolderNode(k, depth + 1))}
+            {folderNotes.map(n => renderNoteItem(n, true, depth + 1))}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderNoteItem = (note, indent = false, depth = 0) => (
     <div
       key={note.id}
       draggable
       onDragStart={(e) => { setDraggedNoteId(note.id); e.dataTransfer.effectAllowed = 'move'; }}
       onDragEnd={() => { setDraggedNoteId(null); setDragOverFolderId(null); }}
       onClick={() => selectNote(note)}
-      className={`p-2 border-b border-gray-100 cursor-grab active:cursor-grabbing hover:bg-gray-50 transition-colors ${selectedNote?.id === note.id ? 'bg-red-50 border-l-4 border-l-red-700' : ''} ${indent ? 'pl-6' : ''} ${draggedNoteId === note.id ? 'opacity-40' : ''}`}
+      style={indent ? { paddingLeft: `${24 + depth * 14}px` } : undefined}
+      className={`p-2 border-b border-gray-100 cursor-grab active:cursor-grabbing hover:bg-gray-50 transition-colors ${selectedNote?.id === note.id ? 'bg-red-50 border-l-4 border-l-red-700' : ''} ${draggedNoteId === note.id ? 'opacity-40' : ''}`}
     >
       <div className="flex items-start justify-between gap-1">
         <div className="flex-1 min-w-0">
@@ -364,7 +467,7 @@ export default function Notes({ currentUser, employees }) {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><FileText className="w-7 h-7 text-red-700" />Beležnica</h2>
         <div className="flex items-center gap-2">
-          <button onClick={openNewFolderModal} className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"><FolderPlus className="w-4 h-4" /><span className="hidden sm:inline">Nova mapica</span></button>
+          <button onClick={() => openNewFolderModal()} className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"><FolderPlus className="w-4 h-4" /><span className="hidden sm:inline">Nova mapica</span></button>
           <button onClick={createNote} className="flex items-center gap-2 px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition-colors"><Plus className="w-5 h-5" />Nov dokument</button>
         </div>
       </div>
@@ -374,48 +477,7 @@ export default function Notes({ currentUser, employees }) {
           <div className="overflow-y-auto flex-1" style={{ maxHeight: 'calc(100vh - 280px)' }}>
             {loading ? (<div className="p-4 text-center text-gray-500 text-sm">Nalagam...</div>) : (
               <>
-                {folders.map(folder => {
-                  const folderNotes = notesInFolder(folder.id);
-                  const isExpanded = expandedFolders[folder.id];
-                  const members = folderMembers(folder);
-                  const shared = folder.visible_to_all || members.length > 1;
-                  const newCount = folderNewCount(folder.id);
-                  return (
-                    <div key={folder.id}>
-                      <div
-                        className={`flex items-center gap-1 p-2 cursor-pointer border-b border-gray-100 group transition-colors ${dragOverFolderId === folder.id ? 'bg-red-100 border-2 border-red-500' : 'hover:bg-gray-100'}`}
-                        onClick={() => toggleFolder(folder.id)}
-                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverFolderId(folder.id); }}
-                        onDragLeave={() => setDragOverFolderId(null)}
-                        onDrop={(e) => { e.preventDefault(); if (draggedNoteId) { moveNoteToFolder(draggedNoteId, folder.id); } setDragOverFolderId(null); setDraggedNoteId(null); }}
-                      >
-                        {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />}
-                        <Folder className="w-4 h-4 text-red-700 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-medium text-gray-800 truncate">{folder.name}</span>
-                            {newCount > 0 && <span className="flex-shrink-0 text-[10px] font-bold text-white bg-red-600 rounded-full px-1.5 py-0.5 leading-none" title={`${newCount} novih/posodobljenih`}>{newCount} novo</span>}
-                          </div>
-                          {shared && (
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <div className="flex -space-x-1">
-                                {members.slice(0, 3).map(em => (
-                                  <span key={em} className="w-4 h-4 rounded-full bg-gray-200 border border-white text-[8px] font-bold text-gray-600 flex items-center justify-center" title={personName(em)}>{personInitials(em)}</span>
-                                ))}
-                              </div>
-                              <span className="text-[10px] text-gray-400">{folder.visible_to_all ? 'vsi' : `${members.length} ${members.length === 1 ? 'oseba' : members.length === 2 ? 'osebi' : 'oseb'}`}</span>
-                            </div>
-                          )}
-                        </div>
-                        {folder.visible_to_all ? <Users className="w-3.5 h-3.5 text-green-600 flex-shrink-0" /> : ((folder.allowed_emails && folder.allowed_emails.length > 0) ? <Users className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" /> : <Lock className="w-3 h-3 text-gray-400 flex-shrink-0" />)}
-                        <span className="text-xs text-gray-400 flex-shrink-0">{folderNotes.length}</span>
-                        {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); openEditFolder(folder); }} className="text-gray-300 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="Kdo vidi mapo"><Users className="w-3.5 h-3.5" /></button>}
-                        {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); deleteFolder(folder.id, folder.name); }} className="text-gray-300 hover:text-red-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="Izbriši mapico"><Trash2 className="w-3.5 h-3.5" /></button>}
-                      </div>
-                      {isExpanded && folderNotes.map(n => renderNoteItem(n, true))}
-                    </div>
-                  );
-                })}
+                {rootFolders.map(folder => renderFolderNode(folder, 0))}
                 {unfiledNotes.length > 0 && (
                   <div
                     onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverFolderId('unfiled'); }}
@@ -476,17 +538,21 @@ export default function Notes({ currentUser, employees }) {
                     </div>
                   )}
                 </div>
-                <select onChange={(e) => { setFontSize(e.target.value); e.target.value = ''; }} className="text-sm border border-gray-300 rounded px-1 py-1 bg-white hover:bg-gray-50 cursor-pointer" defaultValue="" title="Velikost pisave">
-                  <option value="" disabled>Velikost</option>
-                  <option value="1">Najmanjša</option>
-                  <option value="2">Majhna</option>
-                  <option value="3">Normalna</option>
-                  <option value="4">Večja</option>
-                  <option value="5">Velika</option>
-                  <option value="6">Zelo velika</option>
-                  <option value="7">Naslov</option>
-                </select>
+                <div className="flex items-center gap-1" title="Velikost pisave (3–250 px)">
+                  <input type="number" min="3" max="250" defaultValue="16" list="fs-presets"
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyFontSizePx(e.target.value); } }}
+                    onBlur={(e) => applyFontSizePx(e.target.value)}
+                    className="w-16 text-sm border border-gray-300 rounded px-2 py-1" />
+                  <span className="text-xs text-gray-400">px</span>
+                  <datalist id="fs-presets">
+                    {[8, 10, 12, 14, 16, 18, 24, 32, 48, 64, 96, 150, 200, 250].map(v => <option key={v} value={v} />)}
+                  </datalist>
+                </div>
                 <button onClick={() => exec('removeFormat')} className="p-2 hover:bg-gray-100 rounded" title="Počisti oblikovanje"><RemoveFormatting className="w-4 h-4" /></button>
+                <button onClick={toggleMyColor} className={`p-1.5 rounded border-2 flex items-center gap-1 ${writeInMyColor ? 'border-gray-400' : 'border-transparent hover:bg-gray-100'}`} title="Piši v svoji barvi (da se vidi, kdo je kaj napisal)">
+                  <span className="w-4 h-4 rounded-full border border-white" style={{ backgroundColor: myColor }} />
+                  <span className="text-xs hidden sm:inline" style={{ color: myColor }}>moja</span>
+                </button>
                 <div className="w-px h-6 bg-gray-300 mx-1" />
                 <div className="flex items-center gap-1">
                   <Type className="w-4 h-4 text-gray-600" />
@@ -517,7 +583,24 @@ export default function Notes({ currentUser, employees }) {
                   )}
                 </div>
               </div>
-              <div ref={editorRef} contentEditable onInput={handleContentChange} onKeyDown={handleEditorKeyDown} onBlur={() => saveNote()} className="flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none" style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
+              {(() => {
+                const cf = folders.find(f => f.id === selectedNote.folder_id);
+                const mem = cf ? folderMembers(cf) : [];
+                if (!cf || !(cf.visible_to_all || mem.length > 1)) return null;
+                const show = cf.visible_to_all ? (employees || []).map(e => e.email) : mem;
+                return (
+                  <div className="flex items-center gap-x-3 gap-y-1 px-4 py-1.5 border-b border-gray-100 bg-gray-50 flex-wrap text-xs">
+                    <span className="text-gray-400 font-semibold">Kdo piše:</span>
+                    {show.slice(0, 14).map(em => (
+                      <span key={em} className="inline-flex items-center gap-1">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colorForEmail(em) }} />
+                        <span className="text-gray-600">{personName(em)}</span>
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+              <div ref={editorRef} contentEditable onInput={handleContentChange} onKeyDown={handleEditorKeyDown} onFocus={handleEditorFocus} onBlur={() => saveNote()} className="flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none" style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -581,6 +664,28 @@ export default function Notes({ currentUser, employees }) {
                 </div>
               )}
               <p className="text-xs text-gray-400 mt-1">Ti kot lastnik mapo vedno vidiš. Dokumenti brez mape so vedno zasebni.</p>
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Barva mape</label>
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <button type="button" onClick={() => setFolderColor('')} className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs ${!folderColor ? 'border-gray-800' : 'border-gray-200'}`} title="Privzeta"><Folder className="w-4 h-4" style={{ color: '#b91c1c' }} /></button>
+                {FOLDER_COLORS.map(c => (
+                  <button key={c} type="button" onClick={() => setFolderColor(c)} className={`w-7 h-7 rounded-full border-2 hover:scale-110 transition-transform ${folderColor === c ? 'border-gray-800' : 'border-white'}`} style={{ backgroundColor: c }} title={c} />
+                ))}
+                <input type="color" value={folderColor || '#b91c1c'} onChange={(e) => setFolderColor(e.target.value)} className="w-7 h-7 cursor-pointer rounded border border-gray-300" title="Poljubna barva" />
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Nadrejena mapa (za podmapo)</label>
+              <select value={folderParentId || ''} onChange={(e) => setFolderParentId(e.target.value || null)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500">
+                <option value="">— brez (glavna mapa) —</option>
+                {folders.filter(f => canEditFolder(f) && (!editingFolder || f.id !== editingFolder.id)).map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Če izbereš nadrejeno mapo, bo ta mapa njena podmapa.</p>
             </div>
 
             <div className="flex items-center justify-end gap-2 mt-4">
