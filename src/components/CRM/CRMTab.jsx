@@ -3256,9 +3256,12 @@ function CustomerForm({ initial, onSave, onCancel, saving }) {
 
 // ─── PLANIRANJE POTI (komercialist pripravi obiske + zadnji 3 vnosi) ───
 function PlanningView({ currentUser, isAdmin, employees }) {
-  const [day, setDay] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); }); // privzeto jutri
+  const toDayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const [day, setDay] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 1); return toDayKey(d); }); // privzeto jutri
   const [stops, setStops] = useState([]);
   const [history, setHistory] = useState({}); // customer_id -> [zadnji 3 vnosi]
+  const [histOpen, setHistOpen] = useState({}); // stopId -> bool (prikaži vse + cela besedila)
+  const [histFull, setHistFull] = useState({}); // customer_id -> vsi vnosi
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [flash, setFlash] = useState('');
@@ -3287,6 +3290,20 @@ function PlanningView({ currentUser, isAdmin, employees }) {
     setHistory(map);
   }
 
+  async function toggleHistFull(s) {
+    const id = s.id;
+    if (histOpen[id]) { setHistOpen((p) => ({ ...p, [id]: false })); return; }
+    const cid = String(s.customer_id);
+    if (!histFull[cid]) {
+      const { data } = await supabase.from('crm_visits')
+        .select('id,customer_id,entry_type,visit_date,arrival_time,departure_time,outcome,notes,channel,created_by_name')
+        .eq('customer_id', cid)
+        .order('visit_date', { ascending: false })
+        .order('arrival_time', { ascending: false });
+      setHistFull((p) => ({ ...p, [cid]: data || [] }));
+    }
+    setHistOpen((p) => ({ ...p, [id]: true }));
+  }
   async function load() {
     setLoading(true); setErr('');
     try {
@@ -3354,7 +3371,7 @@ function PlanningView({ currentUser, isAdmin, employees }) {
     const dni = ['nedelja', 'ponedeljek', 'torek', 'sreda', 'četrtek', 'petek', 'sobota'];
     return `${dni[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
   })();
-  function shiftDay(dir) { const d = new Date(day + 'T00:00:00'); d.setDate(d.getDate() + dir); setDay(d.toISOString().slice(0, 10)); }
+  function shiftDay(dir) { const [y, m, d] = day.split('-').map(Number); const dt = new Date(Date.UTC(y, m - 1, d)); dt.setUTCDate(dt.getUTCDate() + dir); setDay(dt.toISOString().slice(0, 10)); }
 
   const openCount = stops.filter((s) => s.status !== 'done').length;
 
@@ -3365,7 +3382,7 @@ function PlanningView({ currentUser, isAdmin, employees }) {
           <button onClick={() => shiftDay(-1)} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronRight className="w-5 h-5 rotate-180 text-as-gray-500" /></button>
           <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className="px-3 py-2 border border-as-gray-200 rounded-lg text-sm" />
           <button onClick={() => shiftDay(1)} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronRight className="w-5 h-5 text-as-gray-500" /></button>
-          <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 1); setDay(d.toISOString().slice(0, 10)); }} className="text-xs font-semibold px-3 py-2 rounded-lg" style={{ background: CRM_BG, color: CRM_COLOR }}>Jutri</button>
+          <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 1); setDay(toDayKey(d)); }} className="text-xs font-semibold px-3 py-2 rounded-lg" style={{ background: CRM_BG, color: CRM_COLOR }}>Jutri</button>
         </div>
         <div className="mt-2 font-bold text-as-gray-800">🗺️ Pot za {dayLabel} <span className="text-sm font-normal text-as-gray-400">· {openCount} obiskov</span></div>
         {isAdmin && (
@@ -3405,7 +3422,6 @@ function PlanningView({ currentUser, isAdmin, employees }) {
         <div className="space-y-3">
           {stops.map((s, i) => {
             const done = s.status === 'done';
-            const hist = history[String(s.customer_id)] || [];
             const mine = s.created_by === currentUser?.email;
             return (
               <div key={s.id} className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm">
@@ -3439,25 +3455,38 @@ function PlanningView({ currentUser, isAdmin, employees }) {
                       s.prep_notes && <div className="mt-1.5 text-sm bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-as-gray-700"><strong className="text-xs text-yellow-800">Priprava:</strong> {s.prep_notes}</div>
                     )}
 
-                    {/* Zadnji 3 vnosi */}
+                    {/* Zadnji vnosi (z možnostjo branja več) */}
                     <div className="mt-2">
                       <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Zadnji obiski / klici</div>
-                      {hist.length === 0 ? (
-                        <div className="text-xs text-as-gray-400">Ni zgodovine — nova / neaktivna stranka.</div>
-                      ) : (
-                        <div className="space-y-1">
-                          {hist.map((h) => {
-                            const ic = h.entry_type === 'call' ? (h.channel === 'email' ? '✉️' : '📞') : '📍';
-                            const oc = h.outcome === 'narocilo' ? ' · ✓ naročilo' : h.outcome === 'ponudba' ? ' · ponudba' : '';
-                            return (
-                              <div key={h.id} className="text-xs text-as-gray-600 border-l-2 pl-2" style={{ borderColor: CRM_BG }}>
-                                <span className="font-semibold">{ic} {formatDate(h.visit_date)}</span>{oc}
-                                {h.notes && <span className="text-as-gray-500"> — {h.notes.length > 90 ? h.notes.slice(0, 90) + '…' : h.notes}</span>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                      {(() => {
+                        const cid = String(s.customer_id);
+                        const isOpen = !!histOpen[s.id];
+                        const compact = history[cid] || [];
+                        const list = isOpen ? (histFull[cid] || compact) : compact;
+                        if (compact.length === 0) return <div className="text-xs text-as-gray-400">Ni zgodovine — nova / neaktivna stranka.</div>;
+                        return (
+                          <>
+                            <div className="space-y-1.5">
+                              {list.map((h) => {
+                                const ic = h.entry_type === 'call' ? (h.channel === 'email' ? '✉️' : '📞') : '📍';
+                                const oc = h.outcome === 'narocilo' ? ' · ✓ naročilo' : h.outcome === 'ponudba' ? ' · ponudba' : '';
+                                return (
+                                  <div key={h.id} className="text-xs text-as-gray-600 border-l-2 pl-2" style={{ borderColor: CRM_BG }}>
+                                    <span className="font-semibold">{ic} {formatDate(h.visit_date)}</span>{oc}
+                                    {h.notes && (isOpen
+                                      ? <div className="text-as-gray-600 whitespace-pre-wrap mt-0.5">{h.notes}</div>
+                                      : <span className="text-as-gray-500"> — {h.notes.length > 90 ? h.notes.slice(0, 90) + '…' : h.notes}</span>)}
+                                    {isOpen && h.created_by_name && <div className="text-as-gray-400 mt-0.5">{h.created_by_name}</div>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <button onClick={() => toggleHistFull(s)} className="mt-1.5 text-xs font-semibold" style={{ color: CRM_COLOR }}>
+                              {isOpen ? '▲ Manj' : '▼ Preberi več (vsi vnosi)'}
+                            </button>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
