@@ -127,7 +127,7 @@ export default function Notes({ currentUser, employees }) {
     setLastSaved(null);
     markSeen(note);
     setTimeout(() => {
-      if (editorRef.current) editorRef.current.innerHTML = note.content || '<div><br></div>';
+      if (editorRef.current) { editorRef.current.innerHTML = note.content || '<div><br></div>'; recomputeAuthorRuns(); }
     }, 0);
   };
 
@@ -304,7 +304,20 @@ export default function Notes({ currentUser, employees }) {
       }
     }
   };
-  const handleEditorInput = () => { tagCurrentBlock(); handleContentChange(); };
+  const handleEditorInput = () => { tagCurrentBlock(); recomputeAuthorRuns(); handleContentChange(); };
+  // Ime avtorja naj se pokaže SAMO na začetku zaporedja istega avtorja (ne na vsaki vrstici)
+  const recomputeAuthorRuns = () => {
+    const editor = editorRef.current; if (!editor) return;
+    let last = null;
+    Array.from(editor.children).forEach(el => {
+      const a = el.getAttribute && el.getAttribute('data-author');
+      if (a) {
+        if (a === last) el.setAttribute('data-cont', '1');
+        else el.removeAttribute('data-cont');
+        last = a;
+      } else { last = null; }
+    });
+  };
   // Odstrani oznako avtorja na trenutnem odstavku
   const removeAuthorHere = () => {
     const editor = editorRef.current; if (!editor) return;
@@ -313,17 +326,23 @@ export default function Notes({ currentUser, employees }) {
     if (el) {
       el = el.nodeType === 3 ? el.parentElement : el;
       while (el && el.parentElement && el.parentElement !== editor) el = el.parentElement;
-      if (el && el !== editor && el.parentElement === editor) {
+      if (el && el !== editor && el.parentElement === editor && el.hasAttribute('data-author')) {
         el.removeAttribute('data-author');
+        el.removeAttribute('data-cont');
         el.style.removeProperty('--author-color');
+        recomputeAuthorRuns();
         handleContentChange();
         editor.focus();
         return;
       }
     }
-    // če kurzorja ni v odstavku → odstrani z vseh
-    editor.querySelectorAll('[data-author]').forEach(n => { n.removeAttribute('data-author'); n.style.removeProperty('--author-color'); });
+    clearAllAuthors();
+  };
+  const clearAllAuthors = () => {
+    const editor = editorRef.current; if (!editor) return;
+    editor.querySelectorAll('[data-author]').forEach(n => { n.removeAttribute('data-author'); n.removeAttribute('data-cont'); n.style.removeProperty('--author-color'); });
     handleContentChange();
+    editor.focus();
   };
   const insertSymbol = (s) => {
     editorRef.current?.focus();
@@ -578,7 +597,8 @@ export default function Notes({ currentUser, employees }) {
                 <button onClick={() => exec('removeFormat')} className="p-2 hover:bg-gray-100 rounded" title="Počisti oblikovanje"><RemoveFormatting className="w-4 h-4" /></button>
                 <div className="w-px h-6 bg-gray-300 mx-1" />
                 <button onClick={() => setAuthorTags(v => !v)} className={`px-2 py-1.5 rounded text-xs font-semibold border ${authorTags ? 'bg-gray-100 border-gray-300 text-gray-700' : 'bg-white border-gray-200 text-gray-400'}`} title="Vklop/izklop samodejnih oznak avtorja">{authorTags ? '🏷️ Avtor: ON' : '🏷️ Avtor: OFF'}</button>
-                <button onClick={removeAuthorHere} className="p-2 hover:bg-gray-100 rounded text-gray-500" title="Odstrani oznako avtorja (na tem odstavku; če kurzorja ni v odstavku, z vseh)"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={removeAuthorHere} className="p-2 hover:bg-gray-100 rounded text-gray-500" title="Odstrani oznako avtorja na tem odstavku (postavi kurzor vanj)"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={clearAllAuthors} className="px-2 py-1.5 rounded text-xs font-semibold border border-gray-200 text-gray-500 hover:bg-gray-100" title="Odstrani VSE oznake avtorja v dokumentu">✕ vse oznake</button>
                 <div className="w-px h-6 bg-gray-300 mx-1" />
                 <div className="flex items-center gap-1">
                   <Type className="w-4 h-4 text-gray-600" />
@@ -752,6 +772,7 @@ export default function Notes({ currentUser, employees }) {
           user-select: none;
         }
         [contenteditable].hide-authors [data-author]::before { display: none; }
+        [contenteditable] [data-author][data-cont]::before { display: none; }
         [contenteditable]:empty:before { content: 'Začni pisati...'; color: #9ca3af; }
       `}</style>
     </div>
