@@ -288,37 +288,75 @@ export default function Notes({ currentUser, employees }) {
     document.execCommand('styleWithCSS', false, false);
     handleContentChange();
   };
-  // Samodejno označi avtorja odstavka, kjer pišeš (brez barvanja besedila)
+  // Avtor odstavka — označi blok (kdo piše)
   const tagCurrentBlock = () => {
     if (!authorTags) return;
     const editor = editorRef.current; if (!editor) return;
     const sel = window.getSelection(); if (!sel || !sel.rangeCount) return;
     let el = sel.anchorNode; if (!el) return;
     el = el.nodeType === 3 ? el.parentElement : el;
+    if (el.closest && el.closest('.author-tag')) return;
     while (el && el.parentElement && el.parentElement !== editor) el = el.parentElement;
     if (el && el !== editor && el.parentElement === editor) {
       const name = currentUser?.name || currentUser?.email || '';
-      if (el.getAttribute('data-author') !== name) {
-        el.setAttribute('data-author', name);
-        el.style.setProperty('--author-color', colorForEmail(currentUser?.email));
-      }
+      el.setAttribute('data-author', name);
+      el.setAttribute('data-author-color', colorForEmail(currentUser?.email));
     }
   };
   const handleEditorInput = () => { tagCurrentBlock(); recomputeAuthorRuns(); handleContentChange(); };
-  // Ime avtorja naj se pokaže SAMO na začetku zaporedja istega avtorja (ne na vsaki vrstici)
+
+  // Vidna oznaka avtorja (klikljiva, z ✕)
+  const ensureAuthorTagSpan = (block, name, color) => {
+    let tag = block.querySelector(':scope > .author-tag');
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'author-tag';
+      tag.setAttribute('contenteditable', 'false');
+      block.insertBefore(tag, block.firstChild);
+    }
+    tag.style.setProperty('--author-color', color || '#9ca3af');
+    const curName = tag.querySelector('.author-name');
+    if (!curName || curName.textContent !== name) {
+      tag.textContent = '';
+      const ns = document.createElement('span'); ns.className = 'author-name'; ns.textContent = name;
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'author-del'; del.setAttribute('contenteditable', 'false'); del.setAttribute('title', 'Odstrani oznako'); del.textContent = '✕';
+      tag.appendChild(ns); tag.appendChild(del);
+    }
+  };
+  const removeAuthorTagSpan = (block) => { const t = block.querySelector(':scope > .author-tag'); if (t) t.remove(); };
+
+  // Ime se pokaže SAMO na začetku zaporedja istega avtorja
   const recomputeAuthorRuns = () => {
     const editor = editorRef.current; if (!editor) return;
     let last = null;
     Array.from(editor.children).forEach(el => {
-      const a = el.getAttribute && el.getAttribute('data-author');
+      if (!el.getAttribute) return;
+      const a = el.getAttribute('data-author');
       if (a) {
-        if (a === last) el.setAttribute('data-cont', '1');
-        else el.removeAttribute('data-cont');
+        if (a === last) removeAuthorTagSpan(el);
+        else ensureAuthorTagSpan(el, a, el.getAttribute('data-author-color'));
         last = a;
-      } else { last = null; }
+      } else { removeAuthorTagSpan(el); last = null; }
     });
   };
-  // Odstrani oznako avtorja na trenutnem odstavku
+  // preprečimo skok kurzorja ob kliku na ✕
+  const handleEditorMouseDown = (e) => { if (e.target.closest && e.target.closest('.author-del')) e.preventDefault(); };
+  // klik na ✕ → odstrani avtorja tega bloka
+  const handleEditorClick = (e) => {
+    const del = e.target.closest && e.target.closest('.author-del');
+    if (!del) return;
+    e.preventDefault(); e.stopPropagation();
+    const editor = editorRef.current; if (!editor) return;
+    const tag = del.closest('.author-tag');
+    const block = tag && tag.parentElement;
+    if (block && block.parentElement === editor) {
+      block.removeAttribute('data-author');
+      block.removeAttribute('data-author-color');
+      removeAuthorTagSpan(block);
+      recomputeAuthorRuns();
+      handleContentChange();
+    }
+  };
   const removeAuthorHere = () => {
     const editor = editorRef.current; if (!editor) return;
     const sel = window.getSelection();
@@ -327,20 +365,16 @@ export default function Notes({ currentUser, employees }) {
       el = el.nodeType === 3 ? el.parentElement : el;
       while (el && el.parentElement && el.parentElement !== editor) el = el.parentElement;
       if (el && el !== editor && el.parentElement === editor && el.hasAttribute('data-author')) {
-        el.removeAttribute('data-author');
-        el.removeAttribute('data-cont');
-        el.style.removeProperty('--author-color');
-        recomputeAuthorRuns();
-        handleContentChange();
-        editor.focus();
-        return;
+        el.removeAttribute('data-author'); el.removeAttribute('data-author-color');
+        removeAuthorTagSpan(el); recomputeAuthorRuns(); handleContentChange(); editor.focus(); return;
       }
     }
     clearAllAuthors();
   };
   const clearAllAuthors = () => {
     const editor = editorRef.current; if (!editor) return;
-    editor.querySelectorAll('[data-author]').forEach(n => { n.removeAttribute('data-author'); n.removeAttribute('data-cont'); n.style.removeProperty('--author-color'); });
+    editor.querySelectorAll('[data-author]').forEach(n => { n.removeAttribute('data-author'); n.removeAttribute('data-author-color'); });
+    editor.querySelectorAll('.author-tag').forEach(t => t.remove());
     handleContentChange();
     editor.focus();
   };
@@ -511,7 +545,12 @@ export default function Notes({ currentUser, employees }) {
   return (
     <div className="max-w-7xl mx-auto p-2 sm:p-4" onClick={() => { setShowMoveMenu(null); setShowSymbols(false); setShowColorPicker(false); }}>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><FileText className="w-7 h-7 text-red-700" />Beležnica</h2>
+        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <FileText className="w-7 h-7 text-red-700" />Beležnica
+          {notes.filter(isNoteNew).length > 0 && (
+            <span className="ml-1 inline-flex items-center gap-1 text-xs font-bold text-white bg-red-600 rounded-full px-2.5 py-1" title="Nove ali posodobljene beležke">🔔 {notes.filter(isNoteNew).length} novo</span>
+          )}
+        </h2>
         <div className="flex items-center gap-2">
           <button onClick={() => openNewFolderModal()} className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"><FolderPlus className="w-4 h-4" /><span className="hidden sm:inline">Nova mapica</span></button>
           <button onClick={createNote} className="flex items-center gap-2 px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition-colors"><Plus className="w-5 h-5" />Nov dokument</button>
@@ -639,7 +678,7 @@ export default function Notes({ currentUser, employees }) {
                   </div>
                 );
               })()}
-              <div ref={editorRef} contentEditable onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onBlur={() => saveNote()} className={`flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none ${authorTags ? '' : 'hide-authors'}`} style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
+              <div ref={editorRef} contentEditable onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onMouseDown={handleEditorMouseDown} onClick={handleEditorClick} onBlur={() => saveNote()} className={`flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none ${authorTags ? '' : 'hide-authors'}`} style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -758,21 +797,12 @@ export default function Notes({ currentUser, employees }) {
         [contenteditable] ol ol ol { list-style: lower-roman; }
         [contenteditable] li { margin: 0.25rem 0; }
         [contenteditable] blockquote { margin: 0.5rem 0 0.5rem 1.5rem; padding-left: 0.75rem; border-left: 3px solid #e5e7eb; color: #374151; }
-        [contenteditable] [data-author] { position: relative; }
-        [contenteditable] [data-author]::before {
-          content: attr(data-author);
-          display: block;
-          font-size: 10px;
-          line-height: 1;
-          font-weight: 700;
-          letter-spacing: 0.02em;
-          color: var(--author-color, #9ca3af);
-          opacity: 0.85;
-          margin-bottom: 2px;
-          user-select: none;
-        }
-        [contenteditable].hide-authors [data-author]::before { display: none; }
-        [contenteditable] [data-author][data-cont]::before { display: none; }
+        [contenteditable] .author-tag { display: block; font-size: 10px; line-height: 1.4; font-weight: 700; letter-spacing: 0.02em; color: var(--author-color, #9ca3af); opacity: 0.95; margin-bottom: 2px; user-select: none; }
+        [contenteditable] .author-tag .author-del { margin-left: 6px; border: none; background: transparent; color: #9ca3af; cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 6px; border-radius: 6px; opacity: 0; vertical-align: middle; }
+        [contenteditable] .author-tag:hover .author-del { opacity: 1; }
+        [contenteditable] .author-del:hover { background: #fee2e2; color: #dc2626; }
+        [contenteditable].hide-authors .author-tag { display: none; }
+        @media (hover: none) { [contenteditable] .author-tag .author-del { opacity: 0.7; padding: 4px 8px; font-size: 13px; } }
         [contenteditable]:empty:before { content: 'Začni pisati...'; color: #9ca3af; }
       `}</style>
     </div>
