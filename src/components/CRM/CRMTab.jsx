@@ -236,13 +236,17 @@ function EntryView({ currentUser, employees, onSaved, setError }) {
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
         <SectionPill active={entryType === 'home_start'} onClick={() => setEntryType('home_start')}
           icon={<Home className="w-4 h-4" />} label="Začetek (doma)" color="#1E40AF" bgColor="#DBEAFE" />
         <SectionPill active={entryType === 'visit'} onClick={() => setEntryType('visit')}
           icon={<MapPin className="w-4 h-4" />} label="Obisk stranke" color={CRM_COLOR} bgColor={CRM_BG} />
         <SectionPill active={entryType === 'call'} onClick={() => setEntryType('call')}
           icon={<Phone className="w-4 h-4" />} label="Klic / Email" color="#6D28D9" bgColor="#EDE9FE" />
+        <SectionPill active={entryType === 'malica'} onClick={() => setEntryType('malica')}
+          icon={<span className="text-sm">🍴</span>} label="Malica" color="#B45309" bgColor="#FEF3C7" />
+        <SectionPill active={entryType === 'private'} onClick={() => setEntryType('private')}
+          icon={<span className="text-sm">🔒</span>} label="Zasebno" color="#475569" bgColor="#E2E8F0" />
         <SectionPill active={entryType === 'home_end'} onClick={() => setEntryType('home_end')}
           icon={<Home className="w-4 h-4" />} label="Konec (doma)" color="#065F46" bgColor="#A7F3D0" />
       </div>
@@ -253,6 +257,8 @@ function EntryView({ currentUser, employees, onSaved, setError }) {
       )}
       {entryType === 'visit' && <VisitForm currentUser={currentUser} employees={employees} onSaved={onSaved} setError={setError} />}
       {entryType === 'call' && <CallForm currentUser={currentUser} employees={employees} onSaved={onSaved} setError={setError} />}
+      {entryType === 'malica' && <BreakForm kind="malica" currentUser={currentUser} onSaved={onSaved} setError={setError} />}
+      {entryType === 'private' && <BreakForm kind="private" currentUser={currentUser} onSaved={onSaved} setError={setError} />}
       {entryType === 'home_end' && <HomeEndForm currentUser={currentUser} onSaved={onSaved} setError={setError} />}
     </div>
   );
@@ -329,6 +335,69 @@ function HomeStartForm({ currentUser, onSaved, setError, onAfterSave }) {
       </div>
 
       <SubmitBtn loading={loading} color="#1E40AF" label="Shrani začetek dneva" />
+    </form>
+  );
+}
+
+// ─── MALICA / ZASEBNO ───
+function BreakForm({ kind, currentUser, onSaved, setError }) {
+  const isPrivate = kind === 'private';
+  const cfg = isPrivate
+    ? { emoji: '🔒', title: 'Zasebno (privatni čas)', color: '#475569', bg: '#E2E8F0', hint: 'Označi zasebni čas (npr. osebna opravila). Drugi vidijo le »Zasebno«, brez podrobnosti.' }
+    : { emoji: '🍴', title: 'Malica', color: '#B45309', bg: '#FEF3C7', hint: 'Vnesi čas malice (od–do).' };
+  const now = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [od, setOd] = useState(now);
+  const [doCas, setDoCas] = useState('');
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!od) { setError('Vnesi čas (od).'); return; }
+    setLoading(true); setError('');
+    try {
+      const { error } = await supabase.from('crm_visits').insert([{
+        visit_date: date,
+        entry_type: kind,
+        arrival_time: od,
+        departure_time: doCas || null,
+        notes: note.trim() || null,
+        created_by: currentUser?.email,
+        created_by_name: currentUser?.name,
+      }]);
+      if (error) throw error;
+      setNote(''); setDoCas('');
+      onSaved(isPrivate ? '✓ Zasebni čas shranjen' : '✓ Malica shranjena');
+    } catch (e) {
+      setError(e.message || 'Napaka pri shranjevanju.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white border border-as-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+      <h3 className="font-bold text-as-gray-700 flex items-center gap-2">
+        <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: cfg.bg, color: cfg.color }}>{cfg.emoji}</span>
+        {cfg.title}
+      </h3>
+      <p className="text-xs text-as-gray-500 italic">💡 {cfg.hint}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <FormField label="Datum *">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
+        </FormField>
+        <FormField label="Od *">
+          <input type="time" value={od} onChange={(e) => setOd(e.target.value)} required className={inputCls} />
+        </FormField>
+        <FormField label="Do">
+          <input type="time" value={doCas} onChange={(e) => setDoCas(e.target.value)} className={inputCls} />
+        </FormField>
+      </div>
+      <FormField label={isPrivate ? 'Opomba (vidi le zate/admin)' : 'Opomba (neobvezno)'}>
+        <input type="text" value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} placeholder={isPrivate ? 'npr. zdravnik' : 'npr. malica'} />
+      </FormField>
+      <SubmitBtn loading={loading} color={cfg.color} label={isPrivate ? 'Shrani zasebni čas' : 'Shrani malico'} />
     </form>
   );
 }
@@ -1088,6 +1157,19 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
     bg = '#EDE9FE';
     label = visit.customer_name || '(brez imena)';
     timeStr = formatTime(visit.arrival_time);
+  } else if (visit.entry_type === 'malica') {
+    icon = '🍴';
+    color = '#B45309';
+    bg = '#FEF3C7';
+    label = 'Malica';
+    timeStr = `${formatTime(visit.arrival_time)}${visit.departure_time ? ' – ' + formatTime(visit.departure_time) : ''}`;
+  } else if (visit.entry_type === 'private') {
+    icon = '🔒';
+    color = '#475569';
+    bg = '#E2E8F0';
+    const mine = isAdmin || visit.created_by === currentUser?.email;
+    label = mine && visit.notes ? `Zasebno — ${visit.notes}` : 'Zasebno';
+    timeStr = `${formatTime(visit.arrival_time)}${visit.departure_time ? ' – ' + formatTime(visit.departure_time) : ''}`;
   } else {
     icon = '📍';
     color = CRM_COLOR;
@@ -1099,6 +1181,7 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
   const duration = visit.entry_type === 'visit' && visit.arrival_time && visit.departure_time
     ? diffMinutes(visit.arrival_time, visit.departure_time)
     : null;
+  const privateHidden = visit.entry_type === 'private' && !(isAdmin || visit.created_by === currentUser?.email);
 
   return (
     <div className="border border-as-gray-200 rounded-xl overflow-hidden">
@@ -1129,7 +1212,7 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
             )}
           </div>
         </div>
-        {(visit.notes || visit.customer_address || visit.offer_description) && (
+        {(!privateHidden && (visit.notes || visit.customer_address || visit.offer_description)) && (
           <button onClick={() => setOpen((o) => !o)} className="p-2 hover:bg-white rounded transition text-as-gray-400">
             {open ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
           </button>
@@ -1406,7 +1489,7 @@ function exportDailyCSV(date, visits, kmData) {
   lines.push('');
   lines.push('Tip;Čas prihoda;Čas odhoda;Km števec;Stranka;Naslov;Dogovori;Ponudba?;Opis ponudbe;Dodeljeno;Rok ponudbe');
   visits.forEach((v) => {
-    const tip = v.entry_type === 'home_start' ? 'Začetek doma' : v.entry_type === 'home_end' ? 'Konec doma' : v.entry_type === 'call' ? (v.channel === 'email' ? 'Email' : 'Klic') : 'Obisk';
+    const tip = v.entry_type === 'home_start' ? 'Začetek doma' : v.entry_type === 'home_end' ? 'Konec doma' : v.entry_type === 'malica' ? 'Malica' : v.entry_type === 'private' ? 'Zasebno' : v.entry_type === 'call' ? (v.channel === 'email' ? 'Email' : 'Klic') : 'Obisk';
     lines.push([
       tip,
       v.arrival_time || '',
