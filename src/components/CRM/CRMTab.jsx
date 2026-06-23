@@ -172,6 +172,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
           <SubTab active={view === 'monthly'} onClick={() => setView('monthly')} icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
           <SubTab active={view === 'reports'} onClick={() => setView('reports')} icon={<TrendingUp className="w-4 h-4" />} label="Poročila" />
           <SubTab active={view === 'analysis'} onClick={() => setView('analysis')} icon={<User className="w-4 h-4" />} label="Stranke" />
+          <SubTab active={view === 'planning'} onClick={() => setView('planning')} icon={<span className="text-sm">🗓️</span>} label="Planiranje" />
         </div>
         {(isAdmin || isTeamLead) && (
           <select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}
@@ -211,6 +212,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       {view === 'monthly' && <MonthlyView visits={scopedVisits} loading={loading} />}
       {view === 'reports' && <ReportsView visits={scopedVisits} loading={loading} />}
       {view === 'analysis' && <StrankeView visits={scopedVisits} loading={loading} isAdmin={isAdmin} />}
+      {view === 'planning' && <PlanningView currentUser={currentUser} isAdmin={isAdmin} employees={employees} />}
     </div>
   );
 }
@@ -3249,5 +3251,207 @@ function CustomerForm({ initial, onSave, onCancel, saving }) {
         <button type="button" onClick={onCancel} className="px-4 py-3 text-sm font-semibold rounded-xl border border-as-gray-200 text-as-gray-600">Prekliči</button>
       </div>
     </form>
+  );
+}
+
+// ─── PLANIRANJE (plani po obdobjih: dan / teden / mesec / leto) ───
+const PLAN_PERIODS = [
+  { id: 'day', label: 'Dan' },
+  { id: 'week', label: 'Teden' },
+  { id: 'month', label: 'Mesec' },
+  { id: 'year', label: 'Leto' },
+];
+function planIsoWeek(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((date - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+  return [date.getUTCFullYear(), week];
+}
+function planMonday(d) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; }
+function planKey(period, ref) {
+  if (period === 'day') return ref.toISOString().slice(0, 10);
+  if (period === 'week') { const [y, w] = planIsoWeek(ref); return `${y}-W${String(w).padStart(2, '0')}`; }
+  if (period === 'month') return `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, '0')}`;
+  return String(ref.getFullYear());
+}
+function planLabel(period, ref) {
+  const dni = ['nedelja', 'ponedeljek', 'torek', 'sreda', 'četrtek', 'petek', 'sobota'];
+  const meseci = ['januar', 'februar', 'marec', 'april', 'maj', 'junij', 'julij', 'avgust', 'september', 'oktober', 'november', 'december'];
+  if (period === 'day') return `${dni[ref.getDay()]}, ${ref.getDate()}.${ref.getMonth() + 1}.${ref.getFullYear()}`;
+  if (period === 'week') { const mon = planMonday(ref); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); const [, w] = planIsoWeek(ref); return `Teden ${w} (${mon.getDate()}.${mon.getMonth() + 1}. – ${sun.getDate()}.${sun.getMonth() + 1}.)`; }
+  if (period === 'month') return `${meseci[ref.getMonth()]} ${ref.getFullYear()}`;
+  return `Leto ${ref.getFullYear()}`;
+}
+function planShift(period, ref, dir) {
+  const x = new Date(ref);
+  if (period === 'day') x.setDate(x.getDate() + dir);
+  else if (period === 'week') x.setDate(x.getDate() + 7 * dir);
+  else if (period === 'month') x.setMonth(x.getMonth() + dir);
+  else x.setFullYear(x.getFullYear() + dir);
+  return x;
+}
+
+function PlanningView({ currentUser, isAdmin, employees }) {
+  const [period, setPeriod] = useState('week');
+  const [ref, setRef] = useState(() => new Date());
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [flash, setFlash] = useState('');
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [scope, setScope] = useState('me'); // 'me' | 'all' (admin)
+  const [editId, setEditId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+
+  const key = planKey(period, ref);
+
+  async function load() {
+    setLoading(true); setErr('');
+    try {
+      let q = supabase.from('crm_plans').select('*').eq('period', period).eq('period_key', key).order('status', { ascending: true }).order('created_at', { ascending: true });
+      if (!(isAdmin && scope === 'all')) q = q.eq('created_by', currentUser?.email);
+      const { data, error } = await q;
+      if (error) throw error;
+      setPlans(data || []);
+    } catch (e) { setErr(e.message || 'Napaka pri nalaganju.'); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [period, key, scope]);
+  useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(''), 2500); return () => clearTimeout(t); }, [flash]);
+
+  async function addPlan(e) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setSaving(true); setErr('');
+    try {
+      const { error } = await supabase.from('crm_plans').insert([{
+        period, period_key: key, title: title.trim(), description: desc.trim() || null,
+        status: 'open', created_by: currentUser?.email, created_by_name: currentUser?.name,
+      }]);
+      if (error) throw error;
+      setTitle(''); setDesc(''); setFlash('✓ Plan dodan'); load();
+    } catch (e) { setErr(e.message || 'Napaka pri shranjevanju.'); }
+    finally { setSaving(false); }
+  }
+  async function toggleDone(p) {
+    const ns = p.status === 'done' ? 'open' : 'done';
+    setPlans(plans.map(x => x.id === p.id ? { ...x, status: ns } : x));
+    await supabase.from('crm_plans').update({ status: ns, updated_at: new Date().toISOString() }).eq('id', p.id);
+  }
+  async function removePlan(p) {
+    if (!confirm('Izbrišem ta plan?')) return;
+    setPlans(plans.filter(x => x.id !== p.id));
+    await supabase.from('crm_plans').delete().eq('id', p.id);
+  }
+  function startEdit(p) { setEditId(p.id); setEditTitle(p.title); setEditDesc(p.description || ''); }
+  async function saveEdit(p) {
+    const t = editTitle.trim(); if (!t) return;
+    setPlans(plans.map(x => x.id === p.id ? { ...x, title: t, description: editDesc.trim() || null } : x));
+    setEditId(null);
+    await supabase.from('crm_plans').update({ title: t, description: editDesc.trim() || null, updated_at: new Date().toISOString() }).eq('id', p.id);
+  }
+
+  const quick = period === 'day'
+    ? [['Danes', () => setRef(new Date())], ['Jutri', () => setRef(planShift('day', new Date(), 1))]]
+    : period === 'week'
+      ? [['Ta teden', () => setRef(new Date())], ['Naslednji teden', () => setRef(planShift('week', new Date(), 1))]]
+      : period === 'month'
+        ? [['Ta mesec', () => setRef(new Date())], ['Naslednji mesec', () => setRef(planShift('month', new Date(), 1))]]
+        : [['Letos', () => setRef(new Date())], ['Naslednje leto', () => setRef(planShift('year', new Date(), 1))]];
+
+  const openCount = plans.filter(p => p.status !== 'done').length;
+  const doneCount = plans.filter(p => p.status === 'done').length;
+
+  return (
+    <div className="space-y-4 max-w-4xl mx-auto">
+      {/* Obdobja */}
+      <div className="grid grid-cols-4 gap-1.5 bg-as-gray-100 rounded-xl p-1.5 border border-as-gray-200">
+        {PLAN_PERIODS.map(p => (
+          <button key={p.id} onClick={() => setPeriod(p.id)} className="px-3 py-2.5 text-sm font-semibold rounded-lg transition"
+            style={period === p.id ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280' }}>{p.label}</button>
+        ))}
+      </div>
+
+      {/* Navigacija obdobja */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => setRef(planShift(period, ref, -1))} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronRight className="w-5 h-5 rotate-180 text-as-gray-500" /></button>
+        <div className="font-bold text-as-gray-800 flex-1 text-center min-w-[180px]">{planLabel(period, ref)}</div>
+        <button onClick={() => setRef(planShift(period, ref, 1))} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronRight className="w-5 h-5 text-as-gray-500" /></button>
+        {quick.map(([lbl, fn]) => (
+          <button key={lbl} onClick={fn} className="text-xs font-semibold px-3 py-2 rounded-lg" style={{ background: CRM_BG, color: CRM_COLOR }}>{lbl}</button>
+        ))}
+      </div>
+
+      {isAdmin && (
+        <div className="inline-flex rounded-lg border border-as-gray-200 overflow-hidden text-xs font-semibold">
+          <button onClick={() => setScope('me')} className="px-3 py-1.5" style={scope === 'me' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>Moji plani</button>
+          <button onClick={() => setScope('all')} className="px-3 py-1.5" style={scope === 'all' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>Vsi komercialisti</button>
+        </div>
+      )}
+
+      {flash && <div className="flex items-center gap-2 p-3 rounded-xl border" style={{ background: '#DCFCE7', borderColor: '#86EFAC', color: '#166534' }}><CheckCircle2 className="w-4 h-4" /><span className="text-sm font-semibold">{flash}</span></div>}
+      {err && <div className="flex items-center gap-2 p-3 rounded-lg border" style={{ background: '#fee', borderColor: '#fcc', color: '#900' }}><AlertCircle className="w-4 h-4" /><span className="text-sm flex-1">{err}</span><button onClick={() => setErr('')}><X className="w-4 h-4" /></button></div>}
+
+      {/* Dodaj plan (samo za svoje obdobje) */}
+      {!(isAdmin && scope === 'all') && (
+        <form onSubmit={addPlan} className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="text-sm font-bold text-as-gray-700">Nov plan — {planLabel(period, ref)}</div>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} placeholder="Kaj načrtuješ? (npr. obisk JAGROS, priprava ponudbe…)" />
+          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} className={inputCls + ' resize-none'} placeholder="Podrobnosti (neobvezno)" />
+          <button type="submit" disabled={saving} className="px-4 py-2.5 text-white text-sm font-semibold rounded-xl inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Dodaj plan
+          </button>
+        </form>
+      )}
+
+      {/* Seznam planov */}
+      {loading ? <LoadingBox /> : plans.length === 0 ? (
+        <div className="text-center py-8 text-as-gray-400 text-sm">Ni planov za to obdobje.</div>
+      ) : (
+        <div className="space-y-2">
+          <div className="text-xs text-as-gray-500">{openCount} odprtih · {doneCount} zaključenih</div>
+          {plans.map(p => {
+            const mine = p.created_by === currentUser?.email;
+            const done = p.status === 'done';
+            return (
+              <div key={p.id} className="bg-white border border-as-gray-200 rounded-xl p-3">
+                {editId === p.id ? (
+                  <div className="space-y-2">
+                    <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className={inputCls} />
+                    <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} rows={2} className={inputCls + ' resize-none'} />
+                    <div className="flex gap-2">
+                      <button onClick={() => saveEdit(p)} className="px-3 py-1.5 text-white text-xs font-semibold rounded-lg" style={{ background: CRM_COLOR }}>Shrani</button>
+                      <button onClick={() => setEditId(null)} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-as-gray-200 text-as-gray-600">Prekliči</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-3">
+                    <button onClick={() => toggleDone(p)} disabled={!mine && !isAdmin} className="mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0" style={{ borderColor: done ? '#16A34A' : '#D1D5DB', background: done ? '#16A34A' : '#fff' }}>
+                      {done && <CheckCircle2 className="w-4 h-4 text-white" />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className={`font-semibold ${done ? 'line-through text-as-gray-400' : 'text-as-gray-800'}`}>{p.title}</div>
+                      {p.description && <div className={`text-sm mt-0.5 whitespace-pre-wrap ${done ? 'text-as-gray-400' : 'text-as-gray-600'}`}>{p.description}</div>}
+                      {(isAdmin && scope === 'all') && <div className="text-xs text-as-gray-400 mt-1">{p.created_by_name || p.created_by}</div>}
+                    </div>
+                    {(mine || isAdmin) && (
+                      <div className="flex flex-col gap-1 flex-shrink-0">
+                        {mine && <button onClick={() => startEdit(p)} className="text-xs font-semibold px-2 py-1 rounded" style={{ background: CRM_BG, color: CRM_COLOR }}>Uredi</button>}
+                        <button onClick={() => removePlan(p)} className="text-xs font-semibold px-2 py-1 rounded text-red-600 hover:bg-red-50">Izbriši</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
