@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabase';
-import { FileText, Plus, Trash2, Download, Save, Bold, Italic, List, ListOrdered, Heading1, Heading2, Underline, Folder, FolderPlus, ChevronRight, ChevronDown, FolderOpen, Type, Palette, Move, Users, Lock } from 'lucide-react';
+import { FileText, Plus, Trash2, Download, Save, Bold, Italic, List, ListOrdered, Heading1, Heading2, Underline, Folder, FolderPlus, ChevronRight, ChevronDown, FolderOpen, Type, Palette, Move, Users, Lock, Undo2, Redo2, AlignLeft, AlignCenter, AlignRight, IndentIncrease, IndentDecrease, Highlighter, Smile, RemoveFormatting } from 'lucide-react';
 
 const FONT_OPTIONS = [
   { label: 'Sans-serif', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
@@ -8,6 +8,9 @@ const FONT_OPTIONS = [
   { label: 'Mono', value: '"Courier New", Consolas, monospace' },
   { label: 'Rokopis', value: '"Comic Sans MS", "Brush Script MT", cursive' }
 ];
+
+// Simboli / ikone za vstavljanje (rokica najprej)
+const SYMBOLS = ['👉','👈','☝️','✋','👍','👌','✅','✔️','❗','❓','⚠️','⭐','★','🔥','📌','📍','🔴','🟢','🔵','🟡','➡️','⬅️','→','•','◦','▪️','№','§','✎','📎','📅','💡','❌'];
 
 export default function Notes({ currentUser, employees }) {
   const [folders, setFolders] = useState([]);
@@ -29,6 +32,8 @@ export default function Notes({ currentUser, employees }) {
   const [savingFolder, setSavingFolder] = useState(false);
   const [draggedNoteId, setDraggedNoteId] = useState(null);
   const [dragOverFolderId, setDragOverFolderId] = useState(null);
+  const [showSymbols, setShowSymbols] = useState(false);
+  const [seenMap, setSeenMap] = useState(() => { try { return JSON.parse(localStorage.getItem('note_seen') || '{}'); } catch { return {}; } });
   const editorRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
@@ -39,6 +44,38 @@ export default function Notes({ currentUser, employees }) {
     return (f.allowed_emails || []).includes(currentUser?.email);
   };
   const canEditFolder = (f) => !!f && ((f.created_by_email && f.created_by_email === currentUser?.email) || f.user_email === currentUser?.email);
+
+  // "Novo" sledenje (lokalno, brez baze)
+  const markSeen = (note) => {
+    if (!note) return;
+    setSeenMap(prev => {
+      const next = { ...prev, [note.id]: note.updated_at || new Date().toISOString() };
+      try { localStorage.setItem('note_seen', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  const isNoteNew = (note) => {
+    const seen = seenMap[note.id];
+    if (!seen) return false;
+    return new Date(note.updated_at).getTime() > new Date(seen).getTime();
+  };
+  const folderNewCount = (folderId) => notes.filter(n => n.folder_id === folderId && isNoteNew(n)).length;
+
+  // Člani mape (kdo ima dostop)
+  const folderMembers = (f) => {
+    const set = new Set();
+    const owner = f.created_by_email || f.user_email;
+    if (owner) set.add(owner);
+    if (f.visible_to_all) (employees || []).forEach(e => set.add(e.email));
+    else (f.allowed_emails || []).forEach(e => set.add(e));
+    return [...set];
+  };
+  const personInitials = (email) => {
+    const emp = (employees || []).find(e => e.email === email);
+    const nm = emp?.name || email;
+    return nm.split(/[ .@]/).filter(Boolean).slice(0, 2).map(x => x[0]?.toUpperCase()).join('');
+  };
+  const personName = (email) => ((employees || []).find(e => e.email === email)?.name) || email;
 
   useEffect(() => { loadAll(); }, []);
 
@@ -52,12 +89,17 @@ export default function Notes({ currentUser, employees }) {
     const myFolders = allFolders.filter(canSeeFolder);
     const visibleFolderIds = new Set(myFolders.map(f => f.id));
     setFolders(myFolders);
-    const exp = {};
-    myFolders.forEach(f => { exp[f.id] = true; });
-    setExpandedFolders(exp);
+    setExpandedFolders({}); // mape ZAPRTE ob vstopu — poljubno odpiraš
     const allNotes = (!notesRes.error && notesRes.data) ? notesRes.data : [];
     const myNotes = allNotes.filter(n => n.user_email === currentUser.email || (n.folder_id && visibleFolderIds.has(n.folder_id)));
     setNotes(myNotes);
+    // baseline za "novo": kar že obstaja ob prvem nalaganju ni "novo"
+    setSeenMap(prev => {
+      const next = { ...prev }; let changed = false;
+      myNotes.forEach(n => { if (next[n.id] === undefined) { next[n.id] = n.updated_at; changed = true; } });
+      if (changed) { try { localStorage.setItem('note_seen', JSON.stringify(next)); } catch {} }
+      return next;
+    });
     if (myNotes.length > 0 && !selectedNote) selectNote(myNotes[0]);
     setLoading(false);
   };
@@ -66,6 +108,7 @@ export default function Notes({ currentUser, employees }) {
     setSelectedNote(note);
     setTitle(note.title);
     setLastSaved(null);
+    markSeen(note);
     setTimeout(() => {
       if (editorRef.current) editorRef.current.innerHTML = note.content || '';
     }, 0);
@@ -102,6 +145,7 @@ export default function Notes({ currentUser, employees }) {
       setNotes(notes.map(n => n.id === data.id ? data : n));
       setSelectedNote(data);
       setLastSaved(new Date());
+      markSeen(data);
     }
     setSaving(false);
   };
@@ -204,6 +248,26 @@ export default function Notes({ currentUser, employees }) {
 
   const setFontFamily = (font) => exec('fontName', font);
   const setColor = (color) => { exec('foreColor', color); setShowColorPicker(false); };
+  const setHighlight = (color) => {
+    document.execCommand('styleWithCSS', false, true);
+    exec('hiliteColor', color);
+    document.execCommand('styleWithCSS', false, false);
+    setShowColorPicker(false);
+  };
+  const setFontSize = (size) => exec('fontSize', size);
+  const insertSymbol = (s) => {
+    editorRef.current?.focus();
+    document.execCommand('insertText', false, s);
+    setShowSymbols(false);
+    handleContentChange();
+  };
+  // Tab = zamik pikice naprej (kot Word), Shift+Tab = nazaj
+  const handleEditorKeyDown = (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      exec(e.shiftKey ? 'outdent' : 'indent');
+    }
+  };
 
   const exportToPDF = async () => {
     const content = editorRef.current?.innerHTML || '';
@@ -272,7 +336,10 @@ export default function Notes({ currentUser, employees }) {
     >
       <div className="flex items-start justify-between gap-1">
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm text-gray-900 truncate">{note.title || 'Brez naslova'}</div>
+          <div className="flex items-center gap-1.5">
+            {isNoteNew(note) && <span className="w-2 h-2 rounded-full bg-red-600 flex-shrink-0" title="Novo / posodobljeno" />}
+            <div className={`text-sm truncate ${isNoteNew(note) ? 'font-bold text-gray-900' : 'font-medium text-gray-900'}`}>{note.title || 'Brez naslova'}</div>
+          </div>
           <div className="text-xs text-gray-500 mt-0.5">{formatTimeAgo(note.updated_at)}</div>
         </div>
         <div className="flex items-center gap-0.5 relative">
@@ -293,7 +360,7 @@ export default function Notes({ currentUser, employees }) {
   );
 
   return (
-    <div className="max-w-7xl mx-auto p-4" onClick={() => setShowMoveMenu(null)}>
+    <div className="max-w-7xl mx-auto p-2 sm:p-4" onClick={() => { setShowMoveMenu(null); setShowSymbols(false); setShowColorPicker(false); }}>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><FileText className="w-7 h-7 text-red-700" />Beležnica</h2>
         <div className="flex items-center gap-2">
@@ -301,8 +368,8 @@ export default function Notes({ currentUser, employees }) {
           <button onClick={createNote} className="flex items-center gap-2 px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition-colors"><Plus className="w-5 h-5" />Nov dokument</button>
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4" style={{ minHeight: 'calc(100vh - 220px)' }}>
-        <div className="lg:col-span-1 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ minHeight: 'calc(100vh - 220px)' }}>
+        <div className="md:col-span-1 lg:col-span-1 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           <div className="p-3 border-b border-gray-200 bg-gray-50"><h3 className="text-sm font-semibold text-gray-700">Mapice in dokumenti</h3></div>
           <div className="overflow-y-auto flex-1" style={{ maxHeight: 'calc(100vh - 280px)' }}>
             {loading ? (<div className="p-4 text-center text-gray-500 text-sm">Nalagam...</div>) : (
@@ -310,6 +377,9 @@ export default function Notes({ currentUser, employees }) {
                 {folders.map(folder => {
                   const folderNotes = notesInFolder(folder.id);
                   const isExpanded = expandedFolders[folder.id];
+                  const members = folderMembers(folder);
+                  const shared = folder.visible_to_all || members.length > 1;
+                  const newCount = folderNewCount(folder.id);
                   return (
                     <div key={folder.id}>
                       <div
@@ -319,13 +389,28 @@ export default function Notes({ currentUser, employees }) {
                         onDragLeave={() => setDragOverFolderId(null)}
                         onDrop={(e) => { e.preventDefault(); if (draggedNoteId) { moveNoteToFolder(draggedNoteId, folder.id); } setDragOverFolderId(null); setDraggedNoteId(null); }}
                       >
-                        {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-500" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500" />}
-                        <Folder className="w-4 h-4 text-red-700" />
-                        <span className="text-sm font-medium text-gray-800 flex-1 truncate">{folder.name}</span>
-                        {folder.visible_to_all ? <Users className="w-3.5 h-3.5 text-green-600" /> : ((folder.allowed_emails && folder.allowed_emails.length > 0) ? <Users className="w-3.5 h-3.5 text-blue-500" /> : <Lock className="w-3 h-3 text-gray-400" />)}
-                        <span className="text-xs text-gray-400">{folderNotes.length}</span>
-                        {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); openEditFolder(folder); }} className="text-gray-300 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="Kdo vidi mapo"><Users className="w-3.5 h-3.5" /></button>}
-                        {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); deleteFolder(folder.id, folder.name); }} className="text-gray-300 hover:text-red-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="Izbriši mapico"><Trash2 className="w-3.5 h-3.5" /></button>}
+                        {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />}
+                        <Folder className="w-4 h-4 text-red-700 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-medium text-gray-800 truncate">{folder.name}</span>
+                            {newCount > 0 && <span className="flex-shrink-0 text-[10px] font-bold text-white bg-red-600 rounded-full px-1.5 py-0.5 leading-none" title={`${newCount} novih/posodobljenih`}>{newCount} novo</span>}
+                          </div>
+                          {shared && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <div className="flex -space-x-1">
+                                {members.slice(0, 3).map(em => (
+                                  <span key={em} className="w-4 h-4 rounded-full bg-gray-200 border border-white text-[8px] font-bold text-gray-600 flex items-center justify-center" title={personName(em)}>{personInitials(em)}</span>
+                                ))}
+                              </div>
+                              <span className="text-[10px] text-gray-400">{folder.visible_to_all ? 'vsi' : `${members.length} ${members.length === 1 ? 'oseba' : members.length === 2 ? 'osebi' : 'oseb'}`}</span>
+                            </div>
+                          )}
+                        </div>
+                        {folder.visible_to_all ? <Users className="w-3.5 h-3.5 text-green-600 flex-shrink-0" /> : ((folder.allowed_emails && folder.allowed_emails.length > 0) ? <Users className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" /> : <Lock className="w-3 h-3 text-gray-400 flex-shrink-0" />)}
+                        <span className="text-xs text-gray-400 flex-shrink-0">{folderNotes.length}</span>
+                        {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); openEditFolder(folder); }} className="text-gray-300 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="Kdo vidi mapo"><Users className="w-3.5 h-3.5" /></button>}
+                        {canEditFolder(folder) && <button onClick={(e) => { e.stopPropagation(); deleteFolder(folder.id, folder.name); }} className="text-gray-300 hover:text-red-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" title="Izbriši mapico"><Trash2 className="w-3.5 h-3.5" /></button>}
                       </div>
                       {isExpanded && folderNotes.map(n => renderNoteItem(n, true))}
                     </div>
@@ -346,7 +431,7 @@ export default function Notes({ currentUser, employees }) {
             )}
           </div>
         </div>
-        <div className="lg:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+        <div className="md:col-span-2 lg:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           {selectedNote ? (
             <>
               <div className="p-3 border-b border-gray-200 bg-gray-50">
@@ -358,6 +443,9 @@ export default function Notes({ currentUser, employees }) {
                 {lastSaved && (<div className="text-xs text-gray-500 mt-2">✓ Shranjeno {formatTimeAgo(lastSaved)}</div>)}
               </div>
               <div className="flex items-center gap-1 p-2 border-b border-gray-200 bg-white flex-wrap">
+                <button onClick={() => exec('undo')} className="p-2 hover:bg-gray-100 rounded" title="Razveljavi"><Undo2 className="w-4 h-4" /></button>
+                <button onClick={() => exec('redo')} className="p-2 hover:bg-gray-100 rounded" title="Ponovi"><Redo2 className="w-4 h-4" /></button>
+                <div className="w-px h-6 bg-gray-300 mx-1" />
                 <button onClick={() => exec('bold')} className="p-2 hover:bg-gray-100 rounded" title="Krepko"><Bold className="w-4 h-4" /></button>
                 <button onClick={() => exec('italic')} className="p-2 hover:bg-gray-100 rounded" title="Poševno"><Italic className="w-4 h-4" /></button>
                 <button onClick={() => exec('underline')} className="p-2 hover:bg-gray-100 rounded" title="Podčrtano"><Underline className="w-4 h-4" /></button>
@@ -368,6 +456,37 @@ export default function Notes({ currentUser, employees }) {
                 <div className="w-px h-6 bg-gray-300 mx-1" />
                 <button onClick={() => exec('insertUnorderedList')} className="p-2 hover:bg-gray-100 rounded" title="Seznam"><List className="w-4 h-4" /></button>
                 <button onClick={() => exec('insertOrderedList')} className="p-2 hover:bg-gray-100 rounded" title="Oštevilčen seznam"><ListOrdered className="w-4 h-4" /></button>
+                <button onClick={() => exec('indent')} className="p-2 hover:bg-gray-100 rounded" title="Zamik naprej (Tab)"><IndentIncrease className="w-4 h-4" /></button>
+                <button onClick={() => exec('outdent')} className="p-2 hover:bg-gray-100 rounded" title="Zamik nazaj (Shift+Tab)"><IndentDecrease className="w-4 h-4" /></button>
+                <div className="w-px h-6 bg-gray-300 mx-1" />
+                <button onClick={() => exec('justifyLeft')} className="p-2 hover:bg-gray-100 rounded" title="Poravnaj levo"><AlignLeft className="w-4 h-4" /></button>
+                <button onClick={() => exec('justifyCenter')} className="p-2 hover:bg-gray-100 rounded" title="Sredinsko"><AlignCenter className="w-4 h-4" /></button>
+                <button onClick={() => exec('justifyRight')} className="p-2 hover:bg-gray-100 rounded" title="Poravnaj desno"><AlignRight className="w-4 h-4" /></button>
+                <div className="w-px h-6 bg-gray-300 mx-1" />
+                <div className="relative">
+                  <button onClick={(e) => { e.stopPropagation(); setShowSymbols(!showSymbols); setShowColorPicker(false); }} className="p-2 hover:bg-gray-100 rounded flex items-center gap-1" title="Vstavi simbol / ikono"><Smile className="w-4 h-4" /></button>
+                  {showSymbols && (
+                    <div className="absolute top-10 left-0 z-20 bg-white border border-gray-200 rounded-lg shadow-lg p-2" onClick={(e) => e.stopPropagation()} style={{ width: '232px' }}>
+                      <div className="text-xs font-semibold text-gray-500 mb-1 px-1">Klikni za vstavljanje</div>
+                      <div className="flex flex-wrap gap-0.5">
+                        {SYMBOLS.map(s => (
+                          <button key={s} onClick={() => insertSymbol(s)} className="w-8 h-8 text-lg hover:bg-gray-100 rounded flex items-center justify-center" title={`Vstavi ${s}`}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <select onChange={(e) => { setFontSize(e.target.value); e.target.value = ''; }} className="text-sm border border-gray-300 rounded px-1 py-1 bg-white hover:bg-gray-50 cursor-pointer" defaultValue="" title="Velikost pisave">
+                  <option value="" disabled>Velikost</option>
+                  <option value="1">Najmanjša</option>
+                  <option value="2">Majhna</option>
+                  <option value="3">Normalna</option>
+                  <option value="4">Večja</option>
+                  <option value="5">Velika</option>
+                  <option value="6">Zelo velika</option>
+                  <option value="7">Naslov</option>
+                </select>
+                <button onClick={() => exec('removeFormat')} className="p-2 hover:bg-gray-100 rounded" title="Počisti oblikovanje"><RemoveFormatting className="w-4 h-4" /></button>
                 <div className="w-px h-6 bg-gray-300 mx-1" />
                 <div className="flex items-center gap-1">
                   <Type className="w-4 h-4 text-gray-600" />
@@ -378,20 +497,27 @@ export default function Notes({ currentUser, employees }) {
                 </div>
                 <div className="w-px h-6 bg-gray-300 mx-1" />
                 <div className="relative">
-                  <button onClick={(e) => { e.stopPropagation(); setShowColorPicker(!showColorPicker); }} className="p-2 hover:bg-gray-100 rounded flex items-center gap-1" title="Barva besedila"><Palette className="w-4 h-4" /></button>
+                  <button onClick={(e) => { e.stopPropagation(); setShowColorPicker(!showColorPicker); setShowSymbols(false); }} className="p-2 hover:bg-gray-100 rounded flex items-center gap-1" title="Barva besedila"><Palette className="w-4 h-4" /></button>
                   {showColorPicker && (
                     <div className="absolute top-10 left-0 z-20 bg-white border border-gray-200 rounded-lg shadow-lg p-2" onClick={(e) => e.stopPropagation()}>
-                      <input type="color" onChange={(e) => setColor(e.target.value)} className="w-32 h-10 cursor-pointer" />
+                      <div className="text-xs font-semibold text-gray-500 mb-1">Barva besedila</div>
+                      <input type="color" onChange={(e) => setColor(e.target.value)} className="w-32 h-9 cursor-pointer" />
                       <div className="flex gap-1 mt-2 flex-wrap" style={{ width: '128px' }}>
                         {['#000000', '#C8102E', '#1f2937', '#2563eb', '#16a34a', '#ca8a04', '#9333ea', '#dc2626'].map(c => (
                           <button key={c} onClick={() => setColor(c)} className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform" style={{ backgroundColor: c }} title={c} />
+                        ))}
+                      </div>
+                      <div className="text-xs font-semibold text-gray-500 mt-3 mb-1 flex items-center gap-1"><Highlighter className="w-3 h-3" /> Označi (marker)</div>
+                      <div className="flex gap-1 flex-wrap" style={{ width: '128px' }}>
+                        {['#FEF08A', '#BBF7D0', '#BFDBFE', '#FECACA', '#E9D5FF', '#FED7AA', '#FFFFFF'].map(c => (
+                          <button key={c} onClick={() => setHighlight(c)} className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform" style={{ backgroundColor: c }} title={`Marker ${c}`} />
                         ))}
                       </div>
                     </div>
                   )}
                 </div>
               </div>
-              <div ref={editorRef} contentEditable onInput={handleContentChange} onBlur={() => saveNote()} className="flex-1 p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none" style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
+              <div ref={editorRef} contentEditable onInput={handleContentChange} onKeyDown={handleEditorKeyDown} onBlur={() => saveNote()} className="flex-1 p-4 sm:p-6 overflow-y-auto focus:outline-none prose prose-sm max-w-none" style={{ minHeight: '400px' }} suppressContentEditableWarning={true} />
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -482,7 +608,12 @@ export default function Notes({ currentUser, employees }) {
         [contenteditable] p { margin: 0.5rem 0; }
         [contenteditable] ul { list-style: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
         [contenteditable] ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
+        [contenteditable] ul ul { list-style: circle; }
+        [contenteditable] ul ul ul { list-style: square; }
+        [contenteditable] ol ol { list-style: lower-alpha; }
+        [contenteditable] ol ol ol { list-style: lower-roman; }
         [contenteditable] li { margin: 0.25rem 0; }
+        [contenteditable] blockquote { margin: 0.5rem 0 0.5rem 1.5rem; padding-left: 0.75rem; border-left: 3px solid #e5e7eb; color: #374151; }
         [contenteditable]:empty:before { content: 'Začni pisati...'; color: #9ca3af; }
       `}</style>
     </div>
