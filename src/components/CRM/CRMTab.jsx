@@ -3310,76 +3310,96 @@ function titleKraj(k) {
     .join(' ');
 }
 
+// Razponi poštnih številk po regijah (hi je izključen) — za poizvedbo v bazi
+const REGION_BOUNDS = {
+  'Osrednja (Ljubljana)': [['1000', '1380']],
+  'Zasavje': [['1410', '1440']],
+  'Notranjska': [['1380', '1387'], ['6230', '6259']],
+  'Štajerska (Maribor)': [['2000', '2270'], ['2280', '2360']],
+  'Prlekija': [['2270', '2280'], ['9240', '9266']],
+  'Koroška': [['2360', '2400']],
+  'Savinjska (Celje)': [['3000', '3343']],
+  'Gorenjska': [['4000', '4300']],
+  'Goriška': [['5000', '5300']],
+  'Obala–Kras': [['6000', '6230'], ['6259', '6334']],
+  'Prekmurje': [['9000', '9240'], ['9266', '9500']],
+  'Bela krajina': [['8330', '8346']],
+  'Posavje': [['8250', '8300']],
+  'Dolenjska': [['8000', '8250'], ['8300', '8330'], ['8346', '8363']],
+};
+const ALL_REGIONS = Object.keys(REGION_BOUNDS);
+function regionOrFilter(region) {
+  const b = REGION_BOUNDS[region] || [];
+  return b.map(([lo, hi]) => `and(posta.gte.${lo},posta.lt.${hi})`).join(',');
+}
+
 function AreaPicker({ onSelect }) {
-  const [all, setAll] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);     // vse stranke izbrane regije (vse poslovalnice)
+  const [loading, setLoading] = useState(false);
   const [region, setRegion] = useState('');
   const [kraj, setKraj] = useState('');
 
+  // Naloži VSE stranke regije v straneh po 1000 (brez abecednega odreza)
   useEffect(() => {
+    if (!region) { setRows([]); setKraj(''); return; }
     let active = true;
     (async () => {
-      setLoading(true);
-      const { data } = await supabase.from('crm_customers')
-        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
-        .order('naziv', { ascending: true })
-        .limit(5000);
-      if (active) { setAll(data || []); setLoading(false); }
+      setLoading(true); setKraj('');
+      const orStr = regionOrFilter(region);
+      let acc = [];
+      for (let page = 0; page < 10; page++) {
+        let q = supabase.from('crm_customers').select('id,naziv,ulica,posta,davcna,poslovalnica');
+        if (orStr) q = q.or(orStr);
+        q = q.order('posta', { ascending: true }).order('naziv', { ascending: true }).range(page * 1000, page * 1000 + 999);
+        const { data, error } = await q;
+        if (error) break;
+        acc = acc.concat(data || []);
+        if (!data || data.length < 1000) break;
+      }
+      if (active) { setRows(acc); setLoading(false); }
     })();
     return () => { active = false; };
-  }, []);
-
-  const regions = useMemo(() => {
-    const set = new Set();
-    (all || []).forEach((c) => { const r = regionFromPosta(c.posta); if (r) set.add(r); });
-    return [...set].sort();
-  }, [all]);
+  }, [region]);
 
   const kraji = useMemo(() => {
     const map = new Map(); // normKey -> lep prikaz
-    (all || []).forEach((c) => {
-      if (region && regionFromPosta(c.posta) !== region) return;
+    rows.forEach((c) => {
       const k = krajFromPosta(c.posta); if (!k) return;
       const key = normKraj(k);
       if (!map.has(key)) map.set(key, titleKraj(k));
     });
     return [...map.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label, 'sl'));
-  }, [all, region]);
+  }, [rows]);
 
-  // Vsaka poslovalnica je svoja vrstica (filtrirana po svoji pošti) — npr. Jager Maribor, Jager Celje ločeno
-  const rows = useMemo(() => {
-    if (!region && !kraj) return [];
-    return (all || [])
-      .filter((c) => {
-        if (region && regionFromPosta(c.posta) !== region) return false;
-        if (kraj && normKraj(krajFromPosta(c.posta)) !== kraj) return false;
-        return true;
-      })
+  // Vsaka poslovalnica je svoja vrstica; po izbiri kraja filtriramo
+  const list = useMemo(() => {
+    return rows
+      .filter((c) => !kraj || normKraj(krajFromPosta(c.posta)) === kraj)
       .sort((a, b) => a.naziv.localeCompare(b.naziv, 'sl') || (a.poslovalnica || 0) - (b.poslovalnica || 0));
-  }, [all, region, kraj]);
-
-  if (loading) return <div className="text-sm text-as-gray-400 py-4 text-center">Nalagam stranke…</div>;
+  }, [rows, kraj]);
 
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
-        <select value={region} onChange={(e) => { setRegion(e.target.value); setKraj(''); }} className={inputCls}>
-          <option value="">Vse regije</option>
-          {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+        <select value={region} onChange={(e) => setRegion(e.target.value)} className={inputCls}>
+          <option value="">Izberi regijo…</option>
+          {ALL_REGIONS.slice().sort((a, b) => a.localeCompare(b, 'sl')).map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
-        <select value={kraj} onChange={(e) => setKraj(e.target.value)} className={inputCls}>
-          <option value="">Vsi kraji{region ? ` (${kraji.length})` : ''}</option>
+        <select value={kraj} onChange={(e) => setKraj(e.target.value)} className={inputCls} disabled={!region || loading}>
+          <option value="">{region ? `Vsi kraji (${kraji.length})` : 'Najprej regija'}</option>
           {kraji.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
         </select>
       </div>
-      {!region && !kraj ? (
-        <div className="text-xs text-as-gray-400 py-3 text-center">Izberi regijo ali kraj za prikaz strank.</div>
-      ) : rows.length === 0 ? (
+      {loading ? (
+        <div className="text-sm text-as-gray-400 py-4 text-center">Nalagam stranke…</div>
+      ) : !region ? (
+        <div className="text-xs text-as-gray-400 py-3 text-center">Izberi regijo za prikaz strank.</div>
+      ) : list.length === 0 ? (
         <div className="text-xs text-as-gray-400 py-3 text-center">Ni strank v tem območju.</div>
       ) : (
         <div className="space-y-1 max-h-72 overflow-y-auto">
-          <div className="text-xs font-semibold text-as-gray-400">{rows.length} poslovalnic</div>
-          {rows.map((c) => (
+          <div className="text-xs font-semibold text-as-gray-400">{list.length} poslovalnic</div>
+          {list.map((c) => (
             <button key={c.id} onClick={() => onSelect(c)} className="w-full text-left px-3 py-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50">
               <div className="text-sm font-medium text-as-gray-800">{c.naziv}{c.poslovalnica ? <span className="text-xs font-normal text-as-gray-400"> · posl. {c.poslovalnica}</span> : ''}</div>
               <div className="text-xs text-as-gray-500">{[c.ulica, c.posta].filter(Boolean).join(', ')}</div>
