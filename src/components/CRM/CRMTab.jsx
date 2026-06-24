@@ -3259,19 +3259,42 @@ function CustomerForm({ initial, onSave, onCancel, saving }) {
 }
 
 // ─── PLANIRANJE POTI (komercialist pripravi obiske + zadnji 3 vnosi) ───
-// ── Slovenske regije iz poštne številke (1. števka) ──
-const SI_REGIONS = {
-  '1': 'Osrednja (Ljubljana)',
-  '2': 'Štajerska–Koroška',
-  '3': 'Savinjska (Celje)',
-  '4': 'Gorenjska',
-  '5': 'Goriška',
-  '6': 'Obala–Kras',
-  '8': 'Dolenjska–Posavje',
-  '9': 'Pomurje',
-};
+// ── Slovenske regije iz poštne številke (po razponih) ──
 function postFromPosta(posta) { const m = String(posta || '').match(/(\d{4})/); return m ? m[1] : null; }
-function regionFromPosta(posta) { const p = postFromPosta(posta); return p ? (SI_REGIONS[p[0]] || null) : null; }
+function regionFromPosta(posta) {
+  const p = postFromPosta(posta);
+  if (!p) return null;
+  const n = parseInt(p, 10);
+  // Prlekija (Ormož + Ljutomer/G. Radgona)
+  if ((n >= 2270 && n <= 2279) || (n >= 9240 && n <= 9265)) return 'Prlekija';
+  // Prekmurje (ostali 9xxx)
+  if (n >= 9000) return 'Prekmurje';
+  // Koroška
+  if (n >= 2360 && n <= 2399) return 'Koroška';
+  // Štajerska / Podravje (Maribor, Ptuj, Slov. Bistrica)
+  if (n >= 2000 && n <= 2359) return 'Štajerska (Maribor)';
+  // Savinjska (Celje)
+  if (n >= 3000 && n <= 3342) return 'Savinjska (Celje)';
+  // Gorenjska
+  if (n >= 4000 && n <= 4299) return 'Gorenjska';
+  // Goriška
+  if (n >= 5000 && n <= 5299) return 'Goriška';
+  // Notranjska (Postojna, Pivka, Il. Bistrica, Cerknica)
+  if ((n >= 1380 && n <= 1386) || (n >= 6230 && n <= 6258)) return 'Notranjska';
+  // Obala–Kras
+  if (n >= 6000 && n <= 6333) return 'Obala–Kras';
+  // Zasavje
+  if (n >= 1410 && n <= 1439) return 'Zasavje';
+  // Bela krajina
+  if (n >= 8330 && n <= 8345) return 'Bela krajina';
+  // Posavje
+  if (n >= 8250 && n <= 8299) return 'Posavje';
+  // Dolenjska
+  if (n >= 8000 && n <= 8362) return 'Dolenjska';
+  // Osrednja / Ljubljana
+  if (n >= 1000 && n <= 1399) return 'Osrednja (Ljubljana)';
+  return 'Drugo';
+}
 function krajFromPosta(posta) {
   const s = String(posta || '').trim();
   if (!s) return null;
@@ -3284,8 +3307,6 @@ function AreaPicker({ onSelect }) {
   const [loading, setLoading] = useState(true);
   const [region, setRegion] = useState('');
   const [kraj, setKraj] = useState('');
-  const [chosen, setChosen] = useState(null);
-  const [branches, setBranches] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -3315,43 +3336,19 @@ function AreaPicker({ onSelect }) {
     return [...set].sort((a, b) => a.localeCompare(b, 'sl'));
   }, [all, region]);
 
-  const companies = useMemo(() => {
+  // Vsaka poslovalnica je svoja vrstica (filtrirana po svoji pošti) — npr. Jager Maribor, Jager Celje ločeno
+  const rows = useMemo(() => {
     if (!region && !kraj) return [];
-    const map = {};
-    (all || []).forEach((c) => {
-      if (region && regionFromPosta(c.posta) !== region) return;
-      if (kraj && krajFromPosta(c.posta) !== kraj) return;
-      const key = (c.davcna && String(c.davcna).trim()) ? `d:${c.davcna}` : `id:${c.id}`;
-      if (!map[key]) map[key] = { key, davcna: c.davcna || null, naziv: c.naziv, kraj: krajFromPosta(c.posta), branches: [] };
-      map[key].branches.push(c);
-      if (c.poslovalnica === 0) map[key].naziv = c.naziv;
-    });
-    return Object.values(map).sort((a, b) => a.naziv.localeCompare(b.naziv, 'sl'));
+    return (all || [])
+      .filter((c) => {
+        if (region && regionFromPosta(c.posta) !== region) return false;
+        if (kraj && krajFromPosta(c.posta) !== kraj) return false;
+        return true;
+      })
+      .sort((a, b) => a.naziv.localeCompare(b.naziv, 'sl') || (a.poslovalnica || 0) - (b.poslovalnica || 0));
   }, [all, region, kraj]);
 
-  function pick(co) {
-    if (co.branches.length <= 1) { onSelect(co.branches[0]); return; }
-    setChosen(co); setBranches(co.branches);
-  }
-
   if (loading) return <div className="text-sm text-as-gray-400 py-4 text-center">Nalagam stranke…</div>;
-
-  if (chosen) {
-    return (
-      <div className="space-y-2">
-        <div className="text-sm font-semibold text-as-gray-700">{chosen.naziv} — izberi poslovalnico:</div>
-        <div className="space-y-1 max-h-64 overflow-y-auto">
-          {branches.map((b) => (
-            <button key={b.id} onClick={() => onSelect(b)} className="w-full text-left px-3 py-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50">
-              <div className="text-sm font-medium text-as-gray-800">{b.poslovalnica ? `Poslovalnica ${b.poslovalnica}` : 'Sedež'}</div>
-              <div className="text-xs text-as-gray-500">{[b.ulica, b.posta].filter(Boolean).join(', ')}</div>
-            </button>
-          ))}
-        </div>
-        <button onClick={() => { setChosen(null); setBranches([]); }} className="text-xs font-semibold text-as-gray-500">← Nazaj na seznam</button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-2">
@@ -3367,17 +3364,15 @@ function AreaPicker({ onSelect }) {
       </div>
       {!region && !kraj ? (
         <div className="text-xs text-as-gray-400 py-3 text-center">Izberi regijo ali kraj za prikaz strank.</div>
-      ) : companies.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="text-xs text-as-gray-400 py-3 text-center">Ni strank v tem območju.</div>
       ) : (
         <div className="space-y-1 max-h-72 overflow-y-auto">
-          <div className="text-xs font-semibold text-as-gray-400">{companies.length} strank</div>
-          {companies.map((co) => (
-            <button key={co.key} onClick={() => pick(co)} className="w-full text-left px-3 py-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50">
-              <div className="text-sm font-medium text-as-gray-800">{co.naziv}
-                {co.branches.length > 1 && <span className="text-xs font-normal text-as-gray-400"> · {co.branches.length} posl.</span>}
-              </div>
-              <div className="text-xs text-as-gray-500">{co.kraj}</div>
+          <div className="text-xs font-semibold text-as-gray-400">{rows.length} poslovalnic</div>
+          {rows.map((c) => (
+            <button key={c.id} onClick={() => onSelect(c)} className="w-full text-left px-3 py-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50">
+              <div className="text-sm font-medium text-as-gray-800">{c.naziv}{c.poslovalnica ? <span className="text-xs font-normal text-as-gray-400"> · posl. {c.poslovalnica}</span> : ''}</div>
+              <div className="text-xs text-as-gray-500">{[c.ulica, c.posta].filter(Boolean).join(', ')}</div>
             </button>
           ))}
         </div>
