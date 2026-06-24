@@ -1035,6 +1035,7 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
   const visitCount = dayVisits.filter((v) => v.entry_type === 'visit').length;
   const callCount = dayVisits.filter((v) => v.entry_type === 'call').length;
   const offerCount = dayVisits.filter((v) => (v.entry_type === 'visit' || v.entry_type === 'call') && v.create_offer).length;
+  const orderCount = dayVisits.filter((v) => v.outcome === 'narocilo').length;
   const totalTimeAtCustomers = dayVisits
     .filter((v) => v.entry_type === 'visit' && v.arrival_time && v.departure_time)
     .reduce((s, v) => s + (diffMinutes(v.arrival_time, v.departure_time) || 0), 0);
@@ -1088,12 +1089,13 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
           </div>
 
           {/* Statistike */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
             <BigStat icon="📍" label="Obiski" value={visitCount} unit="" color={CRM_COLOR} bgColor={CRM_BG} />
             <BigStat icon="📞" label="Klici / emaili" value={callCount} unit="" color="#6D28D9" bgColor="#EDE9FE" />
             <BigStat icon="🚗" label="Skupaj km" value={formatNumber(kmData.totalKm)} unit="km" color="#1E40AF" bgColor="#DBEAFE" />
             <BigStat icon="⏱️" label="Čas pri strankah" value={formatMinutes(totalTimeAtCustomers)} unit="" color="#0E7490" bgColor="#CFFAFE" />
             <BigStat icon="📝" label="Ponudbe" value={offerCount} unit="" color="#854D0E" bgColor="#FEF3C7" />
+            <BigStat icon="✅" label="Naročila" value={orderCount} unit="" color="#16A34A" bgColor="#DCFCE7" />
           </div>
 
           {/* Časovnica dneva */}
@@ -1272,6 +1274,7 @@ function MonthlyView({ visits, loading }) {
   const totalVisits = monthVisits.filter((v) => v.entry_type === 'visit').length;
   const totalCalls = monthVisits.filter((v) => v.entry_type === 'call').length;
   const totalOffers = monthVisits.filter((v) => (v.entry_type === 'visit' || v.entry_type === 'call') && v.create_offer).length;
+  const totalOrders = monthVisits.filter((v) => v.outcome === 'narocilo').length;
   const uniqueDays = new Set(monthVisits.map((v) => v.visit_date)).size;
   const uniqueCustomers = new Set(monthVisits.filter((v) => v.entry_type === 'visit' || v.entry_type === 'call').map((v) => v.customer_name)).size;
 
@@ -1369,6 +1372,7 @@ function MonthlyView({ visits, loading }) {
             <BigStat icon="📞" label="Klici / emaili" value={totalCalls} unit="" color="#6D28D9" bgColor="#EDE9FE" />
             <BigStat icon="🚗" label="Skupaj km" value={formatNumber(totalKm)} unit="km" color="#1E40AF" bgColor="#DBEAFE" />
             <BigStat icon="📝" label="Ponudbe" value={totalOffers} unit="" color="#854D0E" bgColor="#FEF3C7" />
+            <BigStat icon="✅" label="Naročila" value={totalOrders} unit="" color="#16A34A" bgColor="#DCFCE7" />
             <BigStat icon="🏢" label="Strank" value={uniqueCustomers} unit="" color="#065F46" bgColor="#A7F3D0" />
             <BigStat icon="📅" label="Aktivnih dni" value={uniqueDays} unit="" color="#0E7490" bgColor="#CFFAFE" />
           </div>
