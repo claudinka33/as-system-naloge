@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, Calendar, User, CheckCircle2, Circle } from 'lucide-react';
 
-export default function CalendarView({ tasks, currentUser, isAdmin, isAssignedToMe, currentDate, setCurrentDate, calendarMode, setCalendarMode, selectedDay, setSelectedDay, filterPerson, setFilterPerson, employees, onTaskClick, getEmployeeName, priorityLabels }) {
+export default function CalendarView({ tasks, currentUser, isAdmin, isAssignedToMe, currentDate, setCurrentDate, calendarMode, setCalendarMode, selectedDay, setSelectedDay, filterPerson, setFilterPerson, employees, onTaskClick, getEmployeeName, priorityLabels, extraEvents = [] }) {
 
   // Filtrirane naloge (admin vidi vse, drugi samo svoje + ki so jih ustvarili)
   const visibleTasks = tasks.filter(task => {
@@ -34,6 +34,9 @@ export default function CalendarView({ tasks, currentUser, isAdmin, isAssignedTo
       return isSameDay(taskDate, date);
     });
   };
+
+  const toEvDate = (d) => (d instanceof Date ? d : new Date(String(d).length === 10 ? String(d) + 'T00:00:00' : String(d)));
+  const getEventsForDay = (date) => extraEvents.filter(ev => isSameDay(toEvDate(ev.date), date));
 
   const getMonthDays = () => {
     const year = currentDate.getFullYear();
@@ -113,6 +116,7 @@ export default function CalendarView({ tasks, currentUser, isAdmin, isAssignedTo
     : `Teden ${days[0].date.getDate()}.${days[0].date.getMonth()+1}. - ${days[6].date.getDate()}.${days[6].date.getMonth()+1}.${days[6].date.getFullYear()}`;
 
   const selectedDayTasks = selectedDay ? getTasksForDay(selectedDay) : [];
+  const selectedDayEvents = selectedDay ? getEventsForDay(selectedDay) : [];
 
   const getPriorityColor = (priority) => {
     if (priority === 'high') return '#C8102E';
@@ -192,6 +196,7 @@ export default function CalendarView({ tasks, currentUser, isAdmin, isAssignedTo
         <div className="grid grid-cols-7">
           {days.map((dayObj, idx) => {
             const dayTasks = getTasksForDay(dayObj.date);
+            const dayEvents = getEventsForDay(dayObj.date);
             const isSelected = selectedDay && isSameDay(dayObj.date, selectedDay);
             const today = isToday(dayObj.date);
 
@@ -211,9 +216,9 @@ export default function CalendarView({ tasks, currentUser, isAdmin, isAssignedTo
                   style={today ? {backgroundColor: '#C8102E'} : {}}>
                     {dayObj.date.getDate()}
                   </span>
-                  {dayTasks.length > 0 && (
+                  {(dayTasks.length + dayEvents.length) > 0 && (
                     <span className="text-xs font-semibold text-as-gray-400">
-                      {dayTasks.length}
+                      {dayTasks.length + dayEvents.length}
                     </span>
                   )}
                 </div>
@@ -243,6 +248,22 @@ export default function CalendarView({ tasks, currentUser, isAdmin, isAssignedTo
                   {dayTasks.length > (calendarMode === 'month' ? 3 : 8) && (
                     <div className="text-xs text-as-gray-400 px-1.5 font-semibold">
                       +{dayTasks.length - (calendarMode === 'month' ? 3 : 8)} več
+                    </div>
+                  )}
+                  {dayEvents.slice(0, calendarMode === 'month' ? 2 : 6).map(ev => (
+                    <div
+                      key={ev.id}
+                      onClick={(e) => { e.stopPropagation(); if (ev.onClick) ev.onClick(); }}
+                      className="text-xs px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition"
+                      style={{ backgroundColor: (ev.color || '#16A34A') + '20', color: ev.color || '#16A34A', borderLeft: `2px solid ${ev.color || '#16A34A'}` }}
+                      title={ev.title}
+                    >
+                      {ev.title}
+                    </div>
+                  ))}
+                  {dayEvents.length > (calendarMode === 'month' ? 2 : 6) && (
+                    <div className="text-xs text-as-gray-400 px-1.5 font-semibold">
+                      +{dayEvents.length - (calendarMode === 'month' ? 2 : 6)} teren
                     </div>
                   )}
                 </div>
@@ -309,6 +330,25 @@ export default function CalendarView({ tasks, currentUser, isAdmin, isAssignedTo
           </div>
         </div>
       )}
+      {selectedDay && selectedDayEvents.length > 0 && (
+        <div className="mt-4 bg-white border border-as-gray-200 rounded-xl p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-as-gray-700 mb-3 flex items-center gap-2">
+            <Calendar className="w-4 h-4" style={{ color: '#16A34A' }} />
+            Teren / obiski za {selectedDay.toLocaleDateString('sl-SI', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </h3>
+          <div className="space-y-2">
+            {selectedDayEvents.map(ev => (
+              <div key={ev.id} onClick={() => { if (ev.onClick) ev.onClick(); }} className={`p-3 border rounded-lg transition ${ev.onClick ? 'cursor-pointer hover:shadow-md' : ''}`} style={{ borderColor: (ev.color || '#16A34A') + '55' }}>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-semibold text-as-gray-700">{ev.title}</span>
+                  {ev.sub && <span className="text-xs text-as-gray-400">{ev.sub}</span>}
+                </div>
+                {ev.detail && <p className="text-xs text-as-gray-500 mt-1">{ev.detail}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Legenda */}
       <div className="mt-4 bg-white border border-as-gray-200 rounded-xl p-3 shadow-sm">
@@ -325,6 +365,12 @@ export default function CalendarView({ tasks, currentUser, isAdmin, isAssignedTo
             <span className="w-3 h-3 rounded" style={{backgroundColor: '#6D6D6D'}}></span>
             Nizka prioriteta
           </span>
+          {extraEvents.length > 0 && (
+            <span className="flex items-center gap-1.5 text-as-gray-600">
+              <span className="w-3 h-3 rounded" style={{ backgroundColor: '#16A34A' }}></span>
+              Teren / CRM
+            </span>
+          )}
           <span className="text-as-gray-400">•</span>
           <span className="text-as-gray-500 italic">Klikni dan za pregled, nalogo za podrobnosti</span>
         </div>
