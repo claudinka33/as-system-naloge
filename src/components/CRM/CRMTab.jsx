@@ -3259,6 +3259,133 @@ function CustomerForm({ initial, onSave, onCancel, saving }) {
 }
 
 // ─── PLANIRANJE POTI (komercialist pripravi obiske + zadnji 3 vnosi) ───
+// ── Slovenske regije iz poštne številke (1. števka) ──
+const SI_REGIONS = {
+  '1': 'Osrednja (Ljubljana)',
+  '2': 'Štajerska–Koroška',
+  '3': 'Savinjska (Celje)',
+  '4': 'Gorenjska',
+  '5': 'Goriška',
+  '6': 'Obala–Kras',
+  '8': 'Dolenjska–Posavje',
+  '9': 'Pomurje',
+};
+function postFromPosta(posta) { const m = String(posta || '').match(/(\d{4})/); return m ? m[1] : null; }
+function regionFromPosta(posta) { const p = postFromPosta(posta); return p ? (SI_REGIONS[p[0]] || null) : null; }
+function krajFromPosta(posta) {
+  const s = String(posta || '').trim();
+  if (!s) return null;
+  const m = s.match(/^\s*\d{4}\s+(.+)$/);
+  return ((m ? m[1] : s).trim()) || null;
+}
+
+function AreaPicker({ onSelect }) {
+  const [all, setAll] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [region, setRegion] = useState('');
+  const [kraj, setKraj] = useState('');
+  const [chosen, setChosen] = useState(null);
+  const [branches, setBranches] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase.from('crm_customers')
+        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+        .order('naziv', { ascending: true })
+        .limit(5000);
+      if (active) { setAll(data || []); setLoading(false); }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const regions = useMemo(() => {
+    const set = new Set();
+    (all || []).forEach((c) => { const r = regionFromPosta(c.posta); if (r) set.add(r); });
+    return [...set].sort();
+  }, [all]);
+
+  const kraji = useMemo(() => {
+    const set = new Set();
+    (all || []).forEach((c) => {
+      if (region && regionFromPosta(c.posta) !== region) return;
+      const k = krajFromPosta(c.posta); if (k) set.add(k);
+    });
+    return [...set].sort((a, b) => a.localeCompare(b, 'sl'));
+  }, [all, region]);
+
+  const companies = useMemo(() => {
+    if (!region && !kraj) return [];
+    const map = {};
+    (all || []).forEach((c) => {
+      if (region && regionFromPosta(c.posta) !== region) return;
+      if (kraj && krajFromPosta(c.posta) !== kraj) return;
+      const key = (c.davcna && String(c.davcna).trim()) ? `d:${c.davcna}` : `id:${c.id}`;
+      if (!map[key]) map[key] = { key, davcna: c.davcna || null, naziv: c.naziv, kraj: krajFromPosta(c.posta), branches: [] };
+      map[key].branches.push(c);
+      if (c.poslovalnica === 0) map[key].naziv = c.naziv;
+    });
+    return Object.values(map).sort((a, b) => a.naziv.localeCompare(b.naziv, 'sl'));
+  }, [all, region, kraj]);
+
+  function pick(co) {
+    if (co.branches.length <= 1) { onSelect(co.branches[0]); return; }
+    setChosen(co); setBranches(co.branches);
+  }
+
+  if (loading) return <div className="text-sm text-as-gray-400 py-4 text-center">Nalagam stranke…</div>;
+
+  if (chosen) {
+    return (
+      <div className="space-y-2">
+        <div className="text-sm font-semibold text-as-gray-700">{chosen.naziv} — izberi poslovalnico:</div>
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          {branches.map((b) => (
+            <button key={b.id} onClick={() => onSelect(b)} className="w-full text-left px-3 py-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50">
+              <div className="text-sm font-medium text-as-gray-800">{b.poslovalnica ? `Poslovalnica ${b.poslovalnica}` : 'Sedež'}</div>
+              <div className="text-xs text-as-gray-500">{[b.ulica, b.posta].filter(Boolean).join(', ')}</div>
+            </button>
+          ))}
+        </div>
+        <button onClick={() => { setChosen(null); setBranches([]); }} className="text-xs font-semibold text-as-gray-500">← Nazaj na seznam</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <select value={region} onChange={(e) => { setRegion(e.target.value); setKraj(''); }} className={inputCls}>
+          <option value="">Vse regije</option>
+          {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={kraj} onChange={(e) => setKraj(e.target.value)} className={inputCls}>
+          <option value="">Vsi kraji{region ? ` (${kraji.length})` : ''}</option>
+          {kraji.map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+      </div>
+      {!region && !kraj ? (
+        <div className="text-xs text-as-gray-400 py-3 text-center">Izberi regijo ali kraj za prikaz strank.</div>
+      ) : companies.length === 0 ? (
+        <div className="text-xs text-as-gray-400 py-3 text-center">Ni strank v tem območju.</div>
+      ) : (
+        <div className="space-y-1 max-h-72 overflow-y-auto">
+          <div className="text-xs font-semibold text-as-gray-400">{companies.length} strank</div>
+          {companies.map((co) => (
+            <button key={co.key} onClick={() => pick(co)} className="w-full text-left px-3 py-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50">
+              <div className="text-sm font-medium text-as-gray-800">{co.naziv}
+                {co.branches.length > 1 && <span className="text-xs font-normal text-as-gray-400"> · {co.branches.length} posl.</span>}
+              </div>
+              <div className="text-xs text-as-gray-500">{co.kraj}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlanningView({ currentUser, isAdmin, employees }) {
   const toDayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const [day, setDay] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 1); return toDayKey(d); }); // privzeto jutri
@@ -3270,6 +3397,7 @@ function PlanningView({ currentUser, isAdmin, employees }) {
   const [err, setErr] = useState('');
   const [flash, setFlash] = useState('');
   const [adding, setAdding] = useState(false);
+  const [addMode, setAddMode] = useState('search'); // 'search' | 'area'
   const [picked, setPicked] = useState(null);
   const [prep, setPrep] = useState('');
   const [saving, setSaving] = useState(false);
@@ -3360,6 +3488,29 @@ function PlanningView({ currentUser, isAdmin, employees }) {
     setEditId(null);
     await supabase.from('crm_plans').update({ prep_notes: editPrep.trim() || null, updated_at: new Date().toISOString() }).eq('id', s.id);
   }
+  async function repeatRoute(offset) {
+    if (stops.length === 0) return;
+    const [y, m, d] = day.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d)); dt.setUTCDate(dt.getUTCDate() + offset);
+    const target = dt.toISOString().slice(0, 10);
+    if (!confirm(`Kopiram ${stops.length} strank na ${target.split('-').reverse().join('. ')}?`)) return;
+    const rows = stops.map((s, i) => ({
+      plan_date: target,
+      customer_id: s.customer_id,
+      customer_name: s.customer_name,
+      customer_address: s.customer_address,
+      poslovalnica: s.poslovalnica,
+      prep_notes: s.prep_notes,
+      status: 'open',
+      sort_order: i,
+      created_by: currentUser?.email,
+      created_by_name: currentUser?.name,
+    }));
+    const { error } = await supabase.from('crm_plans').insert(rows);
+    if (error) { setErr(error.message || 'Napaka pri kopiranju.'); return; }
+    setFlash(`✓ Pot kopirana na ${target.split('-').reverse().join('. ')}`);
+    setDay(target);
+  }
   async function move(s, dir) {
     const idx = stops.findIndex((x) => x.id === s.id);
     const j = idx + dir;
@@ -3395,6 +3546,14 @@ function PlanningView({ currentUser, isAdmin, employees }) {
             <button onClick={() => setScope('all')} className="px-3 py-1.5" style={scope === 'all' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>Vsi komercialisti</button>
           </div>
         )}
+        {stops.length > 0 && !(isAdmin && scope === 'all') && (
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-as-gray-500">🔁 Ponovi pot čez:</span>
+            {[7, 14, 28].map((n) => (
+              <button key={n} onClick={() => repeatRoute(n)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border" style={{ borderColor: CRM_BG, color: CRM_COLOR, background: '#fff' }}>{n} dni</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {flash && <div className="flex items-center gap-2 p-3 rounded-xl border" style={{ background: '#DCFCE7', borderColor: '#86EFAC', color: '#166534' }}><CheckCircle2 className="w-4 h-4" /><span className="text-sm font-semibold">{flash}</span></div>}
@@ -3405,7 +3564,25 @@ function PlanningView({ currentUser, isAdmin, employees }) {
         adding ? (
           <div className="bg-white border-2 border-dashed rounded-2xl p-4 space-y-3" style={{ borderColor: CRM_BG }}>
             <div className="text-sm font-bold text-as-gray-700">Dodaj stranko na pot</div>
-            <CustomerPicker selected={picked} onSelect={(c) => setPicked(c)} onClear={() => setPicked(null)} />
+            {picked ? (
+              <div className="flex items-start justify-between gap-3 border border-as-gray-200 rounded-xl p-3 bg-as-gray-50">
+                <div className="min-w-0">
+                  <div className="font-semibold text-as-gray-800 truncate">{picked.naziv}{picked.poslovalnica ? <span className="text-xs font-normal text-as-gray-400"> · posl. {picked.poslovalnica}</span> : ''}</div>
+                  <div className="text-xs text-as-gray-500 truncate">{[picked.ulica, picked.posta].filter(Boolean).join(', ')}</div>
+                </div>
+                <button onClick={() => setPicked(null)} className="text-as-gray-400 hover:text-as-gray-600 flex-shrink-0"><X className="w-4 h-4" /></button>
+              </div>
+            ) : (
+              <>
+                <div className="inline-flex rounded-lg border border-as-gray-200 overflow-hidden text-xs font-semibold">
+                  <button onClick={() => setAddMode('search')} className="px-3 py-1.5" style={addMode === 'search' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>🔎 Iskanje</button>
+                  <button onClick={() => setAddMode('area')} className="px-3 py-1.5" style={addMode === 'area' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>📍 Po kraju / regiji</button>
+                </div>
+                {addMode === 'search'
+                  ? <CustomerPicker selected={null} onSelect={(c) => setPicked(c)} onClear={() => setPicked(null)} />
+                  : <AreaPicker onSelect={(c) => setPicked(c)} />}
+              </>
+            )}
             <FormField label="Kaj jih boš vprašal / pripravil?">
               <textarea value={prep} onChange={(e) => setPrep(e.target.value)} rows={2} className={inputCls + ' resize-none'} placeholder="npr. ponudba za sidra, reklamacija, novi katalog…" />
             </FormField>
