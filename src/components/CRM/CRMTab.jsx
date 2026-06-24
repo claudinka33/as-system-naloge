@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2, TrendingUp, Target } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { syncTaskWebhook } from '../../webhooks.js';
+import CalendarView from '../CalendarView';
 
 // Pošlje email + Outlook obvestilo odgovorni osebi (znova uporabi obstoječi task-sync n8n flow).
 // Vrne outlook_event_id (ali null). Napaka ne prekine shranjevanja.
@@ -3338,6 +3339,46 @@ function AreaPicker({ onSelect }) {
   const [loading, setLoading] = useState(false);
   const [region, setRegion] = useState('');
   const [kraj, setKraj] = useState('');
+  // Dodajanje nove stranke
+  const [addNew, setAddNew] = useState(false);
+  const [nNaziv, setNNaziv] = useState('');
+  const [nUlica, setNUlica] = useState('');
+  const [nPosta, setNPosta] = useState('');
+  const [nDavcna, setNDavcna] = useState('');
+  const [nPanoga, setNPanoga] = useState('');
+  const [savingNew, setSavingNew] = useState(false);
+  const [addErr, setAddErr] = useState('');
+
+  async function saveNew() {
+    const naziv = nNaziv.trim();
+    if (!naziv) { setAddErr('Vnesi naziv stranke.'); return; }
+    setSavingNew(true); setAddErr('');
+    try {
+      const davcna = nDavcna.trim() || null;
+      if (davcna) {
+        const { data: ex } = await supabase
+          .from('crm_customers')
+          .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+          .eq('davcna', davcna)
+          .order('poslovalnica', { ascending: true })
+          .limit(1);
+        if (ex && ex.length > 0) { setAddNew(false); onSelect(ex[0]); return; }
+      }
+      const { data, error } = await supabase
+        .from('crm_customers')
+        .insert([{ naziv, ulica: nUlica.trim() || null, posta: nPosta.trim() || null, davcna, panoga: nPanoga.trim() || null, poslovalnica: 0 }])
+        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+        .single();
+      if (error) throw error;
+      setAddNew(false);
+      onSelect(data);
+    } catch (e) {
+      setAddErr(e.message || 'Napaka pri shranjevanju stranke.');
+    } finally {
+      setSavingNew(false);
+    }
+  }
+
 
   // Naloži VSE stranke regije v straneh po 1000 (brez abecednega odreza)
   useEffect(() => {
@@ -3378,6 +3419,48 @@ function AreaPicker({ onSelect }) {
       .sort((a, b) => a.naziv.localeCompare(b.naziv, 'sl') || (a.poslovalnica || 0) - (b.poslovalnica || 0));
   }, [rows, kraj]);
 
+  if (addNew) {
+    return (
+      <div className="border border-as-gray-200 rounded-xl p-4 bg-as-gray-50 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-bold text-as-gray-800">➕ Nova stranka</div>
+          <button type="button" onClick={() => setAddNew(false)} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold">Prekliči</button>
+        </div>
+        {addErr && <div className="text-xs text-red-600">{addErr}</div>}
+        <div>
+          <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Naziv *</label>
+          <input type="text" value={nNaziv} onChange={(e) => setNNaziv(e.target.value)} className={inputCls} placeholder="Naziv stranke" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Ulica</label>
+            <input type="text" value={nUlica} onChange={(e) => setNUlica(e.target.value)} className={inputCls} placeholder="Ulica in hišna št." />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Pošta</label>
+            <input type="text" value={nPosta} onChange={(e) => setNPosta(e.target.value)} className={inputCls} placeholder="npr. 3000 Celje" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Davčna</label>
+            <input type="text" value={nDavcna} onChange={(e) => setNDavcna(e.target.value)} className={inputCls} placeholder="brez SI" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Panoga</label>
+            <input type="text" value={nPanoga} onChange={(e) => setNPanoga(e.target.value)} className={inputCls} placeholder="neobvezno" />
+          </div>
+        </div>
+        <button type="button" onClick={saveNew} disabled={savingNew}
+          className="w-full sm:w-auto justify-center px-4 py-3 text-white text-base font-semibold rounded-xl inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
+          {savingNew ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Shrani stranko in izberi
+        </button>
+        <p className="text-xs text-as-gray-400">Če davčna že obstaja, se izbere obstoječa stranka (brez podvajanja).</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
@@ -3407,7 +3490,80 @@ function AreaPicker({ onSelect }) {
           ))}
         </div>
       )}
+      <button type="button" onClick={() => { setAddErr(''); setNNaziv(''); setNUlica(''); setNPosta(''); setNDavcna(''); setNPanoga(''); setAddNew(true); }}
+        className="w-full py-2.5 rounded-xl border-2 border-dashed text-sm font-semibold inline-flex items-center justify-center gap-2 mt-1" style={{ borderColor: CRM_BG, color: CRM_COLOR }}>
+        <Plus className="w-4 h-4" /> Dodaj novo stranko
+      </button>
     </div>
+  );
+}
+
+// Koledar v Planiranju — isti CalendarView kot v Nalogah/prvi strani, prikaže naloge + teren (CRM načrti)
+function PlanningCalendar({ currentUser, isAdmin, employees }) {
+  const [tasks, setTasks] = useState([]);
+  const [plans, setPlans] = useState([]);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [calendarMode, setCalendarMode] = useState('month');
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [filterPerson, setFilterPerson] = useState('all');
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const [{ data: t }, { data: p }] = await Promise.all([
+        supabase.from('tasks')
+          .select('id,title,due_date,priority,status,assigned_to_emails,created_by_email,company,description')
+          .not('due_date', 'is', null).order('due_date', { ascending: true }).limit(3000),
+        supabase.from('crm_plans')
+          .select('id,plan_date,customer_name,customer_address,prep_notes,status,created_by,created_by_name')
+          .order('plan_date', { ascending: true }).limit(3000),
+      ]);
+      if (active) { setTasks(t || []); setPlans(p || []); }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const isAssignedToMe = (t) => (t.assigned_to_emails || []).includes(currentUser?.email);
+  const getEmployeeName = (email) => (employees.find((e) => e.email === email)?.name) || email;
+  const priorityLabels = { high: 'Visoka', medium: 'Srednja', low: 'Nizka' };
+
+  const extraEvents = useMemo(() => {
+    return (plans || [])
+      .filter((p) => {
+        if (!isAdmin && p.created_by !== currentUser?.email) return false;
+        if (filterPerson !== 'all' && p.created_by !== filterPerson) return false;
+        return true;
+      })
+      .map((p) => ({
+        id: 'plan_' + p.id,
+        date: p.plan_date,
+        title: (p.status === 'done' ? '✅ ' : '📍 ') + (p.customer_name || 'Obisk'),
+        color: '#16A34A',
+        sub: p.created_by_name || '',
+        detail: [p.customer_address, p.prep_notes && ('Priprava: ' + p.prep_notes)].filter(Boolean).join(' · '),
+      }));
+  }, [plans, filterPerson, isAdmin, currentUser]);
+
+  return (
+    <CalendarView
+      tasks={tasks}
+      currentUser={currentUser}
+      isAdmin={isAdmin}
+      isAssignedToMe={isAssignedToMe}
+      currentDate={currentDate}
+      setCurrentDate={setCurrentDate}
+      calendarMode={calendarMode}
+      setCalendarMode={setCalendarMode}
+      selectedDay={selectedDay}
+      setSelectedDay={setSelectedDay}
+      filterPerson={filterPerson}
+      setFilterPerson={setFilterPerson}
+      employees={employees}
+      onTaskClick={() => {}}
+      getEmployeeName={getEmployeeName}
+      priorityLabels={priorityLabels}
+      extraEvents={extraEvents}
+    />
   );
 }
 
@@ -3429,6 +3585,7 @@ function PlanningView({ currentUser, isAdmin, employees }) {
   const [scope, setScope] = useState('me');
   const [editId, setEditId] = useState(null);
   const [editPrep, setEditPrep] = useState('');
+  const [planMode, setPlanMode] = useState('route'); // 'route' | 'calendar'
 
   async function loadHistory(custIds) {
     const ids = [...new Set(custIds.filter(Boolean).map(String))];
@@ -3555,8 +3712,25 @@ function PlanningView({ currentUser, isAdmin, employees }) {
 
   const openCount = stops.filter((s) => s.status !== 'done').length;
 
+  const PlanToggle = (
+    <div className="inline-flex rounded-lg border border-as-gray-200 overflow-hidden text-sm font-semibold">
+      <button onClick={() => setPlanMode('route')} className="px-4 py-2 inline-flex items-center gap-1.5" style={planMode === 'route' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>🗺️ Pot</button>
+      <button onClick={() => setPlanMode('calendar')} className="px-4 py-2 inline-flex items-center gap-1.5" style={planMode === 'calendar' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>📅 Koledar</button>
+    </div>
+  );
+
+  if (planMode === 'calendar') {
+    return (
+      <div className="space-y-4 max-w-4xl mx-auto">
+        {PlanToggle}
+        <PlanningCalendar currentUser={currentUser} isAdmin={isAdmin} employees={employees} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
+      {PlanToggle}
       <div className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm">
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => shiftDay(-1)} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronRight className="w-5 h-5 rotate-180 text-as-gray-500" /></button>
