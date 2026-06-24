@@ -3301,6 +3301,14 @@ function krajFromPosta(posta) {
   const m = s.match(/^\s*\d{4}\s+(.+)$/);
   return ((m ? m[1] : s).trim()) || null;
 }
+// Normaliziran ključ kraja (ne glede na velike/male črke + presledke)
+function normKraj(k) { return String(k || '').trim().toUpperCase().replace(/\s+/g, ' '); }
+function titleKraj(k) {
+  const small = new Set(['pri', 'ob', 'na', 'v', 'nad', 'pod', 'za', 'in', 'pri']);
+  return String(k || '').toLowerCase().replace(/\s+/g, ' ').trim().split(' ')
+    .map((w, i) => (i > 0 && small.has(w)) ? w : (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
 
 function AreaPicker({ onSelect }) {
   const [all, setAll] = useState(null);
@@ -3328,12 +3336,14 @@ function AreaPicker({ onSelect }) {
   }, [all]);
 
   const kraji = useMemo(() => {
-    const set = new Set();
+    const map = new Map(); // normKey -> lep prikaz
     (all || []).forEach((c) => {
       if (region && regionFromPosta(c.posta) !== region) return;
-      const k = krajFromPosta(c.posta); if (k) set.add(k);
+      const k = krajFromPosta(c.posta); if (!k) return;
+      const key = normKraj(k);
+      if (!map.has(key)) map.set(key, titleKraj(k));
     });
-    return [...set].sort((a, b) => a.localeCompare(b, 'sl'));
+    return [...map.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label, 'sl'));
   }, [all, region]);
 
   // Vsaka poslovalnica je svoja vrstica (filtrirana po svoji pošti) — npr. Jager Maribor, Jager Celje ločeno
@@ -3342,7 +3352,7 @@ function AreaPicker({ onSelect }) {
     return (all || [])
       .filter((c) => {
         if (region && regionFromPosta(c.posta) !== region) return false;
-        if (kraj && krajFromPosta(c.posta) !== kraj) return false;
+        if (kraj && normKraj(krajFromPosta(c.posta)) !== kraj) return false;
         return true;
       })
       .sort((a, b) => a.naziv.localeCompare(b.naziv, 'sl') || (a.poslovalnica || 0) - (b.poslovalnica || 0));
@@ -3359,7 +3369,7 @@ function AreaPicker({ onSelect }) {
         </select>
         <select value={kraj} onChange={(e) => setKraj(e.target.value)} className={inputCls}>
           <option value="">Vsi kraji{region ? ` (${kraji.length})` : ''}</option>
-          {kraji.map((k) => <option key={k} value={k}>{k}</option>)}
+          {kraji.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
         </select>
       </div>
       {!region && !kraj ? (
