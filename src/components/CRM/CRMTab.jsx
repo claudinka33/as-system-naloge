@@ -7,7 +7,7 @@ import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, Chev
 import { supabase } from '../../supabase';
 import { syncTaskWebhook } from '../../webhooks.js';
 import CalendarView from '../CalendarView';
-import CenikView, { DealArticles } from './CenikView';
+import CenikView, { ArticleEditor } from './CenikView';
 
 // Pošlje email + Outlook obvestilo odgovorni osebi (znova uporabi obstoječi task-sync n8n flow).
 // Vrne outlook_event_id (ali null). Napaka ne prekine shranjevanja.
@@ -1934,15 +1934,11 @@ function PipelineView({ currentUser, isAdmin, employees }) {
 
 function DealCard({ deal, onMove, onSave, onDelete }) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState(deal.value_eur ?? '');
-  const [prob, setProb] = useState(deal.probability ?? stageById(deal.stage).prob);
-  const [close, setClose] = useState(deal.expected_close || '');
-  const [notes, setNotes] = useState(deal.notes || '');
   const st = stageById(deal.stage);
-
+  const nArt = Array.isArray(deal.artikli) ? deal.artikli.length : 0;
   return (
-    <div className="bg-white border border-as-gray-200 rounded-xl shadow-sm">
-      <button onClick={() => setOpen((o) => !o)} className="w-full text-left p-3">
+    <>
+      <button onClick={() => setOpen(true)} className="w-full text-left bg-white border border-as-gray-200 rounded-xl shadow-sm p-3 hover:border-as-gray-300 transition">
         <div className="font-semibold text-as-gray-800 text-sm leading-tight">{deal.naziv}</div>
         {deal.customer_name && <div className="text-xs text-as-gray-500 mt-0.5 truncate">{deal.customer_name}</div>}
         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -1950,12 +1946,29 @@ function DealCard({ deal, onMove, onSave, onDelete }) {
             <span className="text-xs font-bold" style={{ color: CRM_COLOR }}>{formatEur(deal.value_eur)}</span>
           )}
           <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: st.bg, color: st.color }}>{deal.probability ?? st.prob}%</span>
+          {nArt > 0 && <span className="text-xs text-as-gray-400">· {nArt} art.</span>}
         </div>
       </button>
+      {open && <DealEditModal deal={deal} onMove={onMove} onSave={onSave} onDelete={onDelete} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
 
-      {open && (
-        <div className="px-3 pb-3 pt-1 border-t border-as-gray-100 space-y-2.5">
-          {/* Premik faze */}
+function DealEditModal({ deal, onMove, onSave, onDelete, onClose }) {
+  const [value, setValue] = useState(deal.value_eur ?? '');
+  const [prob, setProb] = useState(deal.probability ?? stageById(deal.stage).prob);
+  const [close, setClose] = useState(deal.expected_close || '');
+  const [notes, setNotes] = useState(deal.notes || '');
+  const items = Array.isArray(deal.artikli) ? deal.artikli : [];
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-3 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-as-gray-100">
+          <h3 className="font-bold text-as-gray-800 pr-4">{deal.naziv}</h3>
+          <button onClick={onClose} className="text-as-gray-400 hover:text-as-gray-700 flex-shrink-0"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 space-y-3">
           <div>
             <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Faza</label>
             <select value={deal.stage} onChange={(e) => onMove(deal, e.target.value)} className={inputCls}>
@@ -1965,7 +1978,7 @@ function DealCard({ deal, onMove, onSave, onDelete }) {
           {deal.stage === 'izgubljeno' && deal.lost_reason && (
             <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">Razlog: {deal.lost_reason}</div>
           )}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Vrednost €</label>
               <input type="number" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} placeholder="npr. 5000" />
@@ -1983,20 +1996,24 @@ function DealCard({ deal, onMove, onSave, onDelete }) {
             <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Opombe</label>
             <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls + ' resize-none'} />
           </div>
-          <DealArticles deal={deal} onSave={onSave} />
-          <div className="flex items-center gap-2">
-            <button onClick={() => onSave(deal, { value_eur: value === '' ? null : Number(value), probability: prob === '' ? null : Number(prob), expected_close: close || null, notes: notes || null })}
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Artikli posla ({items.length})</label>
+            <ArticleEditor items={items} onChange={(next) => onSave(deal, { artikli: next })} onSetValue={(s) => setValue(String(Math.round(s)))} />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button onClick={() => { onSave(deal, { value_eur: value === '' ? null : Number(value), probability: prob === '' ? null : Number(prob), expected_close: close || null, notes: notes || null }); onClose(); }}
               className="flex-1 justify-center px-3 py-2.5 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2" style={{ background: CRM_COLOR }}>
               <Save className="w-4 h-4" /> Shrani
             </button>
-            <button onClick={() => onDelete(deal)} className="p-2.5 text-as-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+            <button onClick={() => { if (confirm('Izbrišem ta posel?')) { onDelete(deal); onClose(); } }} className="p-2.5 text-as-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
               <Trash2 className="w-5 h-5" />
             </button>
           </div>
           {deal.created_by_name && <div className="text-xs text-as-gray-400">Lastnik: {deal.created_by_name}</div>}
         </div>
-      )}
-    </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -2008,6 +2025,7 @@ function DealForm({ currentUser, onClose, onSaved, setError }) {
   const [stage, setStage] = useState('nov_stik');
   const [close, setClose] = useState('');
   const [notes, setNotes] = useState('');
+  const [artikli, setArtikli] = useState([]);
   const [loading, setLoading] = useState(false);
 
   async function submit(e) {
@@ -2026,6 +2044,7 @@ function DealForm({ currentUser, onClose, onSaved, setError }) {
         probability: st.prob,
         expected_close: close || null,
         notes: notes || null,
+        artikli,
         created_by: currentUser?.email,
         created_by_name: currentUser?.name,
       }]);
@@ -2069,6 +2088,9 @@ function DealForm({ currentUser, onClose, onSaved, setError }) {
       </FormField>
       <FormField label="Opombe">
         <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls + ' resize-none'} placeholder="Kratek opis posla, dogovori..." />
+      </FormField>
+      <FormField label="Artikli posla (cenik)">
+        <ArticleEditor items={artikli} onChange={setArtikli} onSetValue={(s) => setValue(String(Math.round(s)))} />
       </FormField>
       <SubmitBtn loading={loading} color={CRM_COLOR} label="Shrani posel" />
     </form>
