@@ -45,7 +45,7 @@ function ArticlePicker({ onPick, placeholder }) {
         .select('sifra,ean,naziv,naziv2,cena_neto,enota,na_povprasevanje,skupina,vir')
         .or(`sifra.ilike.%${t}%,naziv.ilike.%${t}%,naziv2.ilike.%${t}%`)
         .order('vir', { ascending: true })
-        .limit(50);
+        .limit(500);
       if (!error) { setRes(data || []); setOpenList(true); }
       setLoading(false);
     }, 250);
@@ -61,7 +61,8 @@ function ArticlePicker({ onPick, placeholder }) {
         {loading && <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-as-gray-400" />}
       </div>
       {openList && res.length > 0 && (
-        <div className="absolute z-30 mt-1 w-full max-h-80 overflow-auto bg-white border border-as-gray-200 rounded-xl shadow-lg">
+        <div className="absolute z-30 mt-1 w-full max-h-96 overflow-auto bg-white border border-as-gray-200 rounded-xl shadow-lg">
+          <div className="sticky top-0 bg-as-gray-50 text-[11px] text-as-gray-500 px-3 py-1.5 border-b border-as-gray-100">{res.length} zadetkov{res.length >= 500 ? '+ (zoži iskanje)' : ''}</div>
           {res.map((a) => (
             <button type="button" key={a.sifra} onClick={() => { onPick(a); setOpenList(false); setQ(''); setRes([]); }}
               className="w-full text-left px-3 py-2 hover:bg-as-gray-50 border-b border-as-gray-100 last:border-0">
