@@ -51,12 +51,11 @@ function ArticlePicker({ onPick, placeholder }) {
     if (term.length < 2) { setRes([]); setOpenList(false); return; }
     tRef.current = setTimeout(async () => {
       setLoading(true);
-      const t = term.replace(/[,%()*]/g, ' ').trim();
-      const { data, error } = await supabase.from('cenik')
-        .select('sifra,ean,naziv,naziv2,cena_neto,enota,na_povprasevanje,skupina,vir')
-        .or(`sifra.ilike.%${t}%,naziv.ilike.%${t}%,naziv2.ilike.%${t}%`)
-        .order('vir', { ascending: true })
-        .limit(500);
+      const toks = term.replace(/[,%()*]/g, ' ').split(/\s+/).filter(Boolean);
+      let qb = supabase.from('cenik')
+        .select('sifra,ean,naziv,naziv2,cena_neto,enota,na_povprasevanje,skupina,vir');
+      toks.forEach((tok) => { qb = qb.or(`sifra.ilike.%${tok}%,naziv.ilike.%${tok}%,naziv2.ilike.%${tok}%`); });
+      const { data, error } = await qb.order('vir', { ascending: true }).limit(500);
       if (!error) { setRes((data || []).slice().sort(cmpArticle)); setOpenList(true); }
       setLoading(false);
     }, 250);
@@ -222,9 +221,9 @@ function CenikEditor() {
   }
   async function search() {
     setLoading(true); setMsg('');
-    const t = q.trim().replace(/[,%()*]/g, ' ').trim();
+    const toks = q.trim().replace(/[,%()*]/g, ' ').split(/\s+/).filter(Boolean);
     let qy = supabase.from('cenik').select('*').order('skupina').order('naziv2').limit(600);
-    if (t.length >= 2) qy = qy.or(`sifra.ilike.%${t}%,naziv.ilike.%${t}%,naziv2.ilike.%${t}%`);
+    toks.forEach((tok) => { qy = qy.or(`sifra.ilike.%${tok}%,naziv.ilike.%${tok}%,naziv2.ilike.%${tok}%`); });
     const { data, error } = await qy;
     if (!error) { const s = (data || []).slice().sort(cmpArticle); setRows(s); initDrafts(s); }
     setLoading(false);
