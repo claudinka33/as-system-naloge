@@ -7,6 +7,7 @@ import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, Chev
 import { supabase } from '../../supabase';
 import { syncTaskWebhook } from '../../webhooks.js';
 import CalendarView from '../CalendarView';
+import CenikView, { DealArticles } from './CenikView';
 
 // Pošlje email + Outlook obvestilo odgovorni osebi (znova uporabi obstoječi task-sync n8n flow).
 // Vrne outlook_event_id (ali null). Napaka ne prekine shranjevanja.
@@ -174,6 +175,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
           <SubTab active={view === 'reports'} onClick={() => setView('reports')} icon={<TrendingUp className="w-4 h-4" />} label="Poročila" />
           <SubTab active={view === 'analysis'} onClick={() => setView('analysis')} icon={<User className="w-4 h-4" />} label="Stranke" />
           <SubTab active={view === 'planning'} onClick={() => setView('planning')} icon={<span className="text-sm">🗓️</span>} label="Planiranje" />
+          <SubTab active={view === 'cenik'} onClick={() => setView('cenik')} icon={<FileText className="w-4 h-4" />} label="Cenik" />
         </div>
         {(isAdmin || isTeamLead) && (
           <select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}
@@ -214,6 +216,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       {view === 'reports' && <ReportsView visits={scopedVisits} loading={loading} />}
       {view === 'analysis' && <StrankeView visits={scopedVisits} loading={loading} isAdmin={isAdmin} />}
       {view === 'planning' && <PlanningView currentUser={currentUser} isAdmin={isAdmin} employees={employees} />}
+      {view === 'cenik' && <CenikView isAdmin={isAdmin} />}
     </div>
   );
 }
@@ -1780,9 +1783,9 @@ function OutcomePicker({ value, onChange }) {
 
 // ─── PIPELINE / POSLI ───
 const DEAL_STAGES = [
-  { id: 'nov_stik', name: 'Nov stik', color: '#6B7280', bg: '#F3F4F6', prob: 10 },
+  { id: 'nov_stik', name: 'Prvi pogovor', color: '#6B7280', bg: '#F3F4F6', prob: 10 },
   { id: 'ponudba', name: 'Ponudba', color: '#D97706', bg: '#FEF3C7', prob: 40 },
-  { id: 'pogajanja', name: 'Pogajanja', color: '#1E40AF', bg: '#DBEAFE', prob: 70 },
+  { id: 'pogajanja', name: 'Pogajanje', color: '#1E40AF', bg: '#DBEAFE', prob: 70 },
   { id: 'narocilo', name: 'Naročilo', color: '#16A34A', bg: '#DCFCE7', prob: 100 },
   { id: 'izgubljeno', name: 'Izgubljeno', color: '#DC2626', bg: '#FEE2E2', prob: 0 },
 ];
@@ -1980,6 +1983,7 @@ function DealCard({ deal, onMove, onSave, onDelete }) {
             <label className="block text-xs font-semibold text-as-gray-500 uppercase mb-1">Opombe</label>
             <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls + ' resize-none'} />
           </div>
+          <DealArticles deal={deal} onSave={onSave} />
           <div className="flex items-center gap-2">
             <button onClick={() => onSave(deal, { value_eur: value === '' ? null : Number(value), probability: prob === '' ? null : Number(prob), expected_close: close || null, notes: notes || null })}
               className="flex-1 justify-center px-3 py-2.5 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2" style={{ background: CRM_COLOR }}>
