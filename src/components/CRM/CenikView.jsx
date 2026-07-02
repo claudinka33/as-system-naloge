@@ -45,7 +45,7 @@ function ArticlePicker({ onPick, placeholder }) {
         .select('sifra,ean,naziv,naziv2,cena_neto,enota,na_povprasevanje,skupina,vir')
         .or(`sifra.ilike.%${t}%,naziv.ilike.%${t}%,naziv2.ilike.%${t}%`)
         .order('vir', { ascending: true })
-        .limit(25);
+        .limit(50);
       if (!error) { setRes(data || []); setOpenList(true); }
       setLoading(false);
     }, 250);
@@ -211,7 +211,7 @@ function CenikEditor() {
   async function search() {
     setLoading(true); setMsg('');
     const t = q.trim().replace(/[,%()*]/g, ' ').trim();
-    let qy = supabase.from('cenik').select('*').order('vir').order('skupina').limit(80);
+    let qy = supabase.from('cenik').select('*').order('skupina').order('naziv2').limit(600);
     if (t.length >= 2) qy = qy.or(`sifra.ilike.%${t}%,naziv.ilike.%${t}%,naziv2.ilike.%${t}%`);
     const { data, error } = await qy;
     if (!error) { setRows(data || []); initDrafts(data || []); }
@@ -284,7 +284,10 @@ function CenikEditor() {
         </div>
       )}
 
-      {msg && <div className="text-sm font-semibold" style={{ color: msg.startsWith('Napaka') ? '#b91c1c' : '#16a34a' }}>{msg}</div>}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs text-as-gray-500">Prikazanih: {rows.length}{rows.length >= 600 ? '+ (zoži iskanje)' : ''}</div>
+        {msg && <div className="text-sm font-semibold" style={{ color: msg.startsWith('Napaka') ? '#b91c1c' : '#16a34a' }}>{msg}</div>}
+      </div>
 
       {loading ? (
         <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-as-gray-400" /></div>
