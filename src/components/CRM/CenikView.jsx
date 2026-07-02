@@ -19,6 +19,17 @@ function fmt(n, dec = 2) {
   return Number(n).toLocaleString('sl-SI', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 const unitLabel = (u) => UNIT_LABEL[u] || '';
+// dimenzijski kljuc za sortiranje (premer x dolzina): '3x8', '10x90', 'M 08 X 060'
+const dimNums = (s) => {
+  const m = String(s || '').match(/\d+(?:[.,]\d+)?/g) || [];
+  return [parseFloat((m[0] || '0').replace(',', '.')) || 0, parseFloat((m[1] || '0').replace(',', '.')) || 0];
+};
+const cmpArticle = (a, b) => {
+  const na = a.naziv || '', nb = b.naziv || '';
+  if (na !== nb) return na < nb ? -1 : 1;
+  const da = dimNums(a.naziv2), db = dimNums(b.naziv2);
+  return (da[0] - db[0]) || (da[1] - db[1]);
+};
 
 const NETO_NOTE = (
   <div className="text-xs text-as-gray-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -46,7 +57,7 @@ function ArticlePicker({ onPick, placeholder }) {
         .or(`sifra.ilike.%${t}%,naziv.ilike.%${t}%,naziv2.ilike.%${t}%`)
         .order('vir', { ascending: true })
         .limit(500);
-      if (!error) { setRes(data || []); setOpenList(true); }
+      if (!error) { setRes((data || []).slice().sort(cmpArticle)); setOpenList(true); }
       setLoading(false);
     }, 250);
     return () => { if (tRef.current) clearTimeout(tRef.current); };
@@ -215,7 +226,7 @@ function CenikEditor() {
     let qy = supabase.from('cenik').select('*').order('skupina').order('naziv2').limit(600);
     if (t.length >= 2) qy = qy.or(`sifra.ilike.%${t}%,naziv.ilike.%${t}%,naziv2.ilike.%${t}%`);
     const { data, error } = await qy;
-    if (!error) { setRows(data || []); initDrafts(data || []); }
+    if (!error) { const s = (data || []).slice().sort(cmpArticle); setRows(s); initDrafts(s); }
     setLoading(false);
   }
   useEffect(() => { search(); }, []);
