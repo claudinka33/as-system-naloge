@@ -1,6 +1,7 @@
 // AssemblyWorkAnalysis.jsx — Analiza vnosov delavk po delovnih nalogih (line-item)
 // Bere assembly_work_log + assembly_work_stops. Dnevno / Mesečno.
-// Vrstice "Po delavkah" in "Po šifrah" se razširijo v podrobnosti (nalog, artikel, dimenzija, šifra, norma, %, datum).
+// Enotni stolpci povsod. Dnevno: vsi vnosi vidni + vrstica SKUPAJ na delavko/šifro.
+// Mesečno: vrstica delavke/šifre s skupnim seštevkom, klik razpre vnose po datumih (isti stolpci).
 import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, BarChart3, ChevronLeft, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { getAssemblyWorkLog, getAssemblyWorkStops, formatNumber, SLOVENIAN_MONTHS } from '../../lib/assemblyApi.js';
@@ -23,8 +24,8 @@ const segLabel = (r) => {
   return r.faza ? `${s} · ${r.faza === 'vijacenje' ? 'vijačenje' : r.faza}` : s;
 };
 const fmtDate = (d) => (d ? new Date(d + 'T12:00:00').toLocaleDateString('sl-SI') : '—');
-const artDim = (r) => [r.artikel, r.dimenzija].filter(Boolean).join(' · ') || '—';
 const rowPct = (r) => pct(num(r.kolicina), num(r.normativ_kos_h) * num(r.cas_dela_ur));
+const pctTxt = (p) => (p == null ? '—' : `${p}%`);
 
 function addDays(dateStr, n) { const d = new Date(dateStr); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
 function monthRange(y, m) {
@@ -109,25 +110,28 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
       const wn = e.assembly_workers?.name || '(staro)';
       (byWorker[wn] = byWorker[wn] || { name: wn, kos: 0, dela: 0, stroja: 0, exp: 0, nalogi: 0, rows: [] });
       byWorker[wn].kos += k; byWorker[wn].dela += cd; byWorker[wn].exp += exp; byWorker[wn].nalogi += 1;
+      byWorker[wn].rows.push({ id: `old-${e.id}`, date: e.date, delovni_nalog: '(staro)', segment: null, artikel: null, dimenzija: null, sifra: '(staro)', kolicina: k, normativ_kos_h: cd > 0 ? exp / cd : 0, cas_dela_ur: cd, cas_stroja_ur: 0 });
       const sf = '(staro)';
       (bySifra[sf] = bySifra[sf] || { sifra: sf, artikel: null, dimenzija: null, kos: 0, dela: 0, stroja: 0, exp: 0, nh: 0, nalogi: 0, rows: [] });
       bySifra[sf].kos += k; bySifra[sf].dela += cd; bySifra[sf].exp += exp; bySifra[sf].nalogi += 1;
+      bySifra[sf].rows.push({ id: `olds-${e.id}`, date: e.date, worker_name: wn, delovni_nalog: '(staro)', segment: null, artikel: null, dimenzija: null, sifra: sf, kolicina: k, normativ_kos_h: cd > 0 ? exp / cd : 0, cas_dela_ur: cd, cas_stroja_ur: 0 });
       const bd = parseBd(e.breakdowns);
       if (bd.cas) {
         stopHours += bd.cas; oldStops += 1;
         const rs = bd.reason || 'staro';
         (byReason[rs] = byReason[rs] || { reason: rs, count: 0, hours: 0 });
         byReason[rs].count += 1; byReason[rs].hours += bd.cas;
-        stopRows.push({ id: `old-${e.id}`, date: e.date, worker_name: wn, reason: rs, delovni_nalog: null, cas_ur: bd.cas, opomba: '(staro)' });
+        stopRows.push({ id: `oldz-${e.id}`, date: e.date, worker_name: wn, reason: rs, delovni_nalog: null, cas_ur: bd.cas, opomba: '(staro)' });
       }
     }
+    const sortRows = (rows) => [...rows].sort((x, y) => String(x.date).localeCompare(String(y.date)));
     return {
       kos, dela, stroja, expected,
       doseganje: pct(kos, expected),
       nalogi: logs.length + oldNalogi,
       stopCount: stops.length + oldStops, stopHours,
-      workers: Object.values(byWorker).sort((x, y) => y.kos - x.kos),
-      sifre: Object.values(bySifra).sort((x, y) => y.kos - x.kos),
+      workers: Object.values(byWorker).map((w) => ({ ...w, rows: sortRows(w.rows) })).sort((x, y) => y.kos - x.kos),
+      sifre: Object.values(bySifra).map((s) => ({ ...s, rows: sortRows(s.rows) })).sort((x, y) => y.kos - x.kos),
       reasons: Object.values(byReason).sort((x, y) => y.hours - x.hours),
       stopRows: stopRows.sort((x, y) => String(x.date).localeCompare(String(y.date))),
     };
@@ -136,12 +140,24 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
   const monthLabel = `${SLOVENIAN_MONTHS[month - 1]} ${year}`;
   const prevMonth = () => { if (month === 1) { setMonth(12); setYear(year - 1); } else setMonth(month - 1); };
   const nextMonth = () => { if (month === 12) { setMonth(1); setYear(year + 1); } else setMonth(month + 1); };
-  const toggle = (setter) => (key) => setter((p) => ({ ...p, [key]: !p[key] }));
-  const toggleWorker = toggle(setOpenWorkers);
-  const toggleSifra = toggle(setOpenSifre);
+  const toggleWorker = (k) => setOpenWorkers((p) => ({ ...p, [k]: !p[k] }));
+  const toggleSifra = (k) => setOpenSifre((p) => ({ ...p, [k]: !p[k] }));
 
-  const DETAIL_HEAD_W = ['Datum', 'Nalog', 'Segment', 'Artikel', 'Dimenzija', 'Šifra', 'Kos', 'Norm. (kos/h)', 'Čas (h)', '%'];
-  const DETAIL_HEAD_S = ['Datum', 'Delavka', 'Nalog', 'Segment', 'Artikel', 'Dimenzija', 'Kos', 'Norm. (kos/h)', 'Čas (h)', '%'];
+  // Stolpci — POVSOD ISTI
+  const HEAD_W = ['Delavka', 'Datum', 'Nalog', 'Segment', 'Artikel', 'Dimenzija', 'Šifra', 'Količina', 'Norm. (kos/h)', 'Čas dela (h)', 'Čas stroja (h)', 'Doseganje'];
+  const HEAD_S = ['Šifra', 'Artikel', 'Dimenzija', 'Delavka', 'Datum', 'Nalog', 'Segment', 'Količina', 'Norm. (kos/h)', 'Čas dela (h)', 'Doseganje'];
+
+  const workerEntryCells = (r, showName) => [
+    showName ? (r.worker_name || '—') : '', fmtDate(r.date), r.delovni_nalog || '—', segLabel(r),
+    r.artikel || '—', r.dimenzija || '—', r.sifra || '—',
+    formatNumber(num(r.kolicina)), num(r.normativ_kos_h) > 0 ? formatNumber(Math.round(num(r.normativ_kos_h))) : '—',
+    h1(r.cas_dela_ur), h1(r.cas_stroja_ur), pctTxt(rowPct(r)),
+  ];
+  const sifraEntryCells = (r) => [
+    '', r.artikel || '—', r.dimenzija || '—', r.worker_name || '—', fmtDate(r.date), r.delovni_nalog || '—', segLabel(r),
+    formatNumber(num(r.kolicina)), num(r.normativ_kos_h) > 0 ? formatNumber(Math.round(num(r.normativ_kos_h))) : '—',
+    h1(r.cas_dela_ur), pctTxt(rowPct(r)),
+  ];
 
   return (
     <div className="space-y-5">
@@ -184,76 +200,80 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
         </div>
       )}
 
-      {/* Po delavkah — klik na vrstico odpre podrobnosti */}
+      {/* Po delavkah */}
       {a.workers.length > 0 && (
-        <Section title="Po delavkah" hint="Klikni delavko za podrobnosti">
-          <Table head={['Delavka', 'Nalogi', 'Količina', 'Čas dela (h)', 'Čas stroja (h)', 'Doseganje']}>
-            {a.workers.map((w) => (
-              <React.Fragment key={w.name}>
-                <tr className="border-b border-as-gray-100 cursor-pointer hover:bg-as-gray-50" onClick={() => toggleWorker(w.name)}>
-                  <td className="p-2 text-left font-medium">
-                    <span className="inline-flex items-center gap-1">
-                      <ChevronDown className={`w-4 h-4 transition ${openWorkers[w.name] ? '' : '-rotate-90'}`} style={{ color: AS_RED }} />
-                      {w.name}
-                    </span>
-                  </td>
-                  <td className="p-2 text-right">{w.nalogi}</td>
-                  <td className="p-2 text-right">{formatNumber(w.kos)}</td>
-                  <td className="p-2 text-right">{h1(w.dela)}</td>
-                  <td className="p-2 text-right">{h1(w.stroja)}</td>
-                  <td className="p-2 text-right font-semibold">{w.exp > 0 ? `${pct(w.kos, w.exp)}%` : '—'}</td>
-                </tr>
-                {openWorkers[w.name] && (
-                  <tr className="border-b border-as-gray-100">
-                    <td colSpan={6} className="p-0">
-                      <DetailTable head={DETAIL_HEAD_W} rows={w.rows} cells={(r) => [
-                        fmtDate(r.date), r.delovni_nalog || '—', segLabel(r), r.artikel || '—', r.dimenzija || '—', r.sifra || '—',
-                        formatNumber(num(r.kolicina)), num(r.normativ_kos_h) > 0 ? formatNumber(num(r.normativ_kos_h)) : '—',
-                        h1(r.cas_dela_ur), rowPct(r) == null ? '—' : `${rowPct(r)}%`,
-                      ]} />
-                    </td>
+        <Section title="Po delavkah" hint={mode === 'month' ? 'Klikni delavko, da razpreš vnose po datumih' : null}>
+          <Table head={HEAD_W}>
+            {a.workers.map((w) => {
+              const totalCells = [
+                w.name, mode === 'day' ? fmtDate(mode === 'day' ? date : null) : monthLabel, `${w.nalogi}× nalog`, '—', '—', '—', '—',
+                formatNumber(w.kos), '—', h1(w.dela), h1(w.stroja), w.exp > 0 ? `${pct(w.kos, w.exp)}%` : '—',
+              ];
+              if (mode === 'day') {
+                return (
+                  <React.Fragment key={w.name}>
+                    {w.rows.map((r, i) => <Row key={r.id ?? i} cells={workerEntryCells(r, true)} />)}
+                    <BoldRow cells={totalCells.map((c, i) => (i === 0 ? `SKUPAJ — ${w.name}` : c)).map((c, i) => (i === 1 ? '' : c))} />
+                  </React.Fragment>
+                );
+              }
+              return (
+                <React.Fragment key={w.name}>
+                  <tr className="border-b border-as-gray-100 cursor-pointer hover:bg-as-gray-50 font-semibold" onClick={() => toggleWorker(w.name)} style={{ background: '#fafafa' }}>
+                    {totalCells.map((c, i) => (
+                      <td key={i} className={`p-2 ${i === 0 ? 'text-left' : 'text-right'}`}>
+                        {i === 0 ? (
+                          <span className="inline-flex items-center gap-1">
+                            <ChevronDown className={`w-4 h-4 transition ${openWorkers[w.name] ? '' : '-rotate-90'}`} style={{ color: AS_RED }} />
+                            {c}
+                          </span>
+                        ) : c}
+                      </td>
+                    ))}
                   </tr>
-                )}
-              </React.Fragment>
-            ))}
+                  {openWorkers[w.name] && w.rows.map((r, i) => <Row key={r.id ?? i} cells={workerEntryCells(r, false)} />)}
+                </React.Fragment>
+              );
+            })}
           </Table>
         </Section>
       )}
 
-      {/* Po šifrah — klik na vrstico odpre podrobnosti */}
+      {/* Po šifrah */}
       {a.sifre.length > 0 && (
-        <Section title="Po šifrah" hint="Klikni šifro za podrobnosti">
-          <Table head={['Šifra', 'Artikel', 'Dimenzija', 'Nalogi', 'Količina', 'Norm. (kos/h)', 'Čas dela (h)', 'Doseganje']}>
-            {a.sifre.map((s) => (
-              <React.Fragment key={s.sifra}>
-                <tr className="border-b border-as-gray-100 cursor-pointer hover:bg-as-gray-50" onClick={() => toggleSifra(s.sifra)}>
-                  <td className="p-2 text-left font-medium">
-                    <span className="inline-flex items-center gap-1">
-                      <ChevronDown className={`w-4 h-4 transition ${openSifre[s.sifra] ? '' : '-rotate-90'}`} style={{ color: AS_RED }} />
-                      {s.sifra}
-                    </span>
-                  </td>
-                  <td className="p-2 text-right">{s.artikel || '—'}</td>
-                  <td className="p-2 text-right">{s.dimenzija || '—'}</td>
-                  <td className="p-2 text-right">{s.nalogi}</td>
-                  <td className="p-2 text-right">{formatNumber(s.kos)}</td>
-                  <td className="p-2 text-right">{s.nh > 0 ? formatNumber(s.nh) : '—'}</td>
-                  <td className="p-2 text-right">{h1(s.dela)}</td>
-                  <td className="p-2 text-right font-semibold">{s.exp > 0 ? `${pct(s.kos, s.exp)}%` : '—'}</td>
-                </tr>
-                {openSifre[s.sifra] && (
-                  <tr className="border-b border-as-gray-100">
-                    <td colSpan={8} className="p-0">
-                      <DetailTable head={DETAIL_HEAD_S} rows={s.rows} cells={(r) => [
-                        fmtDate(r.date), r.worker_name || '—', r.delovni_nalog || '—', segLabel(r), r.artikel || '—', r.dimenzija || '—',
-                        formatNumber(num(r.kolicina)), num(r.normativ_kos_h) > 0 ? formatNumber(num(r.normativ_kos_h)) : '—',
-                        h1(r.cas_dela_ur), rowPct(r) == null ? '—' : `${rowPct(r)}%`,
-                      ]} />
-                    </td>
+        <Section title="Po šifrah" hint={mode === 'month' ? 'Klikni šifro, da razpreš vnose po datumih' : null}>
+          <Table head={HEAD_S}>
+            {a.sifre.map((s) => {
+              const totalCells = [
+                s.sifra, s.artikel || '—', s.dimenzija || '—', '—', mode === 'day' ? '' : monthLabel, `${s.nalogi}× nalog`, '—',
+                formatNumber(s.kos), s.nh > 0 ? formatNumber(s.nh) : '—', h1(s.dela), s.exp > 0 ? `${pct(s.kos, s.exp)}%` : '—',
+              ];
+              if (mode === 'day') {
+                return (
+                  <React.Fragment key={s.sifra}>
+                    {s.rows.map((r, i) => <Row key={r.id ?? i} cells={[s.sifra, ...sifraEntryCells(r).slice(1)]} />)}
+                    <BoldRow cells={totalCells.map((c, i) => (i === 0 ? `SKUPAJ — ${s.sifra}` : c))} />
+                  </React.Fragment>
+                );
+              }
+              return (
+                <React.Fragment key={s.sifra}>
+                  <tr className="border-b border-as-gray-100 cursor-pointer hover:bg-as-gray-50 font-semibold" onClick={() => toggleSifra(s.sifra)} style={{ background: '#fafafa' }}>
+                    {totalCells.map((c, i) => (
+                      <td key={i} className={`p-2 ${i === 0 ? 'text-left' : 'text-right'}`}>
+                        {i === 0 ? (
+                          <span className="inline-flex items-center gap-1">
+                            <ChevronDown className={`w-4 h-4 transition ${openSifre[s.sifra] ? '' : '-rotate-90'}`} style={{ color: AS_RED }} />
+                            {c}
+                          </span>
+                        ) : c}
+                      </td>
+                    ))}
                   </tr>
-                )}
-              </React.Fragment>
-            ))}
+                  {openSifre[s.sifra] && s.rows.map((r, i) => <Row key={r.id ?? i} cells={sifraEntryCells(r)} />)}
+                </React.Fragment>
+              );
+            })}
           </Table>
         </Section>
       )}
@@ -263,14 +283,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
         <Section title="Zastoji">
           <Table head={['Datum', 'Delavka', 'Razlog', 'Nalog', 'Čas (h)', 'Opomba']}>
             {a.stopRows.map((s) => (
-              <tr key={s.id} className="border-b border-as-gray-100">
-                <td className="p-2 text-left font-medium">{fmtDate(s.date)}</td>
-                <td className="p-2 text-right">{s.worker_name || '—'}</td>
-                <td className="p-2 text-right">{s.reason || '—'}</td>
-                <td className="p-2 text-right">{s.delovni_nalog || 'splošno'}</td>
-                <td className="p-2 text-right">{h1(s.cas_ur)}</td>
-                <td className="p-2 text-right">{s.opomba || '—'}</td>
-              </tr>
+              <Row key={s.id} cells={[fmtDate(s.date), s.worker_name || '—', s.reason || '—', s.delovni_nalog || 'splošno', h1(s.cas_ur), s.opomba || '—']} />
             ))}
           </Table>
         </Section>
@@ -339,30 +352,17 @@ function Table({ head, children }) {
     </div>
   );
 }
-function DetailTable({ head, rows, cells }) {
-  return (
-    <div className="overflow-x-auto rounded-lg m-2" style={{ background: '#fafafa', border: '1px solid #eee' }}>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-as-gray-500 border-b border-as-gray-200">
-            {head.map((h, i) => <th key={i} className={`p-2 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, idx) => (
-            <tr key={r.id ?? idx} className="border-b border-as-gray-100">
-              {cells(r).map((c, i) => <td key={i} className={`p-2 ${i === 0 ? 'text-left' : 'text-right'}`}>{c}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 function Row({ cells }) {
   return (
     <tr className="border-b border-as-gray-100">
       {cells.map((c, i) => <td key={i} className={`p-2 ${i === 0 ? 'text-left font-medium' : 'text-right'}`}>{c}</td>)}
+    </tr>
+  );
+}
+function BoldRow({ cells }) {
+  return (
+    <tr className="border-b-2 border-as-gray-200 font-semibold" style={{ background: '#fafafa' }}>
+      {cells.map((c, i) => <td key={i} className={`p-2 ${i === 0 ? 'text-left' : 'text-right'}`}>{c}</td>)}
     </tr>
   );
 }
