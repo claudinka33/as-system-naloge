@@ -30,12 +30,6 @@ const SECTIONS = [
     { key: 'display_order', label: 'Vrstni red', type: 'number' },
     { key: 'active', label: 'Aktivna', type: 'bool', default: true },
   ] } },
-  { key: 'sifre', label: 'Šifre / normativi', config: { table: 'assembly_sifra_normativ', order: 'sifra', fields: [
-    { key: 'sifra', label: 'Šifra', type: 'text', required: true },
-    { key: 'naziv', label: 'Naziv', type: 'text' },
-    { key: 'normativ_kos_h', label: 'Normativ (kos/h)', type: 'number' },
-    { key: 'active', label: 'Aktivna', type: 'bool', default: true },
-  ] } },
   { key: 'razlogi', label: 'Razlogi zastoja', config: { table: 'assembly_stop_reasons', order: 'display_order', fields: [
     { key: 'reason', label: 'Razlog', type: 'text', required: true },
     { key: 'display_order', label: 'Vrstni red', type: 'number' },
