@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Save, X, Trash2, Loader2 } from 'lucide-react';
 import { supabase } from '../../supabase';
+import AssemblyCatalogAdmin from './AssemblyCatalogAdmin.jsx';
 import {
   getAssemblyWorkLog, getAssemblyWorkStops,
   deleteAssemblyWorkLog, deleteAssemblyWorkStop, updateAssemblyWorkLog, formatNumber,
@@ -18,6 +19,7 @@ const SECTIONS = [
   { key: 'delavke', label: 'Delavke', config: { table: 'assembly_workers', order: 'display_order', fields: [
     { key: 'name', label: 'Ime', type: 'text', required: true },
     { key: 'work_type', label: 'Tip', type: 'select', options: ['avtomat', 'rocna', 'oba'], default: 'rocna' },
+    { key: 'segments', label: 'Segmenti', type: 'multi', options: ['avtomat', 'rocna', 'vrece', 'titus'] },
     { key: 'username', label: 'Uporabniško ime', type: 'text' },
     { key: 'password', label: 'Geslo', type: 'text' },
     { key: 'display_order', label: 'Vrstni red', type: 'number' },
@@ -39,6 +41,7 @@ const SECTIONS = [
     { key: 'display_order', label: 'Vrstni red', type: 'number' },
     { key: 'active', label: 'Aktiven', type: 'bool', default: true },
   ] } },
+  { key: 'sifrant', label: 'Šifrant segmentov' },
   { key: 'vnosi', label: 'Popravi vnose' },
 ];
 
@@ -62,6 +65,8 @@ export default function AssemblyAdmin({ onlySection = null }) {
       </div>
       {section === 'vnosi'
         ? <WorkLogEditor />
+        : section === 'sifrant'
+        ? <AssemblyCatalogAdmin />
         : <CrudList config={visible.find((s) => s.key === section).config} />}
     </div>
   );
@@ -90,6 +95,7 @@ function CrudList({ config }) {
     const o = {};
     fields.forEach((f) => {
       o[f.key] = f.type === 'bool' ? (f.default ?? true)
+        : f.type === 'multi' ? (f.default ?? [])
         : f.type === 'select' ? (f.default ?? '')
         : f.type === 'number' ? '' : '';
     });
@@ -109,6 +115,7 @@ function CrudList({ config }) {
       let v = form[f.key];
       if (f.type === 'number') v = v === '' || v == null ? 0 : Number(v);
       else if (f.type === 'bool') v = !!v;
+      else if (f.type === 'multi') v = Array.isArray(v) ? v : [];
       else v = v == null ? null : String(v).trim();
       payload[f.key] = v;
     });
@@ -163,7 +170,9 @@ function CrudList({ config }) {
                 <tr key={r.id} className="border-b border-as-gray-100">
                   {fields.map((f) => (
                     <td key={f.key} className="p-2">
-                      {f.type === 'bool' ? (r[f.key] ? '✅' : '—') : (r[f.key] == null || r[f.key] === '' ? '—' : String(r[f.key]))}
+                      {f.type === 'bool' ? (r[f.key] ? '✅' : '—')
+                        : f.type === 'multi' ? ((r[f.key] || []).length ? (r[f.key] || []).join(', ') : '—')
+                        : (r[f.key] == null || r[f.key] === '' ? '—' : String(r[f.key]))}
                     </td>
                   ))}
                   <td className="p-2 text-right whitespace-nowrap">
@@ -197,6 +206,19 @@ function Editor({ fields, initial, busy, onCancel, onSave }) {
               <label className="flex items-center gap-2 text-sm h-[38px]">
                 <input type="checkbox" checked={!!f[fld.key]} onChange={(e) => set(fld.key, e.target.checked)} /> {fld.label}
               </label>
+            ) : fld.type === 'multi' ? (
+              <div className="flex flex-wrap gap-3 py-2">
+                {fld.options.map((o) => {
+                  const arr = Array.isArray(f[fld.key]) ? f[fld.key] : [];
+                  const on = arr.includes(o);
+                  return (
+                    <label key={o} className="flex items-center gap-1.5 text-sm">
+                      <input type="checkbox" checked={on}
+                        onChange={() => set(fld.key, on ? arr.filter((x) => x !== o) : [...arr, o])} /> {o}
+                    </label>
+                  );
+                })}
+              </div>
             ) : fld.type === 'select' ? (
               <select value={f[fld.key] ?? ''} onChange={(e) => set(fld.key, e.target.value)} className={inputCls}>
                 <option value="">—</option>
