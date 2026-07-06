@@ -1624,22 +1624,44 @@ function exportMonthlyCSV(year, month, byDay, topCustomers) {
 
 // ─── KLAVIYO SYNC (Client API — javni company ID, varno za frontend) ───
 const KLAVIYO_COMPANY_ID = 'Way2W4';
-async function pushToKlaviyo({ email, name, company, panoga }) {
+// Panoga -> Klaviyo lista (kontakt gre direktno na listo; lista mora biti single opt-in)
+const KLAVIYO_LISTS = { 'Trgovci': 'Sbwe5j' };
+async function pushToKlaviyo({ email, name, company, panoga, ulica, posta }) {
+  const listId = KLAVIYO_LISTS[panoga];
+  // "3000 Celje" -> zip + city
+  const m = (posta || '').trim().match(/^(\d{4})\s+(.+)$/);
+  const location = {
+    ...(ulica ? { address1: ulica } : {}),
+    ...(m ? { zip: m[1], city: m[2] } : {}),
+    country: 'Slovenia',
+  };
+  const profileAttrs = {
+    email,
+    ...(name ? { first_name: name } : {}),
+    ...(company ? { organization: company } : {}),
+    location,
+    properties: { Vir: 'AS CRM', Panoga: panoga || 'NEOPREDELJENO' },
+  };
+  const headers = { 'Content-Type': 'application/json', revision: '2024-10-15' };
   try {
+    if (listId) {
+      const res = await fetch(`https://a.klaviyo.com/client/subscriptions/?company_id=${KLAVIYO_COMPANY_ID}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          data: {
+            type: 'subscription',
+            attributes: { profile: { data: { type: 'profile', attributes: profileAttrs } } },
+            relationships: { list: { data: { type: 'list', id: listId } } },
+          },
+        }),
+      });
+      return res.status === 202 || res.ok;
+    }
     const res = await fetch(`https://a.klaviyo.com/client/profiles/?company_id=${KLAVIYO_COMPANY_ID}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', revision: '2024-10-15' },
-      body: JSON.stringify({
-        data: {
-          type: 'profile',
-          attributes: {
-            email,
-            ...(name ? { first_name: name } : {}),
-            ...(company ? { organization: company } : {}),
-            properties: { Vir: 'AS CRM', Panoga: panoga || 'NEOPREDELJENO' },
-          },
-        },
-      }),
+      headers,
+      body: JSON.stringify({ data: { type: 'profile', attributes: profileAttrs } }),
     });
     return res.status === 202 || res.ok;
   } catch {
@@ -1721,7 +1743,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
         .single();
       if (error) throw error;
       if (nEmail.trim()) {
-        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, panoga: nPanoga });
+        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, panoga: nPanoga, ulica: nUlica.trim(), posta: nPosta.trim() });
         if (ok) await supabase.from('crm_customers').update({ klaviyo_synced: true }).eq('id', data.id);
       }
       setAdding(false);
@@ -3528,7 +3550,7 @@ function AreaPicker({ onSelect }) {
         .single();
       if (error) throw error;
       if (nEmail.trim()) {
-        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, panoga: nPanoga });
+        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, panoga: nPanoga, ulica: nUlica.trim(), posta: nPosta.trim() });
         if (ok) await supabase.from('crm_customers').update({ klaviyo_synced: true }).eq('id', data.id);
       }
       setAddNew(false);
