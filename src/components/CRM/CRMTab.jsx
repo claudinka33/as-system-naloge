@@ -1555,6 +1555,32 @@ function exportMonthlyCSV(year, month, byDay, topCustomers) {
   URL.revokeObjectURL(url);
 }
 
+// ─── KLAVIYO SYNC (Client API — javni company ID, varno za frontend) ───
+const KLAVIYO_COMPANY_ID = 'Way2W4';
+const KATEGORIJE = ['TRGOVEC', 'GRADBENIK', 'IN\u0160TALATER', 'DRUGO'];
+async function pushToKlaviyo({ email, name, company, kategorija }) {
+  try {
+    const res = await fetch(`https://a.klaviyo.com/client/profiles/?company_id=${KLAVIYO_COMPANY_ID}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', revision: '2024-10-15' },
+      body: JSON.stringify({
+        data: {
+          type: 'profile',
+          attributes: {
+            email,
+            ...(name ? { first_name: name } : {}),
+            ...(company ? { organization: company } : {}),
+            properties: { Vir: 'AS CRM', Kategorija: kategorija || 'NEOPREDELJENO' },
+          },
+        },
+      }),
+    });
+    return res.status === 202 || res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ─── IZBIRA STRANKE (iskalni dropdown nad crm_customers) ───
 function CustomerPicker({ selected, onSelect, onClear }) {
   const [q, setQ] = useState('');
@@ -1572,10 +1598,14 @@ function CustomerPicker({ selected, onSelect, onClear }) {
   const [nPanoga, setNPanoga] = useState('');
   const [savingNew, setSavingNew] = useState(false);
   const [addErr, setAddErr] = useState('');
+  const [nKontakt, setNKontakt] = useState('');
+  const [nEmail, setNEmail] = useState('');
+  const [nKategorija, setNKategorija] = useState('');
 
   function startAdd() {
     setNNaziv(q.trim());
     setNUlica(''); setNPosta(''); setNDavcna(''); setNPanoga('');
+    setNKontakt(''); setNEmail(''); setNKategorija('');
     setAddErr('');
     setOpen(false);
     setAdding(true);
@@ -1604,11 +1634,18 @@ function CustomerPicker({ selected, onSelect, onClear }) {
           posta: nPosta.trim() || null,
           davcna,
           panoga: nPanoga.trim() || null,
+          kontakt_oseba: nKontakt.trim() || null,
+          kontakt_email: nEmail.trim().toLowerCase() || null,
+          kategorija: nKategorija || null,
           poslovalnica: 0,
         }])
         .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
         .single();
       if (error) throw error;
+      if (nEmail.trim()) {
+        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, kategorija: nKategorija });
+        if (ok) await supabase.from('crm_customers').update({ klaviyo_synced: true }).eq('id', data.id);
+      }
       setAdding(false);
       onSelect(data);
     } catch (e) {
@@ -1720,6 +1757,23 @@ function CustomerPicker({ selected, onSelect, onClear }) {
             <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Panoga</label>
             <input type="text" value={nPanoga} onChange={(e) => setNPanoga(e.target.value)} className={inputCls} placeholder="neobvezno" />
           </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Kontaktna oseba</label>
+            <input type="text" value={nKontakt} onChange={(e) => setNKontakt(e.target.value)} className={inputCls} placeholder="Ime in priimek" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Email kontakta</label>
+            <input type="email" value={nEmail} onChange={(e) => setNEmail(e.target.value)} className={inputCls} placeholder="ime@podjetje.si" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Kategorija</label>
+          <select value={nKategorija} onChange={(e) => setNKategorija(e.target.value)} className={inputCls}>
+            <option value="">— izberi —</option>
+            {KATEGORIJE.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
         </div>
         <button type="button" onClick={saveNewCustomer} disabled={savingNew}
           className="w-full sm:w-auto justify-center px-4 py-3 text-white text-base font-semibold rounded-xl inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
@@ -3372,6 +3426,9 @@ function AreaPicker({ onSelect }) {
   const [nPosta, setNPosta] = useState('');
   const [nDavcna, setNDavcna] = useState('');
   const [nPanoga, setNPanoga] = useState('');
+  const [nKontakt, setNKontakt] = useState('');
+  const [nEmail, setNEmail] = useState('');
+  const [nKategorija, setNKategorija] = useState('');
   const [savingNew, setSavingNew] = useState(false);
   const [addErr, setAddErr] = useState('');
 
@@ -3392,10 +3449,14 @@ function AreaPicker({ onSelect }) {
       }
       const { data, error } = await supabase
         .from('crm_customers')
-        .insert([{ naziv, ulica: nUlica.trim() || null, posta: nPosta.trim() || null, davcna, panoga: nPanoga.trim() || null, poslovalnica: 0 }])
+        .insert([{ naziv, ulica: nUlica.trim() || null, posta: nPosta.trim() || null, davcna, panoga: nPanoga.trim() || null, kontakt_oseba: nKontakt.trim() || null, kontakt_email: nEmail.trim().toLowerCase() || null, kategorija: nKategorija || null, poslovalnica: 0 }])
         .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
         .single();
       if (error) throw error;
+      if (nEmail.trim()) {
+        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, kategorija: nKategorija });
+        if (ok) await supabase.from('crm_customers').update({ klaviyo_synced: true }).eq('id', data.id);
+      }
       setAddNew(false);
       onSelect(data);
     } catch (e) {
@@ -3477,6 +3538,23 @@ function AreaPicker({ onSelect }) {
             <input type="text" value={nPanoga} onChange={(e) => setNPanoga(e.target.value)} className={inputCls} placeholder="neobvezno" />
           </div>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Kontaktna oseba</label>
+            <input type="text" value={nKontakt} onChange={(e) => setNKontakt(e.target.value)} className={inputCls} placeholder="Ime in priimek" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Email kontakta</label>
+            <input type="email" value={nEmail} onChange={(e) => setNEmail(e.target.value)} className={inputCls} placeholder="ime@podjetje.si" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Kategorija</label>
+          <select value={nKategorija} onChange={(e) => setNKategorija(e.target.value)} className={inputCls}>
+            <option value="">— izberi —</option>
+            {KATEGORIJE.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+        </div>
         <button type="button" onClick={saveNew} disabled={savingNew}
           className="w-full sm:w-auto justify-center px-4 py-3 text-white text-base font-semibold rounded-xl inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
           {savingNew ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -3516,7 +3594,7 @@ function AreaPicker({ onSelect }) {
           ))}
         </div>
       )}
-      <button type="button" onClick={() => { setAddErr(''); setNNaziv(''); setNUlica(''); setNPosta(''); setNDavcna(''); setNPanoga(''); setAddNew(true); }}
+      <button type="button" onClick={() => { setAddErr(''); setNNaziv(''); setNUlica(''); setNPosta(''); setNDavcna(''); setNPanoga(''); setNKontakt(''); setNEmail(''); setNKategorija(''); setAddNew(true); }}
         className="w-full py-2.5 rounded-xl border-2 border-dashed text-sm font-semibold inline-flex items-center justify-center gap-2 mt-1" style={{ borderColor: CRM_BG, color: CRM_COLOR }}>
         <Plus className="w-4 h-4" /> Dodaj novo stranko
       </button>
