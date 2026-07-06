@@ -10,7 +10,7 @@ const inputCls = "w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-white
 export const SEGMENTS = [
   { key: 'avtomat', label: 'Avtomat' },
   { key: 'rocna', label: 'Ročna' },
-  { key: 'vrece', label: 'Vreče' },
+  { key: 'vrece', label: 'Vrečke' },
   { key: 'titus', label: 'Titus' },
 ];
 
