@@ -176,6 +176,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
           <SubTab active={view === 'analysis'} onClick={() => setView('analysis')} icon={<User className="w-4 h-4" />} label="Stranke" />
           <SubTab active={view === 'planning'} onClick={() => setView('planning')} icon={<span className="text-sm">🗓️</span>} label="Planiranje" />
           <SubTab active={view === 'cenik'} onClick={() => setView('cenik')} icon={<FileText className="w-4 h-4" />} label="Cenik" />
+          {isAdmin && <SubTab active={view === 'settings'} onClick={() => setView('settings')} icon={<span className="text-sm">⚙️</span>} label="Nastavitve" />}
         </div>
         {(isAdmin || isTeamLead) && (
           <select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}
@@ -217,6 +218,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       {view === 'analysis' && <StrankeView visits={scopedVisits} loading={loading} isAdmin={isAdmin} />}
       {view === 'planning' && <PlanningView currentUser={currentUser} isAdmin={isAdmin} employees={employees} />}
       {view === 'cenik' && <CenikView isAdmin={isAdmin} />}
+      {view === 'settings' && isAdmin && <SettingsView />}
     </div>
   );
 }
@@ -233,6 +235,71 @@ function SubTab({ active, onClick, icon, label }) {
       {icon}
       <span>{label}</span>
     </button>
+  );
+}
+
+// ─── NASTAVITVE (samo admin) ───
+function SettingsView() {
+  const [panoge, setPanoge] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newP, setNewP] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase.from('crm_panoge').select('id,naziv').order('naziv');
+    setPanoge(data || []);
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function addPanoga() {
+    const naziv = newP.trim();
+    if (!naziv) return;
+    setSaving(true); setErr('');
+    const { error } = await supabase.from('crm_panoge').insert([{ naziv }]);
+    if (error) setErr(error.message || 'Napaka pri dodajanju.');
+    else { setNewP(''); await load(); }
+    setSaving(false);
+  }
+
+  async function removePanoga(id) {
+    if (!window.confirm('Odstranim panogo? Obstoječe stranke ohranijo svojo panogo.')) return;
+    setErr('');
+    const { error } = await supabase.from('crm_panoge').delete().eq('id', id);
+    if (error) setErr(error.message || 'Napaka pri brisanju.');
+    else load();
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-as-gray-200 p-5 max-w-xl">
+      <h3 className="font-bold text-as-gray-800 mb-1">⚙️ Nastavitve — Panoge</h3>
+      <p className="text-xs text-as-gray-400 mb-4">Panoge, ki so komercialistom na voljo pri vnosu nove stranke.</p>
+      {err && <div className="text-xs text-red-600 mb-2">{err}</div>}
+      <div className="flex gap-2 mb-4">
+        <input type="text" value={newP} onChange={(e) => setNewP(e.target.value)} className={inputCls}
+          placeholder="npr. Gradbinci" onKeyDown={(e) => { if (e.key === 'Enter') addPanoga(); }} />
+        <button type="button" onClick={addPanoga} disabled={saving || !newP.trim()}
+          className="px-4 py-2 text-white text-sm font-semibold rounded-xl disabled:opacity-50 whitespace-nowrap" style={{ background: CRM_COLOR }}>
+          + Dodaj
+        </button>
+      </div>
+      {loading ? (
+        <div className="text-sm text-as-gray-400">Nalagam…</div>
+      ) : panoge.length === 0 ? (
+        <div className="text-sm text-as-gray-400">Ni panog. Dodaj prvo.</div>
+      ) : (
+        <div className="space-y-1.5">
+          {panoge.map((p) => (
+            <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-as-gray-200 bg-as-gray-50">
+              <span className="text-sm font-medium text-as-gray-800">{p.naziv}</span>
+              <button type="button" onClick={() => removePanoga(p.id)} className="text-as-gray-400 hover:text-red-600 text-xs font-semibold">Odstrani</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1557,8 +1624,7 @@ function exportMonthlyCSV(year, month, byDay, topCustomers) {
 
 // ─── KLAVIYO SYNC (Client API — javni company ID, varno za frontend) ───
 const KLAVIYO_COMPANY_ID = 'Way2W4';
-const KATEGORIJE = ['TRGOVEC'];
-async function pushToKlaviyo({ email, name, company, kategorija }) {
+async function pushToKlaviyo({ email, name, company, panoga }) {
   try {
     const res = await fetch(`https://a.klaviyo.com/client/profiles/?company_id=${KLAVIYO_COMPANY_ID}`, {
       method: 'POST',
@@ -1570,7 +1636,7 @@ async function pushToKlaviyo({ email, name, company, kategorija }) {
             email,
             ...(name ? { first_name: name } : {}),
             ...(company ? { organization: company } : {}),
-            properties: { Vir: 'AS CRM', Kategorija: kategorija || 'NEOPREDELJENO' },
+            properties: { Vir: 'AS CRM', Panoga: panoga || 'NEOPREDELJENO' },
           },
         },
       }),
@@ -1581,8 +1647,22 @@ async function pushToKlaviyo({ email, name, company, kategorija }) {
   }
 }
 
+// ─── PANOGE (dinamičen seznam — admin jih ureja v Nastavitvah) ───
+function usePanoge() {
+  const [panoge, setPanoge] = useState([]);
+  useEffect(() => {
+    let active = true;
+    supabase.from('crm_panoge').select('id,naziv').order('naziv').then(({ data }) => {
+      if (active) setPanoge(data || []);
+    });
+    return () => { active = false; };
+  }, []);
+  return panoge;
+}
+
 // ─── IZBIRA STRANKE (iskalni dropdown nad crm_customers) ───
 function CustomerPicker({ selected, onSelect, onClear }) {
+  const panoge = usePanoge();
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -1600,12 +1680,11 @@ function CustomerPicker({ selected, onSelect, onClear }) {
   const [addErr, setAddErr] = useState('');
   const [nKontakt, setNKontakt] = useState('');
   const [nEmail, setNEmail] = useState('');
-  const [nKategorija, setNKategorija] = useState('');
 
   function startAdd() {
     setNNaziv(q.trim());
     setNUlica(''); setNPosta(''); setNDavcna(''); setNPanoga('');
-    setNKontakt(''); setNEmail(''); setNKategorija('');
+    setNKontakt(''); setNEmail('');
     setAddErr('');
     setOpen(false);
     setAdding(true);
@@ -1633,17 +1712,16 @@ function CustomerPicker({ selected, onSelect, onClear }) {
           ulica: nUlica.trim() || null,
           posta: nPosta.trim() || null,
           davcna,
-          panoga: nPanoga.trim() || null,
+          panoga: nPanoga || null,
           kontakt_oseba: nKontakt.trim() || null,
           kontakt_email: nEmail.trim().toLowerCase() || null,
-          kategorija: nKategorija || null,
           poslovalnica: 0,
         }])
         .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
         .single();
       if (error) throw error;
       if (nEmail.trim()) {
-        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, kategorija: nKategorija });
+        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, panoga: nPanoga });
         if (ok) await supabase.from('crm_customers').update({ klaviyo_synced: true }).eq('id', data.id);
       }
       setAdding(false);
@@ -1755,7 +1833,10 @@ function CustomerPicker({ selected, onSelect, onClear }) {
           </div>
           <div>
             <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Panoga</label>
-            <input type="text" value={nPanoga} onChange={(e) => setNPanoga(e.target.value)} className={inputCls} placeholder="neobvezno" />
+            <select value={nPanoga} onChange={(e) => setNPanoga(e.target.value)} className={inputCls}>
+              <option value="">— izberi —</option>
+              {panoge.map((p) => <option key={p.id} value={p.naziv}>{p.naziv}</option>)}
+            </select>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1767,13 +1848,6 @@ function CustomerPicker({ selected, onSelect, onClear }) {
             <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Email kontakta</label>
             <input type="email" value={nEmail} onChange={(e) => setNEmail(e.target.value)} className={inputCls} placeholder="ime@podjetje.si" />
           </div>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Kategorija</label>
-          <select value={nKategorija} onChange={(e) => setNKategorija(e.target.value)} className={inputCls}>
-            <option value="">— izberi —</option>
-            {KATEGORIJE.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
         </div>
         <button type="button" onClick={saveNewCustomer} disabled={savingNew}
           className="w-full sm:w-auto justify-center px-4 py-3 text-white text-base font-semibold rounded-xl inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
@@ -3415,6 +3489,7 @@ function regionOrFilter(region) {
 }
 
 function AreaPicker({ onSelect }) {
+  const panoge = usePanoge();
   const [rows, setRows] = useState([]);     // vse stranke izbrane regije (vse poslovalnice)
   const [loading, setLoading] = useState(false);
   const [region, setRegion] = useState('');
@@ -3428,7 +3503,6 @@ function AreaPicker({ onSelect }) {
   const [nPanoga, setNPanoga] = useState('');
   const [nKontakt, setNKontakt] = useState('');
   const [nEmail, setNEmail] = useState('');
-  const [nKategorija, setNKategorija] = useState('');
   const [savingNew, setSavingNew] = useState(false);
   const [addErr, setAddErr] = useState('');
 
@@ -3449,12 +3523,12 @@ function AreaPicker({ onSelect }) {
       }
       const { data, error } = await supabase
         .from('crm_customers')
-        .insert([{ naziv, ulica: nUlica.trim() || null, posta: nPosta.trim() || null, davcna, panoga: nPanoga.trim() || null, kontakt_oseba: nKontakt.trim() || null, kontakt_email: nEmail.trim().toLowerCase() || null, kategorija: nKategorija || null, poslovalnica: 0 }])
+        .insert([{ naziv, ulica: nUlica.trim() || null, posta: nPosta.trim() || null, davcna, panoga: nPanoga || null, kontakt_oseba: nKontakt.trim() || null, kontakt_email: nEmail.trim().toLowerCase() || null, poslovalnica: 0 }])
         .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
         .single();
       if (error) throw error;
       if (nEmail.trim()) {
-        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, kategorija: nKategorija });
+        const ok = await pushToKlaviyo({ email: nEmail.trim().toLowerCase(), name: nKontakt.trim(), company: naziv, panoga: nPanoga });
         if (ok) await supabase.from('crm_customers').update({ klaviyo_synced: true }).eq('id', data.id);
       }
       setAddNew(false);
@@ -3535,7 +3609,10 @@ function AreaPicker({ onSelect }) {
           </div>
           <div>
             <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Panoga</label>
-            <input type="text" value={nPanoga} onChange={(e) => setNPanoga(e.target.value)} className={inputCls} placeholder="neobvezno" />
+            <select value={nPanoga} onChange={(e) => setNPanoga(e.target.value)} className={inputCls}>
+              <option value="">— izberi —</option>
+              {panoge.map((p) => <option key={p.id} value={p.naziv}>{p.naziv}</option>)}
+            </select>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3547,13 +3624,6 @@ function AreaPicker({ onSelect }) {
             <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Email kontakta</label>
             <input type="email" value={nEmail} onChange={(e) => setNEmail(e.target.value)} className={inputCls} placeholder="ime@podjetje.si" />
           </div>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-as-gray-600 uppercase tracking-wider mb-1.5">Kategorija</label>
-          <select value={nKategorija} onChange={(e) => setNKategorija(e.target.value)} className={inputCls}>
-            <option value="">— izberi —</option>
-            {KATEGORIJE.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
         </div>
         <button type="button" onClick={saveNew} disabled={savingNew}
           className="w-full sm:w-auto justify-center px-4 py-3 text-white text-base font-semibold rounded-xl inline-flex items-center gap-2 disabled:opacity-50" style={{ background: CRM_COLOR }}>
@@ -3594,7 +3664,7 @@ function AreaPicker({ onSelect }) {
           ))}
         </div>
       )}
-      <button type="button" onClick={() => { setAddErr(''); setNNaziv(''); setNUlica(''); setNPosta(''); setNDavcna(''); setNPanoga(''); setNKontakt(''); setNEmail(''); setNKategorija(''); setAddNew(true); }}
+      <button type="button" onClick={() => { setAddErr(''); setNNaziv(''); setNUlica(''); setNPosta(''); setNDavcna(''); setNPanoga(''); setNKontakt(''); setNEmail(''); setAddNew(true); }}
         className="w-full py-2.5 rounded-xl border-2 border-dashed text-sm font-semibold inline-flex items-center justify-center gap-2 mt-1" style={{ borderColor: CRM_BG, color: CRM_COLOR }}>
         <Plus className="w-4 h-4" /> Dodaj novo stranko
       </button>
