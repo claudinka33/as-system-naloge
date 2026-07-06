@@ -289,17 +289,6 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
         </Section>
       )}
 
-      {/* Zastoji po razlogu */}
-      {a.reasons.length > 0 && (
-        <Section title="Zastoji po razlogu">
-          <Table head={['Razlog', 'Število', 'Skupaj (h)']}>
-            {a.reasons.map((r) => (
-              <Row key={r.reason} cells={[r.reason, r.count, h1(r.hours)]} />
-            ))}
-          </Table>
-        </Section>
-      )}
-
       <div className="text-xs text-as-gray-400">
         Doseganje = količina / (normativ × čas dela). Normativ se vzame iz šifranta ob vnosu.
       </div>
