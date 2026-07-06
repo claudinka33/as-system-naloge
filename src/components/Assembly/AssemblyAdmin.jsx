@@ -18,7 +18,6 @@ function addDays(s, n) { const d = new Date(s); d.setDate(d.getDate() + n); retu
 const SECTIONS = [
   { key: 'delavke', label: 'Delavke', config: { table: 'assembly_workers', order: 'display_order', fields: [
     { key: 'name', label: 'Ime', type: 'text', required: true },
-    { key: 'work_type', label: 'Tip', type: 'select', options: ['avtomat', 'rocna', 'oba'], default: 'rocna' },
     { key: 'segments', label: 'Segmenti', type: 'multi', options: ['avtomat', 'rocna', 'vrece', 'titus'] },
     { key: 'username', label: 'Uporabniško ime', type: 'text' },
     { key: 'password', label: 'Geslo', type: 'text' },
