@@ -11,7 +11,7 @@ const AS_RED = '#C8102E';
 const SEGMENT_DEFS = [
   { key: 'avtomat', label: 'Avtomat' },
   { key: 'rocna', label: 'Ročna' },
-  { key: 'vrece', label: 'Vreče' },
+  { key: 'vrece', label: 'Vrečke' },
   { key: 'titus', label: 'Titus' },
 ];
 const VRECE_STROJI = ['Vrečke 1', 'Vrečke 2'];
