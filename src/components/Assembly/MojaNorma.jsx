@@ -139,6 +139,7 @@ export default function MojaNorma({ workerId, workerName }) {
                     <tr className="text-as-gray-500 border-b border-as-gray-200">
                       <th className="text-left p-2">Datum</th>
                       <th className="text-left p-2">Segment</th>
+                      <th className="text-left p-2">Artikel</th>
                       <th className="text-left p-2">Šifra</th>
                       <th className="text-right p-2">Kos</th>
                       <th className="text-right p-2">Čas (h)</th>
@@ -152,6 +153,7 @@ export default function MojaNorma({ workerId, workerName }) {
                         <tr key={i} className="border-b border-as-gray-100">
                           <td className="p-2">{new Date(r.date + 'T12:00:00').toLocaleDateString('sl-SI')}</td>
                           <td className="p-2">{SEG_LABELS[r.segment] || r.segment || '—'}{r.faza ? ` · ${r.faza === 'vijacenje' ? 'vijačenje' : r.faza}` : ''}</td>
+                          <td className="p-2">{[r.artikel, r.dimenzija].filter(Boolean).join(' · ') || '—'}</td>
                           <td className="p-2">{r.sifra || '—'}</td>
                           <td className="p-2 text-right">{Number(r.kolicina || 0).toLocaleString('sl-SI')}</td>
                           <td className="p-2 text-right">{(Math.round(Number(r.cas_dela_ur || 0) * 10) / 10).toLocaleString('sl-SI')}</td>
