@@ -1557,7 +1557,7 @@ function exportMonthlyCSV(year, month, byDay, topCustomers) {
 
 // ─── KLAVIYO SYNC (Client API — javni company ID, varno za frontend) ───
 const KLAVIYO_COMPANY_ID = 'Way2W4';
-const KATEGORIJE = ['TRGOVEC', 'GRADBENIK', 'IN\u0160TALATER', 'DRUGO'];
+const KATEGORIJE = ['TRGOVEC'];
 async function pushToKlaviyo({ email, name, company, kategorija }) {
   try {
     const res = await fetch(`https://a.klaviyo.com/client/profiles/?company_id=${KLAVIYO_COMPANY_ID}`, {
