@@ -1682,6 +1682,80 @@ function usePanoge() {
   return panoge;
 }
 
+// ─── EMAIL KONTAKT ZA OBSTOJEČO STRANKO (gre v Klaviyo po panogi) ───
+function KontaktEditor({ customer }) {
+  const panoge = usePanoge();
+  const [open, setOpen] = useState(false);
+  const [oseba, setOseba] = useState(customer.kontakt_oseba || '');
+  const [email, setEmail] = useState(customer.kontakt_email || '');
+  const [pan, setPan] = useState(customer.panoga || '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function save() {
+    const em = email.trim().toLowerCase();
+    if (!em) { setErr('Vnesi email.'); return; }
+    if (!pan) { setErr('Izberi panogo — od nje je odvisno, katere cene in akcije dobi stranka.'); return; }
+    setSaving(true); setErr('');
+    try {
+      const ok = await pushToKlaviyo({ email: em, name: oseba.trim(), company: customer.naziv, panoga: pan, ulica: customer.ulica || '', posta: customer.posta || '' });
+      const { error } = await supabase.from('crm_customers')
+        .update({ kontakt_oseba: oseba.trim() || null, kontakt_email: em, panoga: pan, klaviyo_synced: ok })
+        .eq('id', customer.id);
+      if (error) throw error;
+      customer.kontakt_email = em;
+      customer.kontakt_oseba = oseba.trim() || null;
+      customer.panoga = pan;
+      setSaved(true);
+      setOpen(false);
+    } catch (e) {
+      setErr(e.message || 'Napaka pri shranjevanju.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    if (customer.kontakt_email) {
+      return (
+        <div className="text-xs text-as-gray-500 mt-1 flex items-center gap-2 flex-wrap">
+          <span>📧 {customer.kontakt_email}{customer.kontakt_oseba ? ` (${customer.kontakt_oseba})` : ''}</span>
+          {saved && <span className="text-green-700 font-semibold">✓ v Klaviyo</span>}
+          <button type="button" onClick={() => { setSaved(false); setOpen(true); }} className="text-as-gray-400 hover:text-as-gray-700 font-semibold">Uredi</button>
+        </div>
+      );
+    }
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="mt-1.5 text-xs font-bold" style={{ color: CRM_COLOR }}>
+        + Dodaj email za novice/akcije
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {err && <div className="text-xs text-red-600">{err}</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <input type="text" value={oseba} onChange={(e) => setOseba(e.target.value)} className={inputCls} placeholder="Kontaktna oseba" />
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="ime@podjetje.si" />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={pan} onChange={(e) => setPan(e.target.value)} className={inputCls + ' flex-1 min-w-[140px]'}>
+          <option value="">— panoga * —</option>
+          {panoge.map((p) => <option key={p.id} value={p.naziv}>{p.naziv}</option>)}
+        </select>
+        <button type="button" onClick={save} disabled={saving}
+          className="px-4 py-2.5 text-white text-sm font-semibold rounded-xl disabled:opacity-50 whitespace-nowrap" style={{ background: CRM_COLOR }}>
+          {saving ? 'Shranjujem…' : 'Shrani'}
+        </button>
+        <button type="button" onClick={() => { setOpen(false); setErr(''); }} className="text-xs text-as-gray-400 font-semibold">Prekliči</button>
+      </div>
+      <p className="text-xs text-as-gray-400">Email gre v Klaviyo na listo glede na izbrano panogo.</p>
+    </div>
+  );
+}
+
 // ─── IZBIRA STRANKE (iskalni dropdown nad crm_customers) ───
 function CustomerPicker({ selected, onSelect, onClear }) {
   const panoge = usePanoge();
@@ -1715,13 +1789,14 @@ function CustomerPicker({ selected, onSelect, onClear }) {
   async function saveNewCustomer() {
     const naziv = nNaziv.trim();
     if (!naziv) { setAddErr('Vnesi naziv stranke.'); return; }
+    if (nEmail.trim() && !nPanoga) { setAddErr('Za email določi tudi panogo — od nje je odvisno, katere cene in akcije dobi stranka.'); return; }
     setSavingNew(true); setAddErr('');
     try {
       const davcna = nDavcna.trim() || null;
       if (davcna) {
         const { data: ex } = await supabase
           .from('crm_customers')
-          .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+          .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,kontakt_email')
           .eq('davcna', davcna)
           .order('poslovalnica', { ascending: true })
           .limit(1);
@@ -1739,7 +1814,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
           kontakt_email: nEmail.trim().toLowerCase() || null,
           poslovalnica: 0,
         }])
-        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,kontakt_email')
         .single();
       if (error) throw error;
       if (nEmail.trim()) {
@@ -1766,7 +1841,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
       const pat = `%${safe}%`;
       const { data } = await supabase
         .from('crm_customers')
-        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,kontakt_email')
         .or(`naziv.ilike.${pat},ulica.ilike.${pat},posta.ilike.${pat},davcna.ilike.${pat}`)
         .order('poslovalnica', { ascending: true })
         .limit(200);
@@ -1785,7 +1860,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
 
   async function chooseCustomer(cust) {
     setOpen(false);
-    let qy = supabase.from('crm_customers').select('id,naziv,ulica,posta,davcna,panoga,poslovalnica');
+    let qy = supabase.from('crm_customers').select('id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,kontakt_email');
     qy = cust.davcna ? qy.eq('davcna', cust.davcna) : qy.eq('id', cust.sampleId);
     const { data } = await qy.order('poslovalnica', { ascending: true });
     const list = data || [];
@@ -1803,6 +1878,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
           <div className="font-bold text-as-gray-800">{selected.naziv}</div>
           <div className="text-as-gray-500">{selected.poslovalnica ? `Posl. ${selected.poslovalnica} · ` : ''}{[selected.ulica, selected.posta].filter(Boolean).join(', ') || '—'}</div>
           <div className="text-xs text-as-gray-400 mt-0.5">Davčna: {selected.davcna || '—'} · Panoga: {selected.panoga || '—'}</div>
+          <KontaktEditor customer={selected} />
         </div>
         <button type="button" onClick={resetAll} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold whitespace-nowrap">Zamenjaj</button>
       </div>
@@ -3531,13 +3607,14 @@ function AreaPicker({ onSelect }) {
   async function saveNew() {
     const naziv = nNaziv.trim();
     if (!naziv) { setAddErr('Vnesi naziv stranke.'); return; }
+    if (nEmail.trim() && !nPanoga) { setAddErr('Za email določi tudi panogo — od nje je odvisno, katere cene in akcije dobi stranka.'); return; }
     setSavingNew(true); setAddErr('');
     try {
       const davcna = nDavcna.trim() || null;
       if (davcna) {
         const { data: ex } = await supabase
           .from('crm_customers')
-          .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+          .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,kontakt_email')
           .eq('davcna', davcna)
           .order('poslovalnica', { ascending: true })
           .limit(1);
@@ -3546,7 +3623,7 @@ function AreaPicker({ onSelect }) {
       const { data, error } = await supabase
         .from('crm_customers')
         .insert([{ naziv, ulica: nUlica.trim() || null, posta: nPosta.trim() || null, davcna, panoga: nPanoga || null, kontakt_oseba: nKontakt.trim() || null, kontakt_email: nEmail.trim().toLowerCase() || null, poslovalnica: 0 }])
-        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica')
+        .select('id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,kontakt_email')
         .single();
       if (error) throw error;
       if (nEmail.trim()) {
