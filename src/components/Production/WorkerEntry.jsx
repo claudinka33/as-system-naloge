@@ -2,8 +2,9 @@
 // Piše v production_v2_entries (vsak nalog = ena vrstica) + production_v2_stops (zastoji).
 // Struktura usklajena z montažo (MontazaWorkerEntry).
 import React, { useState, useEffect, useMemo } from 'react';
-import { Package, Check, Loader2, X, Plus, Trash2 } from 'lucide-react';
+import { Package, Check, Loader2, X, Plus, Trash2, BarChart3 } from 'lucide-react';
 import { supabase } from '../../supabase';
+import MojaNormaProizvodnja from './MojaNormaProizvodnja.jsx';
 import { loadMachines, buildSegments, makeFindMachine, calculateEfficiency } from './productionV2Config';
 
 const AS_RED = '#C8102E';
@@ -34,6 +35,7 @@ export default function WorkerEntry({ currentUser }) {
   const isKnownOperater = OPERATERJI.includes(currentUser?.name);
 
   const [operater, setOperater] = useState(currentUser?.name || '');
+  const [view, setView] = useState('vnos'); // 'vnos' | 'norma'
   const [datum, setDatum] = useState(() => new Date().toISOString().slice(0, 10));
   const [shift, setShift] = useState(1);
   const [machineRows, setMachineRows] = useState([]);
@@ -162,15 +164,36 @@ export default function WorkerEntry({ currentUser }) {
     <div className="min-h-screen bg-as-gray-50 pb-32">
       {/* Glava */}
       <div className="text-white px-5 py-4 shadow-md" style={{ background: AS_RED }}>
-        <div className="flex items-center gap-3">
-          <Package className="w-8 h-8" />
-          <div>
-            <div className="text-2xl font-bold leading-tight">Vnos proizvodnje</div>
-            <div className="text-sm opacity-90">AS system · {new Date(datum).toLocaleDateString('sl-SI')}</div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Package className="w-8 h-8" />
+            <div>
+              <div className="text-2xl font-bold leading-tight">Vnos proizvodnje</div>
+              <div className="text-sm opacity-90">AS system · {new Date(datum).toLocaleDateString('sl-SI')}</div>
+            </div>
           </div>
+          {operater && (
+            <div className="flex gap-1 bg-white/15 rounded-lg p-1">
+              <button onClick={() => setView('vnos')}
+                className={`px-3 py-1.5 text-sm font-semibold rounded ${view === 'vnos' ? 'bg-white' : 'text-white'}`}
+                style={view === 'vnos' ? { color: AS_RED } : {}}>
+                Vnos
+              </button>
+              <button onClick={() => setView('norma')}
+                className={`px-3 py-1.5 text-sm font-semibold rounded inline-flex items-center gap-1 ${view === 'norma' ? 'bg-white' : 'text-white'}`}
+                style={view === 'norma' ? { color: AS_RED } : {}}>
+                <BarChart3 className="w-4 h-4" /> Moja norma
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
+      {view === 'norma' && operater ? (
+        <div className="max-w-3xl mx-auto px-4 py-5">
+          <MojaNormaProizvodnja operater={operater} />
+        </div>
+      ) : (<>
       <div className="max-w-3xl mx-auto px-4 py-5">
         {error && (
           <div className="flex items-center gap-2 p-3 mb-3 rounded-lg border text-sm" style={{ background: '#fee', borderColor: '#fcc', color: '#900' }}>
@@ -329,6 +352,7 @@ export default function WorkerEntry({ currentUser }) {
           </div>
         </div>
       )}
+      </>)}
     </div>
   );
 }
