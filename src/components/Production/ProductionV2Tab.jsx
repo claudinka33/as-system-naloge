@@ -6,6 +6,7 @@ import { Plus, Calendar, BarChart3, Package, AlertTriangle, Trash, Loader2, Down
 import { supabase } from '../../supabase';
 import { calculateEfficiency, SEGMENTS_META, loadMachines, buildSegments, makeFindMachine } from './productionV2Config';
 import ProductionAdmin from './ProductionAdmin';
+import ProductionDetails from './ProductionDetails.jsx';
 
 const AS_RED = '#C8102E';
 
@@ -767,6 +768,8 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
             )}
           </div>
 
+          <ProductionDetails entries={dayEntries} stops={dayStops} mode="day" />
+
           {/* Zastoji - mini kartoni po razlogih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-3">⚠️ Zastoji po razlogih</h3>
@@ -1031,42 +1034,7 @@ function MonthlyView({ entries, stops, wastes, loading }) {
             )}
           </div>
 
-          {/* Po delavcih */}
-          <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
-            <h3 className="font-bold text-as-gray-700 mb-4">👷 Po delavcih — {SLOVENIAN_MONTHS[month - 1]} {year}</h3>
-            {byWorker.length === 0 ? <Empty /> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-as-gray-50 text-as-gray-500 text-xs uppercase">
-                    <tr>
-                      <th className="text-left p-2">Delavec</th>
-                      <th className="text-right p-2">Kosov</th>
-                      <th className="text-right p-2">Ur</th>
-                      <th className="text-right p-2">Doseganje</th>
-                      <th className="text-right p-2">Zastoji (h)</th>
-                      <th className="text-right p-2">Odpadek (kg)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {byWorker.map((r) => {
-                      const pct = r.ucinkovitost;
-                      const color = pct === null ? '#9CA3AF' : pct >= 95 ? '#16A34A' : pct >= 75 ? '#D97706' : '#DC2626';
-                      return (
-                        <tr key={r.operater} className="border-t border-as-gray-100 hover:bg-as-gray-50">
-                          <td className="p-2 font-semibold">{r.operater}</td>
-                          <td className="p-2 text-right font-semibold">{formatNumber(r.kosi)}</td>
-                          <td className="p-2 text-right">{r.ur.toFixed(1)}</td>
-                          <td className="p-2 text-right font-bold" style={{ color }}>{pct === null ? '—' : `${pct}%`}</td>
-                          <td className="p-2 text-right">{r.zastoj_ur.toFixed(1)}</td>
-                          <td className="p-2 text-right">{formatNumber(r.odpadek_kg)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <ProductionDetails entries={monthEntries} stops={monthStops} mode="month" periodLabel={`${SLOVENIAN_MONTHS[month - 1]} ${year}`} />
 
           {/* Zastoji po razlogih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
