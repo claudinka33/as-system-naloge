@@ -223,13 +223,27 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
       </div>
 
       {/* Skupne kartice */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <BigStat icon="📦" label="Količina" value={formatNumber(a.kos)} unit="kos" color="#0066CC" bgColor="#E6F0FB" />
         <BigStat icon="⏱️" label="Čas dela" value={h1(a.dela)} unit="h" color="#8E44AD" bgColor="#F3E9F8" />
         <BigStat icon="⚙️" label="Čas stroja" value={h1(a.stroja)} unit="h" color="#16A085" bgColor="#E4F5F1" />
-        <BigStat icon="🎯" label="Doseganje" value={a.doseganje == null ? '—' : a.doseganje} unit="%" color={AS_RED} bgColor="#FCE8EC" />
         <BigStat icon="🛑" label="Zastoji" value={h1(a.stopHours)} unit={`h · ${a.stopCount}×`} color="#F39C12" bgColor="#FEF3E0" />
       </div>
+
+      {/* Skupno doseganje normativa — kot proizvodnja V2 */}
+      {a.doseganje !== null && (
+        <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-as-gray-700">🎯 Skupno doseganje normativa</span>
+            <span className="text-2xl font-bold" style={{
+              color: a.doseganje >= 95 ? '#16A34A' : a.doseganje >= 75 ? '#D97706' : '#DC2626',
+            }}>{a.doseganje}%</span>
+          </div>
+          <div className="text-xs text-as-gray-500">
+            Doseženo: <strong>{formatNumber(a.kos)} kos</strong> · Pričakovano po normativu: <strong>{formatNumber(Math.round(a.expected))} kos</strong>
+          </div>
+        </div>
+      )}
 
       {logs.length === 0 && stops.length === 0 && oldEntries.length === 0 && !loading && (
         <div className="bg-white border border-as-gray-200 rounded-xl p-8 text-center text-sm text-as-gray-500">
