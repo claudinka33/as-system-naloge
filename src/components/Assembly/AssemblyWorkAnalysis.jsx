@@ -3,7 +3,7 @@
 // Enotni stolpci povsod. Dnevno: vsi vnosi vidni + vrstica SKUPAJ na delavko/šifro.
 // Mesečno: vrstica delavke/šifre s skupnim seštevkom, klik razpre vnose po datumih (isti stolpci).
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, BarChart3, ChevronLeft, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { Calendar, BarChart3, ChevronLeft, ChevronRight, ChevronDown, Loader2, Download } from 'lucide-react';
 import { getAssemblyWorkLog, getAssemblyWorkStops, formatNumber, SLOVENIAN_MONTHS } from '../../lib/assemblyApi.js';
 import { supabase } from '../../supabase';
 
@@ -143,6 +143,39 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
   const toggleWorker = (k) => setOpenWorkers((p) => ({ ...p, [k]: !p[k] }));
   const toggleSifra = (k) => setOpenSifre((p) => ({ ...p, [k]: !p[k] }));
 
+  function exportCSV() {
+    const lines = [];
+    const naslov = mode === 'day' ? `Dnevno poročilo MONTAŽA - ${date}` : `Mesečno poročilo MONTAŽA - ${monthLabel}`;
+    lines.push(naslov);
+    lines.push('');
+    lines.push('VNOSI');
+    lines.push('Delavka;Datum;Nalog;Segment;Faza;Artikel;Dimenzija;Šifra;Količina;Normativ (kos/h);Čas dela (h);Čas stroja (h);Doseganje (%)');
+    for (const r of logs) {
+      lines.push([
+        r.worker_name || '', r.date || '', r.delovni_nalog || '', SEG_LABELS[r.segment] || r.segment || '',
+        r.faza === 'vijacenje' ? 'vijačenje' : (r.faza || ''), r.artikel || '', r.dimenzija || '', r.sifra || '',
+        num(r.kolicina), num(r.normativ_kos_h) || '', Number(num(r.cas_dela_ur)).toFixed(2), Number(num(r.cas_stroja_ur)).toFixed(2),
+        rowPct(r) ?? '',
+      ].join(';'));
+    }
+    lines.push('');
+    lines.push('ZASTOJI');
+    lines.push('Datum;Delavka;Razlog;Nalog;Čas (h);Opomba');
+    for (const st of stops) {
+      lines.push([st.date || '', st.worker_name || '', st.reason || '', st.delovni_nalog || '', Number(num(st.cas_ur)).toFixed(2), st.opomba || ''].join(';'));
+    }
+    const csv = '\uFEFF' + lines.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a2 = document.createElement('a');
+    a2.href = url;
+    a2.download = mode === 'day' ? `montaza-${date}.csv` : `montaza-${year}-${String(month).padStart(2, '0')}.csv`;
+    document.body.appendChild(a2);
+    a2.click();
+    document.body.removeChild(a2);
+    URL.revokeObjectURL(url);
+  }
+
   // Stolpci — POVSOD ISTI
   const HEAD_W = ['Delavka', 'Datum', 'Nalog', 'Segment', 'Artikel', 'Dimenzija', 'Šifra', 'Količina', 'Norm. (kos/h)', 'Čas dela (h)', 'Čas stroja (h)', 'Doseganje'];
   const HEAD_S = ['Šifra', 'Artikel', 'Dimenzija', 'Delavka', 'Datum', 'Nalog', 'Segment', 'Količina', 'Norm. (kos/h)', 'Čas dela (h)', 'Doseganje'];
@@ -182,6 +215,10 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
             <button onClick={nextMonth} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronRight className="w-4 h-4" /></button>
           </div>
         )}
+        <button onClick={exportCSV}
+          className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition">
+          <Download className="w-4 h-4" /> Izvoz v Excel
+        </button>
         {loading && <Loader2 className="w-4 h-4 animate-spin text-as-gray-400" />}
       </div>
 
