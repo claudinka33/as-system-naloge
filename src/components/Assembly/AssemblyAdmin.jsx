@@ -254,7 +254,7 @@ function WorkLogEditor() {
       const [lg, st, mc, sf, wk] = await Promise.all([
         getAssemblyWorkLog(start, end), getAssemblyWorkStops(start, end),
         supabase.from('assembly_machines').select('id,name').order('display_order'),
-        supabase.from('assembly_sifra_normativ').select('sifra,normativ_kos_h'),
+        supabase.from('assembly_catalog').select('segment,sifra,normativ_kos_h,normativ_stiskanje_kos_h,normativ_vijacenje_kos_h').eq('active', true),
         supabase.from('assembly_workers').select('id,name').eq('active', true).order('display_order'),
       ]);
       setLogs(lg); setStops(st); setMachines(mc.data || []); setSifre(sf.data || []); setWorkers(wk.data || []);
@@ -263,9 +263,16 @@ function WorkLogEditor() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [date]);
   useEffect(() => { if (edit) logEditRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, [edit]);
 
-  const normFor = (sifra) => {
-    const h = (sifre || []).find((x) => String(x.sifra).toLowerCase() === String(sifra || '').trim().toLowerCase());
-    return h ? Number(h.normativ_kos_h) || 0 : 0;
+  const normFor = (form) => {
+    const sf = String(form.sifra || '').trim().toLowerCase();
+    const cands = (sifre || []).filter((c) => String(c.sifra).toLowerCase() === sf && (!form.segment || c.segment === form.segment));
+    const c = cands[0];
+    if (!c) return Number(form.normativ_kos_h) || 0; // ni v šifrantu → ohrani obstoječi normativ
+    const seg = form.segment || c.segment;
+    if (seg === 'rocna') {
+      return form.faza === 'stiskanje' ? (Number(c.normativ_stiskanje_kos_h) || 0) : (Number(c.normativ_vijacenje_kos_h) || 0);
+    }
+    return Number(c.normativ_kos_h) || 0;
   };
 
   async function saveLog(form) {
@@ -278,7 +285,7 @@ function WorkLogEditor() {
       kolicina: Number(form.kolicina) || 0,
       cas_dela_ur: Number(form.cas_dela_ur) || 0,
       cas_stroja_ur: Number(form.cas_stroja_ur) || 0,
-      normativ_kos_h: normFor(form.sifra),
+      normativ_kos_h: normFor(form),
     };
     try {
       if (form.id) {
