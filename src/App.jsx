@@ -289,7 +289,7 @@ export default function App() {
       const sessionAuth = sessionStorage.getItem('as_auth');
       const sessionEmail = sessionStorage.getItem('as_user_email');
       if (sessionAuth === 'true' && sessionEmail) {
-        let user = [...EMPLOYEES, ...PRODUCTION_WORKERS].find(e => e.email === sessionEmail);
+        let user = EMPLOYEES.find(e => e.email === sessionEmail);
         if (!user) {
           try { const obj = sessionStorage.getItem('as_user_obj'); if (obj) user = JSON.parse(obj); } catch (e) {}
         }
@@ -395,7 +395,7 @@ export default function App() {
     } catch (e) {}
     
     // Najdi po uporabniškem imenu ALI po polnem e-mailu
-    const user = [...EMPLOYEES, ...PRODUCTION_WORKERS].find(e => 
+    const user = EMPLOYEES.find(e => 
       e.username.toLowerCase() === input || 
       e.email.toLowerCase() === input
     );
