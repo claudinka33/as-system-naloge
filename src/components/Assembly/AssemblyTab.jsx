@@ -4,30 +4,27 @@ import { Plus, Calendar, BarChart3, Settings, Wrench } from 'lucide-react';
 import MontazaWorkerEntry from './MontazaWorkerEntry.jsx';
 import AssemblyWorkAnalysis from './AssemblyWorkAnalysis.jsx';
 import AssemblyAdmin from './AssemblyAdmin.jsx';
+import { ADMIN_EMAILS } from '../../constants.js';
 
-// Dovoljeni emaili: Milena + admini (Aleš, Claudia, Sara)
+// Dostop: vsi admini (is_admin v bazi ali ADMIN_EMAILS) + Milena
 const ASSEMBLY_USERS = [
   'milena.jancic@as-system.si',
-  'ales.seidl@as-system.si',
-  'claudia.seidl@as-system.si',
-  'sara.jagodic@as-system.si',
 ];
 
-export function canAccessAssembly(email) {
-  return ASSEMBLY_USERS.includes(email);
+export function canAccessAssembly(email, isAdmin = false) {
+  return isAdmin === true || ADMIN_EMAILS.includes(email) || ASSEMBLY_USERS.includes(email);
 }
 
 export default function AssemblyTab({ currentUser }) {
   const [view, setView] = useState('vnos');
 
-  if (!canAccessAssembly(currentUser?.email)) {
+  if (!canAccessAssembly(currentUser?.email, currentUser?.is_admin)) {
     return (
       <div className="bg-white border border-as-gray-200 rounded-xl p-8 text-center">
         <div className="text-4xl mb-3">🔒</div>
         <h3 className="font-bold text-as-gray-700 mb-2">Ni dostopa</h3>
         <p className="text-sm text-as-gray-500">
-          Do modula Montaža imajo dostop samo:<br />
-          Milena Jančič, Aleš Seidl, Claudia Seidl, Sara Jagodič.
+          Do modula Montaža imajo dostop administratorji in Milena Jančič.
         </p>
       </div>
     );
