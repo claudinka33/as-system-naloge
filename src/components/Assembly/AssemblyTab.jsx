@@ -16,7 +16,7 @@ export function canAccessAssembly(email, isAdmin = false) {
 }
 
 export default function AssemblyTab({ currentUser }) {
-  const [view, setView] = useState('vnos');
+  const [view, setView] = useState('month');
 
   if (!canAccessAssembly(currentUser?.email, currentUser?.is_admin)) {
     return (
