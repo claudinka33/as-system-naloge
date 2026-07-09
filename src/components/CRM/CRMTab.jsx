@@ -1268,6 +1268,9 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
         <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-lg" style={{ background: bg, color }}>{icon}</div>
         <div className="flex-1 min-w-0">
           <div className="font-bold text-as-gray-700">{label}</div>
+          {visit.customer_address && (visit.entry_type === 'visit' || visit.entry_type === 'call') && (
+            <div className="text-xs text-as-gray-500 truncate">📍 {visit.customer_address}</div>
+          )}
           <div className="text-xs text-as-gray-500 flex items-center gap-3 flex-wrap mt-0.5">
             <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {timeStr}</span>
             {visit.odometer_km != null && <span className="flex items-center gap-1"><Car className="w-3 h-3" /> {formatNumber(visit.odometer_km)} km</span>}
