@@ -4,7 +4,7 @@ import { Loader2, TrendingUp } from 'lucide-react';
 import { supabase } from '../../supabase';
 
 const AS_RED = '#C8102E';
-const SEG_LABELS = { avtomat: 'Avtomat', rocna: 'Ročna', vrece: 'Vrečke', titus: 'Titus' };
+const SEG_LABELS = { avtomat: 'Avtomat', rocna: 'Ročna', vrece: 'Vrečke', titus: 'Titus', ostalo: 'Ostalo' };
 
 function monthRange(ym) {
   const [y, m] = ym.split('-').map(Number);
