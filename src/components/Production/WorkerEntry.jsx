@@ -19,6 +19,12 @@ const STOP_REASONS = [
   'Zlomljene vzmeti', 'Čiščenje stroja', 'Servis stroja', 'Drugo',
 ];
 
+const DAY_TARGET = 7.5; // 7:30 na dan
+function hoursToHM(h) {
+  const total = Math.round(Number(h || 0) * 60);
+  const hh = Math.floor(Math.abs(total) / 60), mm = Math.abs(total) % 60;
+  return `${total < 0 ? '-' : ''}${hh}:${String(mm).padStart(2, '0')}`;
+}
 function hmToHours(h, m) {
   const hh = parseInt(h, 10) || 0, mm = parseInt(m, 10) || 0;
   return Math.round((hh + mm / 60) * 1000) / 1000;
@@ -36,11 +42,24 @@ export default function WorkerEntry({ currentUser }) {
 
   const [operater, setOperater] = useState(currentUser?.name || '');
   const [view, setView] = useState('vnos'); // 'vnos' | 'norma'
+
+  async function loadDayTotal(op, d) {
+    if (!op || !d) { setDayTotal(null); return; }
+    const [lg, st] = await Promise.all([
+      supabase.from('production_v2_entries').select('cas_ur,delavec_ur').eq('operater', op).eq('date', d),
+      supabase.from('production_v2_stops').select('duration_hours').eq('operater', op).eq('date', d),
+    ]);
+    const t = (lg.data || []).reduce((a, r) => a + (Number(r.delavec_ur ?? r.cas_ur) || 0), 0)
+      + (st.data || []).reduce((a, r) => a + (Number(r.duration_hours) || 0), 0);
+    setDayTotal(Math.round(t * 1000) / 1000);
+  }
+  useEffect(() => { loadDayTotal(operater, datum); /* eslint-disable-next-line */ }, [operater, datum]);
   const [datum, setDatum] = useState(() => new Date().toISOString().slice(0, 10));
   const [shift, setShift] = useState(1);
   const [machineRows, setMachineRows] = useState([]);
   const [orders, setOrders] = useState([blankOrder()]);
   const [stops, setStops] = useState([]);
+  const [dayTotal, setDayTotal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -150,6 +169,7 @@ export default function WorkerEntry({ currentUser }) {
 
       setSuccess(true);
       resetForm();
+      loadDayTotal(operater, datum);
       setTimeout(() => setSuccess(false), 1800);
     } catch (e) {
       setError(e.message || 'Napaka pri shranjevanju.');
@@ -232,6 +252,32 @@ export default function WorkerEntry({ currentUser }) {
             </div>
           </div>
         </Card>
+
+        {/* Števec dneva — cilj 7:30 */}
+        {dayTotal != null && operater && (
+          <Card>
+            {(() => {
+              const diff = Math.round((DAY_TARGET - dayTotal) * 1000) / 1000;
+              const full = Math.abs(diff) < 0.009;
+              const over = diff < -0.009;
+              const color = full ? '#1b5e20' : over ? '#C8102E' : '#F39C12';
+              const msg = full ? 'Dan je poln (7:30) ✔' : over ? `Preseženo za ${hoursToHM(-diff)}` : `Manjka še ${hoursToHM(diff)}`;
+              const pctW = Math.max(0, Math.min(100, (dayTotal / DAY_TARGET) * 100));
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-as-gray-600">Danes vneseno (delo + zastoji)</span>
+                    <span className="text-lg font-bold" style={{ color }}>{hoursToHM(dayTotal)} / 7:30</span>
+                  </div>
+                  <div className="w-full h-3 rounded-full bg-as-gray-100 overflow-hidden">
+                    <div className="h-3 rounded-full transition-all" style={{ width: `${pctW}%`, background: color }} />
+                  </div>
+                  <div className="text-xs font-semibold mt-1" style={{ color }}>{msg}</div>
+                </>
+              );
+            })()}
+          </Card>
+        )}
 
         {/* Delovni nalogi */}
         <div className="mt-4 mb-1">
