@@ -76,19 +76,22 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
   }, [mode, date, year, month]);
 
   const a = useMemo(() => {
-    let kos = 0, dela = 0, stroja = 0, expected = 0;
+    let kos = 0, kosN = 0, dela = 0, stroja = 0, expected = 0;
     const byWorker = {}, bySifra = {};
     for (const r of logs) {
       const k = num(r.kolicina), cd = num(r.cas_dela_ur), cs = num(r.cas_stroja_ur), nh = num(r.normativ_kos_h);
       const exp = nh > 0 ? nh * cd : 0;
       kos += k; dela += cd; stroja += cs; expected += exp;
+      if (exp > 0) kosN += k;
       const wn = r.worker_name || '(brez)';
-      (byWorker[wn] = byWorker[wn] || { name: wn, kos: 0, dela: 0, stroja: 0, exp: 0, nalogi: 0, rows: [] });
+      (byWorker[wn] = byWorker[wn] || { name: wn, kos: 0, kosN: 0, dela: 0, stroja: 0, exp: 0, nalogi: 0, rows: [] });
       byWorker[wn].kos += k; byWorker[wn].dela += cd; byWorker[wn].stroja += cs; byWorker[wn].exp += exp; byWorker[wn].nalogi += 1;
+      if (exp > 0) byWorker[wn].kosN += k;
       byWorker[wn].rows.push(r);
       const sf = r.sifra || '(brez)';
-      (bySifra[sf] = bySifra[sf] || { sifra: sf, artikel: null, dimenzija: null, kos: 0, dela: 0, stroja: 0, exp: 0, nh: 0, nalogi: 0, rows: [] });
+      (bySifra[sf] = bySifra[sf] || { sifra: sf, artikel: null, dimenzija: null, kos: 0, kosN: 0, dela: 0, stroja: 0, exp: 0, nh: 0, nalogi: 0, rows: [] });
       bySifra[sf].kos += k; bySifra[sf].dela += cd; bySifra[sf].stroja += cs; bySifra[sf].exp += exp; bySifra[sf].nalogi += 1;
+      if (exp > 0) bySifra[sf].kosN += k;
       bySifra[sf].rows.push(r);
       if (nh > 0) bySifra[sf].nh = nh;
       if (r.artikel) bySifra[sf].artikel = r.artikel;
@@ -107,13 +110,16 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
       const k = oldKosOf(e), cd = sn(num(e.total_hours)), exp = oldExpOf(e);
       if (k === 0 && cd === 0 && exp === 0) continue;
       kos += k; dela += cd; expected += exp; oldNalogi += 1;
+      if (exp > 0) kosN += k;
       const wn = e.assembly_workers?.name || '(staro)';
-      (byWorker[wn] = byWorker[wn] || { name: wn, kos: 0, dela: 0, stroja: 0, exp: 0, nalogi: 0, rows: [] });
+      (byWorker[wn] = byWorker[wn] || { name: wn, kos: 0, kosN: 0, dela: 0, stroja: 0, exp: 0, nalogi: 0, rows: [] });
       byWorker[wn].kos += k; byWorker[wn].dela += cd; byWorker[wn].exp += exp; byWorker[wn].nalogi += 1;
+      if (exp > 0) byWorker[wn].kosN += k;
       byWorker[wn].rows.push({ id: `old-${e.id}`, date: e.date, delovni_nalog: '(staro)', segment: null, artikel: null, dimenzija: null, sifra: '(staro)', kolicina: k, normativ_kos_h: cd > 0 ? exp / cd : 0, cas_dela_ur: cd, cas_stroja_ur: 0 });
       const sf = '(staro)';
-      (bySifra[sf] = bySifra[sf] || { sifra: sf, artikel: null, dimenzija: null, kos: 0, dela: 0, stroja: 0, exp: 0, nh: 0, nalogi: 0, rows: [] });
+      (bySifra[sf] = bySifra[sf] || { sifra: sf, artikel: null, dimenzija: null, kos: 0, kosN: 0, dela: 0, stroja: 0, exp: 0, nh: 0, nalogi: 0, rows: [] });
       bySifra[sf].kos += k; bySifra[sf].dela += cd; bySifra[sf].exp += exp; bySifra[sf].nalogi += 1;
+      if (exp > 0) bySifra[sf].kosN += k;
       bySifra[sf].rows.push({ id: `olds-${e.id}`, date: e.date, worker_name: wn, delovni_nalog: '(staro)', segment: null, artikel: null, dimenzija: null, sifra: sf, kolicina: k, normativ_kos_h: cd > 0 ? exp / cd : 0, cas_dela_ur: cd, cas_stroja_ur: 0 });
       const bd = parseBd(e.breakdowns);
       if (bd.cas) {
@@ -127,7 +133,8 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
     const sortRows = (rows) => [...rows].sort((x, y) => String(x.date).localeCompare(String(y.date)));
     return {
       kos, dela, stroja, expected,
-      doseganje: pct(kos, expected),
+      doseganje: pct(kosN, expected),
+      kosN,
       nalogi: logs.length + oldNalogi,
       stopCount: stops.length + oldStops, stopHours,
       workers: Object.values(byWorker).map((w) => ({ ...w, rows: sortRows(w.rows) })).sort((x, y) => y.kos - x.kos),
@@ -240,7 +247,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
             }}>{a.doseganje}%</span>
           </div>
           <div className="text-xs text-as-gray-500">
-            Doseženo: <strong>{formatNumber(a.kos)} kos</strong> · Pričakovano po normativu: <strong>{formatNumber(Math.round(a.expected))} kos</strong>
+            Doseženo (vnosi z normativom): <strong>{formatNumber(a.kosN)} kos</strong> · Pričakovano po normativu: <strong>{formatNumber(Math.round(a.expected))} kos</strong>
           </div>
         </div>
       )}
@@ -258,7 +265,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
             {a.workers.map((w) => {
               const totalCells = [
                 w.name, mode === 'day' ? fmtDate(mode === 'day' ? date : null) : monthLabel, `${w.nalogi}× nalog`, '—', '—', '—', '—',
-                formatNumber(w.kos), '—', h1(w.dela), h1(w.stroja), w.exp > 0 ? `${pct(w.kos, w.exp)}%` : '—',
+                formatNumber(w.kos), '—', h1(w.dela), h1(w.stroja), w.exp > 0 ? `${pct(w.kosN, w.exp)}%` : '—',
               ];
               if (mode === 'day') {
                 return (
@@ -297,7 +304,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
             {a.sifre.map((s) => {
               const totalCells = [
                 s.sifra, s.artikel || '—', s.dimenzija || '—', '—', mode === 'day' ? '' : monthLabel, `${s.nalogi}× nalog`, '—',
-                formatNumber(s.kos), s.nh > 0 ? formatNumber(s.nh) : '—', h1(s.dela), s.exp > 0 ? `${pct(s.kos, s.exp)}%` : '—',
+                formatNumber(s.kos), s.nh > 0 ? formatNumber(s.nh) : '—', h1(s.dela), s.exp > 0 ? `${pct(s.kosN, s.exp)}%` : '—',
               ];
               if (mode === 'day') {
                 return (
