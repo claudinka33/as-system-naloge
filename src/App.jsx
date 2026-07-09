@@ -199,7 +199,7 @@ export default function App() {
     const adm = u?.is_admin || ADMIN_EMAILS.includes(email);
     const out = ['tasks', 'gradiva', 'notes', 'chat'];
     if (canAccessProduction(email)) out.push('proizvodnja-v2');
-    if (canAccessAssembly(email)) out.push('assembly');
+    if (canAccessAssembly(email, adm)) out.push('assembly');
     if (canAccessCRM(email)) out.push('crm');
     ['nabava', 'prodaja', 'tehnolog', 'komerciala', 'kakovost'].forEach(k => {
       const cfg = ODDELKI_CONFIG[k];
