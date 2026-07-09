@@ -1765,6 +1765,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
   const [loading, setLoading] = useState(false);
   const [chosen, setChosen] = useState(null);
   const [branches, setBranches] = useState([]);
+  const [branchQ, setBranchQ] = useState('');
   // Dodajanje nove stranke
   const [adding, setAdding] = useState(false);
   const [nNaziv, setNNaziv] = useState('');
@@ -1867,6 +1868,7 @@ function CustomerPicker({ selected, onSelect, onClear }) {
     if (list.length <= 1) { onSelect(list[0] || null); return; }
     setChosen(cust);
     setBranches(list);
+    setBranchQ('');
   }
 
   function resetAll() { setChosen(null); setBranches([]); setQ(''); setResults([]); onClear(); }
@@ -1886,18 +1888,28 @@ function CustomerPicker({ selected, onSelect, onClear }) {
   }
 
   if (chosen) {
+    const toks = branchQ.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = branches.filter((b) => {
+      if (!toks.length) return true;
+      const hay = `${b.poslovalnica ?? ''} ${b.ulica ?? ''} ${b.posta ?? ''} ${b.naziv ?? ''}`.toLowerCase();
+      return toks.every((t) => hay.includes(t));
+    });
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm font-bold text-as-gray-800">{chosen.naziv}</div>
-          <button type="button" onClick={() => { setChosen(null); setBranches([]); }} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold whitespace-nowrap">Druga stranka</button>
+          <button type="button" onClick={() => { setChosen(null); setBranches([]); setBranchQ(''); }} className="text-as-gray-400 hover:text-as-gray-700 text-xs font-semibold whitespace-nowrap">Druga stranka</button>
         </div>
-        <select className={inputCls} defaultValue="" onChange={(e) => { const b = branches.find((x) => String(x.id) === e.target.value); if (b) onSelect(b); }}>
-          <option value="" disabled>— izberi poslovalnico ({branches.length}) —</option>
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>{b.poslovalnica != null ? `Posl. ${b.poslovalnica} — ` : ''}{[b.ulica, b.posta].filter(Boolean).join(', ')}</option>
+        <input autoFocus value={branchQ} onChange={(e) => setBranchQ(e.target.value)} className={inputCls} placeholder={`Išči poslovalnico (${branches.length}) — npr. Mozirje…`} />
+        <div className="max-h-64 overflow-auto border border-as-gray-200 rounded-xl divide-y divide-as-gray-100">
+          {filtered.length === 0 && <div className="px-3 py-3 text-sm text-as-gray-400">Ni zadetkov.</div>}
+          {filtered.map((b) => (
+            <button type="button" key={b.id} onClick={() => onSelect(b)} className="w-full text-left px-3 py-2 hover:bg-as-gray-50">
+              <div className="text-sm font-semibold text-as-gray-800">{b.poslovalnica != null ? `Posl. ${b.poslovalnica}` : (b.naziv || '—')}</div>
+              <div className="text-xs text-as-gray-500">{[b.ulica, b.posta].filter(Boolean).join(', ') || '—'}</div>
+            </button>
           ))}
-        </select>
+        </div>
       </div>
     );
   }
