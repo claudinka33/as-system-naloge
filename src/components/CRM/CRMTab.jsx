@@ -620,6 +620,8 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
       }]);
       if (visitError) throw visitError;
 
+      await syncDealFromVisit({ customer, outcome, note: notes, currentUser });
+
       const savedName = customerName.trim();
       reset();
       onSaved(`✓ Obisk shranjen: ${savedName}${createOffer ? ' + naloga za ponudbo' : ''}. Vnesi naslednjo stranko 👇`);
@@ -945,6 +947,8 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
         created_by_name: currentUser?.name,
       }]);
       if (callError) throw callError;
+
+      await syncDealFromVisit({ customer, outcome, note: notes, currentUser });
 
       const savedName = customerName.trim();
       const kanal = channel === 'email' ? 'Email' : 'Klic';
@@ -2029,6 +2033,45 @@ function OutcomePicker({ value, onChange }) {
 }
 
 // ─── PIPELINE / POSLI ───
+// Sinhronizacija izida obiska/klica -> Pipeline (crm_deals). Napreduje SAMO naprej (nikoli nazaj).
+async function syncDealFromVisit({ customer, outcome, note, currentUser }) {
+  if (!customer || !customer.id) return;
+  const map = { narocilo: 'narocilo', ponudba: 'ponudba', nic: 'nov_stik' };
+  const target = map[outcome];
+  if (!target) return;
+  const rank = { nov_stik: 1, ponudba: 2, pogajanja: 3, narocilo: 4, izgubljeno: 0 };
+  const cid = String(customer.id);
+  try {
+    const { data: ex } = await supabase.from('crm_deals')
+      .select('id,stage')
+      .eq('customer_id', cid)
+      .neq('stage', 'izgubljeno')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const deal = ex && ex[0];
+    if (deal) {
+      const newStage = (rank[target] || 0) > (rank[deal.stage] || 0) ? target : deal.stage;
+      if (newStage !== deal.stage) {
+        await supabase.from('crm_deals')
+          .update({ stage: newStage, status: statusForStage(newStage), probability: stageById(newStage).prob, updated_at: new Date().toISOString() })
+          .eq('id', deal.id);
+      }
+    } else {
+      await supabase.from('crm_deals').insert([{
+        naziv: customer.naziv,
+        customer_id: cid,
+        customer_name: customer.naziv,
+        stage: target,
+        status: statusForStage(target),
+        probability: stageById(target).prob,
+        notes: note || null,
+        created_by: currentUser && currentUser.email,
+        created_by_name: currentUser && currentUser.name,
+      }]);
+    }
+  } catch (e) { /* sync ne sme blokirati shranjevanja obiska */ }
+}
+
 const DEAL_STAGES = [
   { id: 'nov_stik', name: 'Prvi pogovor', color: '#6B7280', bg: '#F3F4F6', prob: 10 },
   { id: 'ponudba', name: 'Ponudba', color: '#D97706', bg: '#FEF3C7', prob: 40 },
@@ -2126,7 +2169,7 @@ function PipelineView({ currentUser, isAdmin, employees }) {
   }
 
   return (
-    <div className="space-y-5 max-w-6xl mx-auto">
+    <div className="space-y-5">
       {error && (
         <div className="flex items-center gap-2 p-3 rounded-lg border" style={{ background: '#fee', borderColor: '#fcc', color: '#900' }}>
           <AlertCircle className="w-4 h-4 flex-shrink-0" /><span className="text-sm flex-1">{error}</span>
@@ -2153,11 +2196,11 @@ function PipelineView({ currentUser, isAdmin, employees }) {
       {showForm && <DealForm currentUser={currentUser} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} setError={setError} />}
 
       {loading ? <LoadingBox /> : (
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+        <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
           {byStage.map((col) => {
             const sum = col.items.reduce((s, d) => s + (Number(d.value_eur) || 0), 0);
             return (
-              <div key={col.id} className="bg-as-gray-50 border border-as-gray-200 rounded-2xl p-3">
+              <div key={col.id} className="flex-1 min-w-[240px] bg-as-gray-50 border border-as-gray-200 rounded-2xl p-3">
                 <div className="flex items-center justify-between mb-3 px-1">
                   <span className="text-sm font-bold" style={{ color: col.color }}>{col.name}</span>
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: col.bg, color: col.color }}>{col.items.length}</span>
