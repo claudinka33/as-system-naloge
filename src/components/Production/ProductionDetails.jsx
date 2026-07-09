@@ -25,11 +25,13 @@ export default function ProductionDetails({ entries, stops, mode, periodLabel })
       const k = num(r.kosi), c = num(r.cas_ur), nh = num(r.normativ_kos_h);
       const exp = nh > 0 ? nh * c : 0;
       const wn = r.operater || '(brez)';
-      (byW[wn] = byW[wn] || { name: wn, kos: 0, cas: 0, exp: 0, nalogi: 0, rows: [] });
+      (byW[wn] = byW[wn] || { name: wn, kos: 0, kosN: 0, cas: 0, exp: 0, nalogi: 0, rows: [] });
       byW[wn].kos += k; byW[wn].cas += c; byW[wn].exp += exp; byW[wn].nalogi += 1; byW[wn].rows.push(r);
+      if (exp > 0) byW[wn].kosN += k;
       const sf = r.tip_vijaka || '(brez šifre)';
-      (byS[sf] = byS[sf] || { sifra: sf, kos: 0, cas: 0, exp: 0, nh: 0, nalogi: 0, rows: [] });
+      (byS[sf] = byS[sf] || { sifra: sf, kos: 0, kosN: 0, cas: 0, exp: 0, nh: 0, nalogi: 0, rows: [] });
       byS[sf].kos += k; byS[sf].cas += c; byS[sf].exp += exp; byS[sf].nalogi += 1; byS[sf].rows.push(r);
+      if (exp > 0) byS[sf].kosN += k;
       if (nh > 0) byS[sf].nh = nh;
     }
     return {
@@ -63,7 +65,7 @@ export default function ProductionDetails({ entries, stops, mode, periodLabel })
             {workers.map((w) => {
               const totalCells = [
                 w.name, mode === 'month' ? (periodLabel || '') : '', `${w.nalogi}× nalog`, '—', '—', '—',
-                fmtNum(w.kos), '—', h1(w.cas), w.exp > 0 ? `${pct(w.kos, w.exp)}%` : '—',
+                fmtNum(w.kos), '—', h1(w.cas), w.exp > 0 ? `${pct(w.kosN, w.exp)}%` : '—',
               ];
               if (mode === 'day') {
                 return (
@@ -103,7 +105,7 @@ export default function ProductionDetails({ entries, stops, mode, periodLabel })
             {sifre.map((s) => {
               const totalCells = [
                 s.sifra, '—', mode === 'month' ? (periodLabel || '') : '', `${s.nalogi}× nalog`, '—', '—',
-                fmtNum(s.kos), s.nh > 0 ? fmtNum(Math.round(s.nh)) : '—', h1(s.cas), s.exp > 0 ? `${pct(s.kos, s.exp)}%` : '—',
+                fmtNum(s.kos), s.nh > 0 ? fmtNum(Math.round(s.nh)) : '—', h1(s.cas), s.exp > 0 ? `${pct(s.kosN, s.exp)}%` : '—',
               ];
               if (mode === 'day') {
                 return (
