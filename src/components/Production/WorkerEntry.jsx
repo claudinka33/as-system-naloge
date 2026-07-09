@@ -41,6 +41,16 @@ export default function WorkerEntry({ currentUser }) {
   const [operater, setOperater] = useState(currentUser?.name || '');
   const [view, setView] = useState('vnos'); // 'vnos' | 'norma'
 
+  const [datum, setDatum] = useState(() => new Date().toISOString().slice(0, 10));
+  const [shift, setShift] = useState(1);
+  const [machineRows, setMachineRows] = useState([]);
+  const [orders, setOrders] = useState([blankOrder()]);
+  const [stops, setStops] = useState([]);
+  const [dayTotal, setDayTotal] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
   async function loadDayTotal(op, d) {
     if (!op || !d) { setDayTotal(null); return; }
     const [lg, st] = await Promise.all([
@@ -52,15 +62,6 @@ export default function WorkerEntry({ currentUser }) {
     setDayTotal(Math.round(t * 1000) / 1000);
   }
   useEffect(() => { loadDayTotal(operater, datum); /* eslint-disable-next-line */ }, [operater, datum]);
-  const [datum, setDatum] = useState(() => new Date().toISOString().slice(0, 10));
-  const [shift, setShift] = useState(1);
-  const [machineRows, setMachineRows] = useState([]);
-  const [orders, setOrders] = useState([blankOrder()]);
-  const [stops, setStops] = useState([]);
-  const [dayTotal, setDayTotal] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
 
   useEffect(() => { loadMachines().then(setMachineRows); }, []);
   useEffect(() => {
