@@ -13,7 +13,9 @@ const SEGMENT_DEFS = [
   { key: 'rocna', label: 'Ročna' },
   { key: 'vrece', label: 'Vrečke' },
   { key: 'titus', label: 'Titus' },
+  { key: 'ostalo', label: 'Ostalo' },
 ];
+const DAY_TARGET = 7.5; // 7:30 na dan
 const VRECE_STROJI = ['Vrečke 1', 'Vrečke 2'];
 
 function hmToHours(h, m) {
@@ -32,7 +34,13 @@ const blankOrder = () => ({
   stroj: '', artikel: '', dimenzija: '', sifra: '',
   kolicina: '', delH: '', delM: '', strojH: '', strojM: '',
   kolSt: '', hSt: '', mSt: '', kolVj: '', hVj: '', mVj: '',
+  opis: '',
 });
+function hoursToHM(h) {
+  const total = Math.round(Number(h || 0) * 60);
+  const hh = Math.floor(Math.abs(total) / 60), mm = Math.abs(total) % 60;
+  return `${total < 0 ? '-' : ''}${hh}:${String(mm).padStart(2, '0')}`;
+}
 const blankStop = () => ({ key: newKey(), reason: '', newReason: '', linkKey: '', h: '', m: '', opomba: '' });
 
 export default function MontazaWorkerEntry({ currentUser }) {
@@ -49,6 +57,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
   const [orders, setOrders] = useState([blankOrder()]);
   const [stops, setStops] = useState([]);
 
+  const [dayTotal, setDayTotal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -67,13 +76,26 @@ export default function MontazaWorkerEntry({ currentUser }) {
   }, []);
 
   const selWorker = workers.find((w) => String(w.id) === String(fixedWorkerId || workerId));
+
+  async function loadDayTotal(wid, d) {
+    if (!wid || !d) { setDayTotal(null); return; }
+    const [lg, st] = await Promise.all([
+      supabase.from('assembly_work_log').select('cas_dela_ur').eq('worker_id', wid).eq('date', d),
+      supabase.from('assembly_work_stops').select('cas_ur').eq('worker_id', wid).eq('date', d),
+    ]);
+    const t = (lg.data || []).reduce((a, r) => a + (Number(r.cas_dela_ur) || 0), 0)
+      + (st.data || []).reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
+    setDayTotal(Math.round(t * 1000) / 1000);
+  }
+  useEffect(() => { loadDayTotal(fixedWorkerId || (workerId ? Number(workerId) : null), datum); /* eslint-disable-next-line */ }, [workerId, fixedWorkerId, datum]);
   const workerName = fixedWorkerId ? (currentUser?.name || selWorker?.name || '') : (selWorker?.name || '');
 
   // Segmenti, ki jih delavec vidi (če ni določeno, vidi vse)
   const allowedSegments = useMemo(() => {
     const segs = selWorker?.segments || [];
-    const allowed = segs.length ? SEGMENT_DEFS.filter((s) => segs.includes(s.key)) : SEGMENT_DEFS;
-    return allowed;
+    const rest = SEGMENT_DEFS.filter((s) => s.key !== 'ostalo');
+    const base = segs.length ? rest.filter((s) => segs.includes(s.key)) : rest;
+    return [...base, SEGMENT_DEFS.find((s) => s.key === 'ostalo')];
   }, [selWorker]);
 
   useEffect(() => {
@@ -135,6 +157,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
 
   const orderHasData = (o) => {
     if (segment === 'rocna') return o.nalog || o.sifra || o.kolSt || o.kolVj;
+    if (segment === 'ostalo') return (o.opis || '').trim() || o.delH || o.delM;
     return o.nalog || o.sifra || o.kolicina;
   };
 
@@ -151,6 +174,11 @@ export default function MontazaWorkerEntry({ currentUser }) {
 
     // validacija: šifra mora biti razrešena, če je vnesena količina
     for (const o of orderRows) {
+      if (segment === 'ostalo') {
+        if (!(o.opis || '').trim()) { setError('Ostalo delo: vpiši opis dela.'); return; }
+        if (!hmToHours(o.delH, o.delM)) { setError('Ostalo delo: vpiši čas delavca.'); return; }
+        continue;
+      }
       const cat = catRowFor(o);
       if (!cat) { setError(`Nalog ${o.nalog || '?'}: izberi artikel/dimenzijo (šifra ni določena).`); return; }
       if (segment === 'rocna' && !(Number(o.kolSt) || Number(o.kolVj))) {
@@ -181,6 +209,18 @@ export default function MontazaWorkerEntry({ currentUser }) {
       const payload = [];
       const rowMeta = []; // za povezavo zastojev: index prve vrstice vsakega naloga
       for (const o of orderRows) {
+        if (segment === 'ostalo') {
+          rowMeta.push({ key: o.key, index: payload.length });
+          payload.push({
+            date: datum, worker_id: wid, worker_name: workerName || null,
+            segment: 'ostalo', delovni_nalog: (o.nalog || '').trim() || null,
+            sifra: 'OSTALO', artikel: (o.opis || '').trim(), dimenzija: null,
+            machine_id: null, machine_name: null, faza: null,
+            kolicina: 0, cas_dela_ur: hmToHours(o.delH, o.delM), cas_stroja_ur: 0,
+            normativ_kos_h: 0, created_by: currentUser?.email || null,
+          });
+          continue;
+        }
         const cat = catRowFor(o);
         const base = {
           date: datum,
@@ -258,6 +298,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
 
       setSuccess(true);
       resetForm();
+      loadDayTotal(wid, datum);
       setTimeout(() => setSuccess(false), 1800);
     } catch (e) {
       setError(e.message || 'Napaka pri shranjevanju.');
@@ -343,6 +384,32 @@ export default function MontazaWorkerEntry({ currentUser }) {
         </div>
       </Card>
 
+      {/* Števec dneva — cilj 7:30 */}
+      {dayTotal != null && (
+        <Card>
+          {(() => {
+            const diff = Math.round((DAY_TARGET - dayTotal) * 1000) / 1000;
+            const full = Math.abs(diff) < 0.009;
+            const over = diff < -0.009;
+            const color = full ? '#1b5e20' : over ? '#C8102E' : '#F39C12';
+            const msg = full ? 'Dan je poln (7:30) ✔' : over ? `Preseženo za ${hoursToHM(-diff)}` : `Manjka še ${hoursToHM(diff)}`;
+            const pctW = Math.max(0, Math.min(100, (dayTotal / DAY_TARGET) * 100));
+            return (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-as-gray-600">Danes vneseno (delo + zastoji)</span>
+                  <span className="text-lg font-bold" style={{ color }}>{hoursToHM(dayTotal)} / 7:30</span>
+                </div>
+                <div className="w-full h-3 rounded-full bg-as-gray-100 overflow-hidden">
+                  <div className="h-3 rounded-full transition-all" style={{ width: `${pctW}%`, background: color }} />
+                </div>
+                <div className="text-xs font-semibold mt-1" style={{ color }}>{msg}</div>
+              </>
+            );
+          })()}
+        </Card>
+      )}
+
       {/* Delovni nalogi */}
       <div className="mt-4 mb-1 flex items-center justify-between">
         <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: AS_RED }}>
@@ -389,8 +456,13 @@ export default function MontazaWorkerEntry({ currentUser }) {
                 </div>
               )}
 
-              {/* TITUS: šifra direktno */}
-              {segment === 'titus' ? (
+              {/* OSTALO: opis dela */}
+              {segment === 'ostalo' ? (
+                <div className="sm:col-span-2">
+                  <BigLabel>Ostalo delo</BigLabel>
+                  <input value={o.opis} onChange={(e) => setOrder(o.key, { opis: e.target.value })} className={inpCls} placeholder="npr. čiščenje, urejanje skladišča, pomoč…" />
+                </div>
+              ) : segment === 'titus' ? (
                 <div>
                   <BigLabel>Šifra izdelka</BigLabel>
                   <select value={o.sifra} onChange={(e) => setOrder(o.key, { sifra: e.target.value })} className={selCls}>
@@ -422,6 +494,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
               )}
 
               {/* Šifra + normativ (avtomatsko) */}
+              {segment !== 'ostalo' && (
               <div className="sm:col-span-2">
                 {cat ? (
                   <div className="p-3 rounded-lg text-sm" style={{ background: '#f0f7f0', border: '1px solid #cde5cd' }}>
@@ -436,9 +509,12 @@ export default function MontazaWorkerEntry({ currentUser }) {
                   <div className="text-xs text-as-gray-400">Šifra se prikaže, ko izbereš {segment === 'titus' ? 'šifro' : 'artikel in dimenzijo'}.</div>
                 )}
               </div>
+              )}
 
               {/* Količine in časi */}
-              {segment === 'rocna' ? (
+              {segment === 'ostalo' ? (
+                <TimeField label="Čas delavca" h={o.delH} m={o.delM} setH={(v) => setOrder(o.key, { delH: v })} setM={(v) => setOrder(o.key, { delM: v })} />
+              ) : segment === 'rocna' ? (
                 <>
                   <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg border border-as-gray-200">
                     <div className="sm:col-span-2 font-bold text-sm" style={{ color: AS_RED }}>Stiskanje</div>
@@ -505,7 +581,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
               <select value={s.linkKey} onChange={(e) => setStop(s.key, 'linkKey', e.target.value)} className={selCls}>
                 <option value="">Ni vezan (splošno)</option>
                 {orders.filter(orderHasData).map((o, i) => (
-                  <option key={o.key} value={o.key}>{(o.nalog || o.sifra) || `Nalog ${i + 1}`}</option>
+                  <option key={o.key} value={o.key}>{(o.nalog || o.opis || o.sifra) || `Nalog ${i + 1}`}</option>
                 ))}
               </select>
             </div>
