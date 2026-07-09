@@ -35,6 +35,7 @@ const blankOrder = () => ({ key: newKey(), segmentId: '', machineId: '', sifra: 
 const blankStop = () => ({ key: newKey(), reason: '', linkKey: '', h: '', m: '', opomba: '' });
 
 export default function WorkerEntry({ currentUser }) {
+  const [operaterji, setOperaterji] = useState([]);
   const isKnownOperater = !!currentUser?.isProductionWorker || operaterji.includes(currentUser?.name);
 
   const [operater, setOperater] = useState(currentUser?.name || '');
@@ -54,7 +55,6 @@ export default function WorkerEntry({ currentUser }) {
   const [datum, setDatum] = useState(() => new Date().toISOString().slice(0, 10));
   const [shift, setShift] = useState(1);
   const [machineRows, setMachineRows] = useState([]);
-  const [operaterji, setOperaterji] = useState([]);
   const [orders, setOrders] = useState([blankOrder()]);
   const [stops, setStops] = useState([]);
   const [dayTotal, setDayTotal] = useState(null);
