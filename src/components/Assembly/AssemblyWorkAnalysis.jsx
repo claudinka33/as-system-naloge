@@ -18,7 +18,7 @@ function oldKosOf(e) { let k = sn(e.total_kos); if (!k) { for (const v of Object
 function oldExpOf(e) { let n = sn(e.normativ); if (!n) { for (const v of Object.values(e.machine_quantities || {})) n += mqNorm(v); for (const v of Object.values(e.activity_data || {})) n += mqNorm(v); } return sn(n); }
 function parseBd(raw) { if (!raw) return { reason: '', cas: 0 }; let o = raw; if (typeof raw === 'string') { try { o = JSON.parse(raw); } catch { return { reason: String(raw), cas: 0 }; } } return { reason: o.zastoj || o.vzrok || '', cas: Number(o.cas || 0) || 0 }; }
 
-const SEG_LABELS = { avtomat: 'Avtomat', rocna: 'Ročna', vrece: 'Vrečke', titus: 'Titus' };
+const SEG_LABELS = { avtomat: 'Avtomat', rocna: 'Ročna', vrece: 'Vrečke', titus: 'Titus', ostalo: 'Ostalo' };
 const segLabel = (r) => {
   const s = SEG_LABELS[r.segment] || r.segment || '—';
   return r.faza ? `${s} · ${r.faza === 'vijacenje' ? 'vijačenje' : r.faza}` : s;
