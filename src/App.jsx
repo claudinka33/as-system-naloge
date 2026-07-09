@@ -199,7 +199,7 @@ export default function App() {
     const adm = u?.is_admin || ADMIN_EMAILS.includes(email);
     const out = ['tasks', 'gradiva', 'notes', 'chat'];
     if (canAccessProduction(email)) out.push('proizvodnja-v2');
-    if (canAccessAssembly(email, adm)) out.push('assembly');
+    if (canAccessAssembly(email)) out.push('assembly');
     if (canAccessCRM(email)) out.push('crm');
     ['nabava', 'prodaja', 'tehnolog', 'komerciala', 'kakovost'].forEach(k => {
       const cfg = ODDELKI_CONFIG[k];
@@ -430,6 +430,39 @@ export default function App() {
           return;
         }
         if (aw && aw.username) {
+          setAuthError('Napačno uporabniško ime ali geslo.');
+          setPasswordInput('');
+          return;
+        }
+      } catch (e) {}
+      // Delavci proizvodnje: prijava iz baze production_v2_workers
+      try {
+        const { data: pw } = await supabase
+          .from('production_v2_workers')
+          .select('*')
+          .ilike('username', input)
+          .eq('active', true)
+          .maybeSingle();
+        if (pw && pw.username && passwordInput === pw.password) {
+          const pu = {
+            email: `proizvodnja-${pw.id}@as-system.si`,
+            name: pw.name,
+            username: pw.username,
+            department: 'Proizvodnja',
+            isProductionWorker: true,
+            productionWorkerId: pw.id,
+          };
+          setAuthenticated(true);
+          setCurrentUser(pu);
+          setAuthError('');
+          try {
+            sessionStorage.setItem('as_auth', 'true');
+            sessionStorage.setItem('as_user_email', pu.email);
+            sessionStorage.setItem('as_user_obj', JSON.stringify(pu));
+          } catch (e) {}
+          return;
+        }
+        if (pw && pw.username) {
           setAuthError('Napačno uporabniško ime ali geslo.');
           setPasswordInput('');
           return;
