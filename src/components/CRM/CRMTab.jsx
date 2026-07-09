@@ -2675,7 +2675,7 @@ function AnalysisView({ visits, loading }) {
   if (loading) return <div className="text-center py-10 text-as-gray-400">Nalagam…</div>;
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Strank z aktivnostjo</div><div className="text-2xl font-bold text-as-gray-700 mt-1">{rows.length}</div></div>
         <div className="bg-white border border-as-gray-200 rounded-2xl p-4 shadow-sm"><div className="text-xs text-as-gray-500 font-semibold uppercase">Skupaj kontaktov</div><div className="text-2xl font-bold text-as-gray-700 mt-1">{totals.kontakti}</div></div>
@@ -2933,21 +2933,7 @@ function ProfRow({ label, value, href }) {
 
 // ─── STRANKE: preklop Baza / Analiza ───
 function StrankeView({ visits, loading, isAdmin }) {
-  const [mode, setMode] = useState('baza');
-  return (
-    <div className="space-y-4 max-w-5xl mx-auto">
-      <div className="grid grid-cols-2 sm:inline-grid sm:grid-flow-col gap-1.5 bg-as-gray-100 rounded-xl p-1.5 border border-as-gray-200">
-        {[['baza', 'Baza strank'], ['analiza', 'Analiza']].map(([id, label]) => (
-          <button key={id} onClick={() => setMode(id)}
-            className="px-4 py-2.5 text-sm font-semibold rounded-lg transition"
-            style={mode === id ? { background: AS_RED, color: '#fff' } : { color: '#6B7280' }}>
-            {label}
-          </button>
-        ))}
-      </div>
-      {mode === 'baza' ? <CustomerDirectory isAdmin={isAdmin} visits={visits} /> : <AnalysisView visits={visits} loading={loading} />}
-    </div>
-  );
+  return <CustomerDirectory isAdmin={isAdmin} visits={visits} />;
 }
 
 // ─── BAZA STRANK (direktorij: vse stranke, dodaj/uredi/izbriši) ───
