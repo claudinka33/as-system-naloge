@@ -1689,6 +1689,8 @@ function KontaktEditor({ customer }) {
   const [oseba, setOseba] = useState(customer.kontakt_oseba || '');
   const [email, setEmail] = useState(customer.kontakt_email || '');
   const [pan, setPan] = useState(customer.panoga || '');
+  const [telefon, setTelefon] = useState(customer.telefon || '');
+  const [splet, setSplet] = useState(customer.splet || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState('');
@@ -1700,11 +1702,16 @@ function KontaktEditor({ customer }) {
     setSaving(true); setErr('');
     try {
       const ok = await pushToKlaviyo({ email: em, name: oseba.trim(), company: customer.naziv, panoga: pan, ulica: customer.ulica || '', posta: customer.posta || '' });
+      const tel = telefon.trim() || null;
+      const spl = splet.trim() || null;
       const { error } = await supabase.from('crm_customers')
-        .update({ kontakt_oseba: oseba.trim() || null, kontakt_email: em, panoga: pan, klaviyo_synced: ok })
+        .update({ kontakt_oseba: oseba.trim() || null, kontakt_email: em, email: em, telefon: tel, splet: spl, panoga: pan, klaviyo_synced: ok })
         .eq('id', customer.id);
       if (error) throw error;
       customer.kontakt_email = em;
+      customer.email = em;
+      customer.telefon = tel;
+      customer.splet = spl;
       customer.kontakt_oseba = oseba.trim() || null;
       customer.panoga = pan;
       setSaved(true);
@@ -1739,6 +1746,8 @@ function KontaktEditor({ customer }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <input type="text" value={oseba} onChange={(e) => setOseba(e.target.value)} className={inputCls} placeholder="Kontaktna oseba" />
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="ime@podjetje.si" />
+        <input type="tel" value={telefon} onChange={(e) => setTelefon(e.target.value)} className={inputCls} placeholder="Telefon" />
+        <input type="text" value={splet} onChange={(e) => setSplet(e.target.value)} className={inputCls} placeholder="Spletna stran (npr. www.stranka.si)" />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select value={pan} onChange={(e) => setPan(e.target.value)} className={inputCls + ' flex-1 min-w-[140px]'}>
@@ -2800,7 +2809,7 @@ function CustomerProfileEditor({ customer, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [kontakt, setKontakt] = useState(customer.kontakt_oseba || '');
-  const [email, setEmail] = useState(customer.email || '');
+  const [email, setEmail] = useState(customer.email || customer.kontakt_email || '');
   const [telefon, setTelefon] = useState(customer.telefon || '');
   const [splet, setSplet] = useState(customer.splet || '');
   const [opombe, setOpombe] = useState(customer.opombe || '');
@@ -2822,6 +2831,7 @@ function CustomerProfileEditor({ customer, onSaved }) {
     const patch = {
       kontakt_oseba: kontakt.trim() || null,
       email: email.trim() || null,
+      kontakt_email: email.trim().toLowerCase() || null,
       telefon: telefon.trim() || null,
       splet: splet.trim() || null,
       opombe: opombe.trim() || null,
@@ -3468,6 +3478,7 @@ function CustomerForm({ initial, onSave, onCancel, saving }) {
       panoga: panoga.trim() || null,
       kontakt_oseba: kontakt.trim() || null,
       email: email.trim() || null,
+      kontakt_email: email.trim().toLowerCase() || null,
       telefon: telefon.trim() || null,
       splet: splet.trim() || null,
       opombe: opombe.trim() || null,
