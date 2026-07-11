@@ -1,12 +1,14 @@
-// MontazaWorkerEntry.jsx — Vnos montaže po segmentih (avtomat / ročna / vreče / titus)
-// Piše v assembly_work_log (+ faza za ročno) in assembly_work_stops (zastoji).
-// Šifrant: assembly_catalog. Segmente delavca določi Milena (assembly_workers.segments).
+// MontazaWorkerEntry.jsx — Vnos montaže po segmentih (avtomat / ročna / vrečke / titus / ostalo)
+// v3: zastoji se shranjujejo SPROTI (na vrhu), nalogi na koncu dneva.
+//     "Moj čas" delavec vpisuje ročno (assembly_daily_time); števec 7:30 = moj čas + zastoji.
+//     Avtomat: normativ na ČAS STROJA. Delavec lahko svoje vnose briše samo isti dan.
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Check, Loader2, X, Package, BarChart3 } from 'lucide-react';
+import { Plus, Trash2, Check, Loader2, X, Package, BarChart3, Clock } from 'lucide-react';
 import { supabase } from '../../supabase';
 import MojaNorma from './MojaNorma.jsx';
 
 const AS_RED = '#C8102E';
+const DAY_TARGET = 7.5; // 7:30 na dan
 
 const SEGMENT_DEFS = [
   { key: 'avtomat', label: 'Avtomat' },
@@ -15,13 +17,17 @@ const SEGMENT_DEFS = [
   { key: 'titus', label: 'Titus' },
   { key: 'ostalo', label: 'Ostalo' },
 ];
-const DAY_TARGET = 7.5; // 7:30 na dan
 const VRECE_STROJI = ['Vrečke 1', 'Vrečke 2'];
 
 function hmToHours(h, m) {
   const hh = parseInt(h, 10) || 0;
   const mm = parseInt(m, 10) || 0;
   return Math.round((hh + mm / 60) * 1000) / 1000;
+}
+function hoursToHM(h) {
+  const total = Math.round(Number(h || 0) * 60);
+  const hh = Math.floor(Math.abs(total) / 60), mm = Math.abs(total) % 60;
+  return `${total < 0 ? '-' : ''}${hh}:${String(mm).padStart(2, '0')}`;
 }
 function formatNumber(n) {
   if (n === null || n === undefined || n === '') return '—';
@@ -36,18 +42,13 @@ const blankOrder = () => ({
   kolSt: '', hSt: '', mSt: '', kolVj: '', hVj: '', mVj: '',
   opis: '',
 });
-function hoursToHM(h) {
-  const total = Math.round(Number(h || 0) * 60);
-  const hh = Math.floor(Math.abs(total) / 60), mm = Math.abs(total) % 60;
-  return `${total < 0 ? '-' : ''}${hh}:${String(mm).padStart(2, '0')}`;
-}
-const blankStop = () => ({ key: newKey(), reason: '', newReason: '', linkKey: '', h: '', m: '', opomba: '' });
 
 export default function MontazaWorkerEntry({ currentUser }) {
   const fixedWorkerId = currentUser?.assemblyWorkerId || null;
+  const today = new Date().toISOString().slice(0, 10);
 
   const [view, setView] = useState('vnos');
-  const [datum, setDatum] = useState(() => new Date().toISOString().slice(0, 10));
+  const [datum, setDatum] = useState(today);
   const [workers, setWorkers] = useState([]);
   const [reasons, setReasons] = useState([]);
   const [catalog, setCatalog] = useState([]);
@@ -55,12 +56,27 @@ export default function MontazaWorkerEntry({ currentUser }) {
   const [segment, setSegment] = useState('');
 
   const [orders, setOrders] = useState([blankOrder()]);
-  const [stops, setStops] = useState([]);
 
-  const [dayTotal, setDayTotal] = useState(null);
+  // zastoj (sprotni vnos)
+  const [stop, setStop] = useState({ reason: '', newReason: '', nalog: '', h: '', m: '', opomba: '' });
+  const [savingStop, setSavingStop] = useState(false);
+
+  // moj čas
+  const [timeH, setTimeH] = useState('');
+  const [timeM, setTimeM] = useState('');
+  const [savingTime, setSavingTime] = useState(false);
+
+  // današnji podatki (za števec in sezname)
+  const [dayTime, setDayTime] = useState([]);   // assembly_daily_time vrstice
+  const [dayStops, setDayStops] = useState([]); // zastoji
+  const [dayLogs, setDayLogs] = useState([]);   // nalogi
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  // delavec sme urejati samo današnji dan
+  const canEditDay = datum === today;
 
   useEffect(() => {
     (async () => {
@@ -75,22 +91,27 @@ export default function MontazaWorkerEntry({ currentUser }) {
     })();
   }, []);
 
-  const selWorker = workers.find((w) => String(w.id) === String(fixedWorkerId || workerId));
-
-  async function loadDayTotal(wid, d) {
-    if (!wid || !d) { setDayTotal(null); return; }
-    const [lg, st] = await Promise.all([
-      supabase.from('assembly_work_log').select('cas_dela_ur').eq('worker_id', wid).eq('date', d),
-      supabase.from('assembly_work_stops').select('cas_ur').eq('worker_id', wid).eq('date', d),
-    ]);
-    const t = (lg.data || []).reduce((a, r) => a + (Number(r.cas_dela_ur) || 0), 0)
-      + (st.data || []).reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
-    setDayTotal(Math.round(t * 1000) / 1000);
-  }
-  useEffect(() => { loadDayTotal(fixedWorkerId || (workerId ? Number(workerId) : null), datum); /* eslint-disable-next-line */ }, [workerId, fixedWorkerId, datum]);
+  const wid = fixedWorkerId || (workerId ? Number(workerId) : null);
+  const selWorker = workers.find((w) => String(w.id) === String(wid));
   const workerName = fixedWorkerId ? (currentUser?.name || selWorker?.name || '') : (selWorker?.name || '');
 
-  // Segmenti, ki jih delavec vidi (če ni določeno, vidi vse)
+  async function loadDay(w, d) {
+    if (!w || !d) { setDayTime([]); setDayStops([]); setDayLogs([]); return; }
+    const [t, st, lg] = await Promise.all([
+      supabase.from('assembly_daily_time').select('id,date,cas_ur').eq('worker_id', w).eq('date', d).order('id'),
+      supabase.from('assembly_work_stops').select('id,date,reason,delovni_nalog,cas_ur,opomba').eq('worker_id', w).eq('date', d).order('id'),
+      supabase.from('assembly_work_log').select('id,date,segment,faza,delovni_nalog,sifra,artikel,dimenzija,kolicina,cas_dela_ur,cas_stroja_ur').eq('worker_id', w).eq('date', d).order('id'),
+    ]);
+    setDayTime(t.data || []);
+    setDayStops(st.data || []);
+    setDayLogs(lg.data || []);
+  }
+  useEffect(() => { loadDay(wid, datum); /* eslint-disable-next-line */ }, [wid, datum]);
+
+  const mojCas = dayTime.reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
+  const zastojiCas = dayStops.reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
+  const dayTotal = Math.round((mojCas + zastojiCas) * 1000) / 1000;
+
   const allowedSegments = useMemo(() => {
     const segs = selWorker?.segments || [];
     const rest = SEGMENT_DEFS.filter((s) => s.key !== 'ostalo');
@@ -101,7 +122,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
   useEffect(() => {
     if (allowedSegments.length && !allowedSegments.some((s) => s.key === segment)) {
       setSegment(allowedSegments[0].key);
-      setOrders([blankOrder()]); setStops([]);
+      setOrders([blankOrder()]);
     }
     // eslint-disable-next-line
   }, [allowedSegments.map((s) => s.key).join(',')]);
@@ -110,11 +131,10 @@ export default function MontazaWorkerEntry({ currentUser }) {
     if (k === segment) return;
     setSegment(k);
     setOrders([blankOrder()]);
-    setStops([]);
     setError('');
   }
 
-  // — šifrant za trenutni segment —
+  // — šifrant —
   const segCatalog = useMemo(() => catalog.filter((c) => c.segment === segment), [catalog, segment]);
   const uniq = (arr) => [...new Set(arr.filter(Boolean))];
   const strojOptions = useMemo(() => uniq(segCatalog.map((c) => c.stroj)).sort(), [segCatalog]);
@@ -126,7 +146,6 @@ export default function MontazaWorkerEntry({ currentUser }) {
   const dimenzijaOptions = (o) => {
     let rows = segCatalog.filter((c) => c.artikel === o.artikel);
     if (segment === 'avtomat') rows = rows.filter((c) => c.stroj === o.stroj);
-    // numerično sortiranje dimenzij (8x80 < 8x115 < 10x60)
     const dims = uniq(rows.map((c) => c.dimenzija));
     return dims.sort((a, b) => {
       const pa = String(a).split('x').map(Number), pb = String(b).split('x').map(Number);
@@ -140,20 +159,9 @@ export default function MontazaWorkerEntry({ currentUser }) {
       (segment !== 'avtomat' || c.stroj === o.stroj)) || null;
   };
 
-  // — orders —
   const setOrder = (key, patch) => setOrders((p) => p.map((o) => (o.key === key ? { ...o, ...patch } : o)));
   const addOrder = () => setOrders((p) => [...p, blankOrder()]);
   const removeOrder = (key) => setOrders((p) => (p.length > 1 ? p.filter((o) => o.key !== key) : p));
-
-  // — stops —
-  const setStop = (key, field, val) => setStops((p) => p.map((s) => (s.key === key ? { ...s, [field]: val } : s)));
-  const addStop = () => setStops((p) => [...p, blankStop()]);
-  const removeStop = (key) => setStops((p) => p.filter((s) => s.key !== key));
-
-  function resetForm() {
-    setOrders([blankOrder()]);
-    setStops([]);
-  }
 
   const orderHasData = (o) => {
     if (segment === 'rocna') return o.nalog || o.sifra || o.kolSt || o.kolVj;
@@ -161,26 +169,96 @@ export default function MontazaWorkerEntry({ currentUser }) {
     return o.nalog || o.sifra || o.kolicina;
   };
 
+  // ===== MOJ ČAS =====
+  async function saveMyTime() {
+    setError('');
+    if (!wid) { setError('Izberi delavko.'); return; }
+    if (!canEditDay && fixedWorkerId) { setError('Vnos za pretekle dni je zaklenjen.'); return; }
+    const c = hmToHours(timeH, timeM);
+    if (!c) { setError('Vpiši svoj čas (ure in/ali minute).'); return; }
+    setSavingTime(true);
+    const { error: e } = await supabase.from('assembly_daily_time').insert({
+      date: datum, worker_id: wid, worker_name: workerName || null, cas_ur: c,
+      created_by: currentUser?.email || null,
+    });
+    setSavingTime(false);
+    if (e) { setError(e.message); return; }
+    setTimeH(''); setTimeM('');
+    loadDay(wid, datum);
+  }
+  async function deleteMyTime(r) {
+    if (fixedWorkerId && r.date !== today) { setError('Vnos za pretekle dni je zaklenjen.'); return; }
+    const { error: e } = await supabase.from('assembly_daily_time').delete().eq('id', r.id);
+    if (e) { setError(e.message); return; }
+    loadDay(wid, datum);
+  }
+
+  // ===== ZASTOJ (sprotni) =====
+  async function saveStop() {
+    setError('');
+    if (!wid) { setError('Izberi delavko.'); return; }
+    if (!canEditDay && fixedWorkerId) { setError('Vnos za pretekle dni je zaklenjen.'); return; }
+    const rname = stop.reason === '__new__' ? (stop.newReason || '').trim() : stop.reason;
+    if (!rname) { setError('Zastoj: izberi ali vpiši razlog.'); return; }
+    const c = hmToHours(stop.h, stop.m);
+    if (!c) { setError('Zastoj: vpiši trajanje.'); return; }
+    setSavingStop(true);
+    try {
+      if (stop.reason === '__new__') {
+        const exists = reasons.some((r) => r.reason.trim().toLowerCase() === rname.toLowerCase());
+        if (!exists) {
+          const ord = (reasons.reduce((mx, r) => Math.max(mx, r.display_order || 0), 0)) + 10;
+          await supabase.from('assembly_stop_reasons').upsert([{ reason: rname, display_order: ord }], { onConflict: 'reason' });
+          const mr = await supabase.from('assembly_stop_reasons').select('id,reason,active,display_order').eq('active', true).order('display_order');
+          setReasons(mr.data || []);
+        }
+      }
+      const { error: e } = await supabase.from('assembly_work_stops').insert({
+        date: datum, worker_id: wid, worker_name: workerName || null,
+        reason: rname, cas_ur: c,
+        opomba: (stop.opomba || '').trim(),
+        delovni_nalog: (stop.nalog || '').trim() || null,
+        log_id: null,
+        created_by: currentUser?.email || null,
+      });
+      if (e) throw e;
+      setStop({ reason: '', newReason: '', nalog: '', h: '', m: '', opomba: '' });
+      loadDay(wid, datum);
+    } catch (e) {
+      setError(e.message || 'Napaka pri shranjevanju zastoja.');
+    } finally {
+      setSavingStop(false);
+    }
+  }
+  async function deleteStop(r) {
+    if (fixedWorkerId && r.date !== today) { setError('Vnos za pretekle dni je zaklenjen.'); return; }
+    const { error: e } = await supabase.from('assembly_work_stops').delete().eq('id', r.id);
+    if (e) { setError(e.message); return; }
+    loadDay(wid, datum);
+  }
+
+  // ===== NALOGI =====
   async function handleSave() {
     setError('');
-    const wid = fixedWorkerId || (workerId ? Number(workerId) : null);
     if (!wid) { setError('Izberi delavko.'); return; }
     if (!datum) { setError('Izberi datum.'); return; }
     if (!segment) { setError('Izberi segment.'); return; }
+    if (!canEditDay && fixedWorkerId) { setError('Vnos za pretekle dni je zaklenjen.'); return; }
 
     const orderRows = orders.filter(orderHasData);
-    const stopRows = stops.filter((s) => (s.reason || s.newReason) && (s.h || s.m));
-    if (orderRows.length === 0 && stopRows.length === 0) { setError('Vnesi vsaj en delovni nalog.'); return; }
+    if (orderRows.length === 0) { setError('Vnesi vsaj en delovni nalog.'); return; }
 
-    // validacija: šifra mora biti razrešena, če je vnesena količina
     for (const o of orderRows) {
       if (segment === 'ostalo') {
         if (!(o.opis || '').trim()) { setError('Ostalo delo: vpiši opis dela.'); return; }
-        if (!hmToHours(o.delH, o.delM)) { setError('Ostalo delo: vpiši čas delavca.'); return; }
+        if (!hmToHours(o.delH, o.delM)) { setError('Ostalo delo: vpiši čas.'); return; }
         continue;
       }
       const cat = catRowFor(o);
       if (!cat) { setError(`Nalog ${o.nalog || '?'}: izberi artikel/dimenzijo (šifra ni določena).`); return; }
+      if (segment === 'avtomat' && !hmToHours(o.strojH, o.strojM)) {
+        setError(`Nalog ${o.nalog || '?'}: vpiši čas stroja.`); return;
+      }
       if (segment === 'rocna' && !(Number(o.kolSt) || Number(o.kolVj))) {
         setError(`Nalog ${o.nalog || '?'}: vnesi količino za stiskanje in/ali vijačenje.`); return;
       }
@@ -188,29 +266,9 @@ export default function MontazaWorkerEntry({ currentUser }) {
 
     setSaving(true);
     try {
-      // Nove razloge zastoja shrani v šifrant
-      const existing = new Set(reasons.map((r) => r.reason.trim().toLowerCase()));
-      const toAdd = [];
-      let ord = (reasons.reduce((mx, r) => Math.max(mx, r.display_order || 0), 0)) + 10;
-      for (const s of stopRows) {
-        const rname = (s.newReason || '').trim();
-        if (s.reason === '__new__' && rname.length > 0 && !existing.has(rname.toLowerCase())) {
-          existing.add(rname.toLowerCase());
-          toAdd.push({ reason: rname, display_order: ord }); ord += 10;
-        }
-      }
-      if (toAdd.length) {
-        await supabase.from('assembly_stop_reasons').upsert(toAdd, { onConflict: 'reason' });
-        const mr = await supabase.from('assembly_stop_reasons').select('id,reason,active,display_order').eq('active', true).order('display_order');
-        setReasons(mr.data || []);
-      }
-
-      // sestavi vrstice za work_log
       const payload = [];
-      const rowMeta = []; // za povezavo zastojev: index prve vrstice vsakega naloga
       for (const o of orderRows) {
         if (segment === 'ostalo') {
-          rowMeta.push({ key: o.key, index: payload.length });
           payload.push({
             date: datum, worker_id: wid, worker_name: workerName || null,
             segment: 'ostalo', delovni_nalog: (o.nalog || '').trim() || null,
@@ -234,11 +292,11 @@ export default function MontazaWorkerEntry({ currentUser }) {
           machine_id: null,
           created_by: currentUser?.email || null,
         };
-        rowMeta.push({ key: o.key, index: payload.length });
         if (segment === 'avtomat') {
+          // normativ na ČAS STROJA; delavčev čas se vodi posebej (Moj čas)
           payload.push({ ...base, machine_name: o.stroj || null, faza: null,
             kolicina: Number(o.kolicina) || 0,
-            cas_dela_ur: hmToHours(o.delH, o.delM),
+            cas_dela_ur: 0,
             cas_stroja_ur: hmToHours(o.strojH, o.strojM),
             normativ_kos_h: Number(cat.normativ_kos_h) || 0 });
         } else if (segment === 'rocna') {
@@ -267,38 +325,12 @@ export default function MontazaWorkerEntry({ currentUser }) {
         }
       }
 
-      const logByKey = {};
-      if (payload.length) {
-        const { data: insLogs, error: e1 } = await supabase.from('assembly_work_log').insert(payload).select();
-        if (e1) throw e1;
-        for (const meta of rowMeta) {
-          const row = (insLogs || [])[meta.index];
-          if (row) logByKey[meta.key] = row;
-        }
-      }
-
-      if (stopRows.length) {
-        const sp = stopRows.map((s) => {
-          const linked = s.linkKey ? logByKey[s.linkKey] : null;
-          return {
-            date: datum,
-            worker_id: wid,
-            worker_name: workerName || null,
-            reason: ((s.newReason || '').trim() || s.reason || '').trim(),
-            cas_ur: hmToHours(s.h, s.m),
-            opomba: (s.opomba || '').trim(),
-            log_id: linked ? linked.id : null,
-            delovni_nalog: linked ? (linked.delovni_nalog || null) : null,
-            created_by: currentUser?.email || null,
-          };
-        });
-        const { error: e2 } = await supabase.from('assembly_work_stops').insert(sp);
-        if (e2) throw e2;
-      }
+      const { error: e1 } = await supabase.from('assembly_work_log').insert(payload);
+      if (e1) throw e1;
 
       setSuccess(true);
-      resetForm();
-      loadDayTotal(wid, datum);
+      setOrders([blankOrder()]);
+      loadDay(wid, datum);
       setTimeout(() => setSuccess(false), 1800);
     } catch (e) {
       setError(e.message || 'Napaka pri shranjevanju.');
@@ -307,7 +339,19 @@ export default function MontazaWorkerEntry({ currentUser }) {
     }
   }
 
-  const currentWid = fixedWorkerId || (workerId ? Number(workerId) : null);
+  async function deleteLog(r) {
+    if (fixedWorkerId && r.date !== today) { setError('Vnos za pretekle dni je zaklenjen.'); return; }
+    if (!window.confirm('Izbrišem ta vnos?')) return;
+    const { error: e } = await supabase.from('assembly_work_log').delete().eq('id', r.id);
+    if (e) { setError(e.message); return; }
+    loadDay(wid, datum);
+  }
+
+  const segLabel = (r) => {
+    const m = { avtomat: 'Avtomat', rocna: 'Ročna', vrece: 'Vrečke', titus: 'Titus', ostalo: 'Ostalo' };
+    const s = m[r.segment] || r.segment || '—';
+    return r.faza ? `${s} · ${r.faza === 'vijacenje' ? 'vijačenje' : r.faza}` : s;
+  };
 
   return (
     <div className="min-h-screen bg-as-gray-50 pb-32">
@@ -321,7 +365,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
               <div className="text-sm opacity-90">AS system · {new Date(datum).toLocaleDateString('sl-SI')}</div>
             </div>
           </div>
-          {currentWid && (
+          {wid && (
             <div className="flex gap-1 bg-white/15 rounded-lg p-1">
               <button onClick={() => setView('vnos')}
                 className={`px-3 py-1.5 text-sm font-semibold rounded ${view === 'vnos' ? 'bg-white' : 'text-white'}`}
@@ -338,9 +382,9 @@ export default function MontazaWorkerEntry({ currentUser }) {
         </div>
       </div>
 
-      {view === 'norma' && currentWid ? (
+      {view === 'norma' && wid ? (
         <div className="max-w-3xl mx-auto px-4 py-5">
-          <MojaNorma workerId={currentWid} workerName={workerName} />
+          <MojaNorma workerId={wid} workerName={workerName} />
         </div>
       ) : (
       <div className="max-w-3xl mx-auto px-4 py-5">
@@ -351,7 +395,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
         </div>
       )}
 
-      {/* Glava vnosa */}
+      {/* Delavka + datum */}
       <Card>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -367,59 +411,151 @@ export default function MontazaWorkerEntry({ currentUser }) {
           </div>
           <div>
             <BigLabel>Datum</BigLabel>
-            <input type="date" value={datum} onChange={(e) => setDatum(e.target.value)} className={selCls} />
-          </div>
-        </div>
-        <div className="mt-3">
-          <BigLabel>Segment</BigLabel>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {allowedSegments.map((s) => (
-              <button key={s.key} onClick={() => switchSegment(s.key)}
-                className={`py-3 rounded-lg font-bold text-sm border-2 transition ${segment === s.key ? 'text-white' : 'bg-white text-as-gray-600 border-as-gray-200'}`}
-                style={segment === s.key ? { background: AS_RED, borderColor: AS_RED } : {}}>
-                {s.label}
-              </button>
-            ))}
+            {fixedWorkerId ? (
+              <div className="px-3 py-3 rounded-lg bg-as-gray-100 font-semibold">{new Date(today).toLocaleDateString('sl-SI')} (danes)</div>
+            ) : (
+              <input type="date" value={datum} onChange={(e) => setDatum(e.target.value)} className={selCls} />
+            )}
           </div>
         </div>
       </Card>
 
-      {/* Števec dneva — cilj 7:30 */}
-      {dayTotal != null && (
+      {/* MOJ ČAS + števec 7:30 */}
+      {wid && (
         <Card>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-as-gray-600 inline-flex items-center gap-1"><Clock className="w-4 h-4" /> Moj čas danes (delo + zastoji)</span>
+            {(() => {
+              const diff = Math.round((DAY_TARGET - dayTotal) * 1000) / 1000;
+              const full = Math.abs(diff) < 0.009;
+              const over = diff < -0.009;
+              const color = full ? '#1b5e20' : over ? '#C8102E' : '#F39C12';
+              return <span className="text-lg font-bold" style={{ color }}>{hoursToHM(dayTotal)} / 7:30</span>;
+            })()}
+          </div>
           {(() => {
             const diff = Math.round((DAY_TARGET - dayTotal) * 1000) / 1000;
             const full = Math.abs(diff) < 0.009;
             const over = diff < -0.009;
             const color = full ? '#1b5e20' : over ? '#C8102E' : '#F39C12';
-            const msg = full ? 'Dan je poln (7:30) ✔' : over ? `Preseženo za ${hoursToHM(-diff)}` : `Manjka še ${hoursToHM(diff)}`;
+            const msg = full ? 'Dan je poln (7:30) ✔' : over ? `Preseženo za ${hoursToHM(-diff)} (nadure)` : `Manjka še ${hoursToHM(diff)}`;
             const pctW = Math.max(0, Math.min(100, (dayTotal / DAY_TARGET) * 100));
             return (
               <>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-as-gray-600">Danes vneseno (delo + zastoji)</span>
-                  <span className="text-lg font-bold" style={{ color }}>{hoursToHM(dayTotal)} / 7:30</span>
-                </div>
                 <div className="w-full h-3 rounded-full bg-as-gray-100 overflow-hidden">
                   <div className="h-3 rounded-full transition-all" style={{ width: `${pctW}%`, background: color }} />
                 </div>
-                <div className="text-xs font-semibold mt-1" style={{ color }}>{msg}</div>
+                <div className="text-xs font-semibold mt-1 mb-3" style={{ color }}>{msg} · delo {hoursToHM(mojCas)} + zastoji {hoursToHM(zastojiCas)}</div>
               </>
             );
           })()}
+          <div className="flex items-end gap-2 flex-wrap">
+            <div>
+              <BigLabel>Dodaj svoj čas dela</BigLabel>
+              <div className="flex items-center gap-2">
+                <input type="number" inputMode="numeric" value={timeH} onChange={(e) => setTimeH(e.target.value)} className={inpCls + ' w-20'} placeholder="ur" />
+                <span className="text-as-gray-400">:</span>
+                <input type="number" inputMode="numeric" value={timeM} onChange={(e) => setTimeM(e.target.value)} className={inpCls + ' w-20'} placeholder="min" />
+              </div>
+            </div>
+            <button onClick={saveMyTime} disabled={savingTime}
+              className="px-4 py-3 text-white text-sm font-bold rounded-lg inline-flex items-center gap-2 disabled:opacity-50" style={{ background: AS_RED }}>
+              {savingTime ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Dodaj čas
+            </button>
+          </div>
+          {dayTime.length > 0 && (
+            <div className="mt-3 space-y-1">
+              {dayTime.map((r) => (
+                <div key={r.id} className="flex items-center justify-between text-sm border-b border-as-gray-100 py-1">
+                  <span>Delo: <strong>{hoursToHM(r.cas_ur)}</strong></span>
+                  {canEditDay && (
+                    <button onClick={() => deleteMyTime(r)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
-      {/* Delovni nalogi */}
+      {/* ZASTOJI — sprotni vnos (na vrhu) */}
+      {wid && (
+        <>
+          <div className="mt-4 mb-1">
+            <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: '#F39C12' }}>
+              <span className="inline-block w-1.5 h-5 rounded" style={{ background: '#F39C12' }} />
+              Zastoji <span className="text-as-gray-400 font-normal text-sm">(vpiši takoj, ko se zgodi)</span>
+            </h2>
+          </div>
+          <Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <BigLabel>Razlog</BigLabel>
+                <select value={stop.reason} onChange={(e) => setStop((p) => ({ ...p, reason: e.target.value }))} className={selCls}>
+                  <option value="">— izberi razlog —</option>
+                  {reasons.map((r) => <option key={r.id} value={r.reason}>{r.reason}</option>)}
+                  <option value="__new__">➕ Nov razlog…</option>
+                </select>
+                {stop.reason === '__new__' && (
+                  <input value={stop.newReason} onChange={(e) => setStop((p) => ({ ...p, newReason: e.target.value }))} className={inpCls + ' mt-2'} placeholder="vpiši nov razlog (ostane shranjen)" />
+                )}
+              </div>
+              <div>
+                <BigLabel>Št. delovnega naloga (neobvezno)</BigLabel>
+                <input value={stop.nalog} onChange={(e) => setStop((p) => ({ ...p, nalog: e.target.value }))} className={inpCls} placeholder="npr. DN-1234 ali prazno" />
+              </div>
+              <TimeField label="Trajanje" h={stop.h} m={stop.m}
+                setH={(v) => setStop((p) => ({ ...p, h: v }))} setM={(v) => setStop((p) => ({ ...p, m: v }))} />
+              <div>
+                <BigLabel>Opomba</BigLabel>
+                <input value={stop.opomba} onChange={(e) => setStop((p) => ({ ...p, opomba: e.target.value }))} className={inpCls} placeholder="neobvezno" />
+              </div>
+            </div>
+            <button onClick={saveStop} disabled={savingStop}
+              className="mt-3 w-full py-3 rounded-lg text-white font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: '#F39C12' }}>
+              {savingStop ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />} SHRANI ZASTOJ
+            </button>
+            {dayStops.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="text-xs font-semibold text-as-gray-500">Današnji zastoji:</div>
+                {dayStops.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between text-sm border-b border-as-gray-100 py-1">
+                    <span>{r.reason} · {hoursToHM(r.cas_ur)}{r.delovni_nalog ? ` · nalog ${r.delovni_nalog}` : ''}</span>
+                    {canEditDay && (
+                      <button onClick={() => deleteStop(r)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </>
+      )}
+
+      {/* Segment + nalogi */}
+      <Card>
+        <BigLabel>Segment</BigLabel>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {allowedSegments.map((s) => (
+            <button key={s.key} onClick={() => switchSegment(s.key)}
+              className={`py-3 rounded-lg font-bold text-sm border-2 transition ${segment === s.key ? 'text-white' : 'bg-white text-as-gray-600 border-as-gray-200'}`}
+              style={segment === s.key ? { background: AS_RED, borderColor: AS_RED } : {}}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </Card>
+
       <div className="mt-4 mb-1 flex items-center justify-between">
         <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: AS_RED }}>
           <span className="inline-block w-1.5 h-5 rounded" style={{ background: AS_RED }} />
           Delovni nalogi — {SEGMENT_DEFS.find((s) => s.key === segment)?.label || ''}
+          <span className="text-as-gray-400 font-normal text-sm">(vpiši na koncu dneva)</span>
         </h2>
       </div>
 
       {orders.map((o, idx) => {
-        const cat = catRowFor(o);
+        const cat = segment === 'ostalo' ? null : catRowFor(o);
         return (
           <Card key={o.key}>
             <div className="flex items-center justify-between mb-2">
@@ -434,7 +570,6 @@ export default function MontazaWorkerEntry({ currentUser }) {
                 <input value={o.nalog} onChange={(e) => setOrder(o.key, { nalog: e.target.value })} className={inpCls} placeholder="npr. DN-1234" />
               </div>
 
-              {/* AVTOMAT: stroj → artikel → dimenzija */}
               {segment === 'avtomat' && (
                 <div>
                   <BigLabel>Stroj</BigLabel>
@@ -445,7 +580,6 @@ export default function MontazaWorkerEntry({ currentUser }) {
                 </div>
               )}
 
-              {/* VREČE: stroj (Vrečke 1/2) */}
               {segment === 'vrece' && (
                 <div>
                   <BigLabel>Stroj</BigLabel>
@@ -456,7 +590,6 @@ export default function MontazaWorkerEntry({ currentUser }) {
                 </div>
               )}
 
-              {/* OSTALO: opis dela */}
               {segment === 'ostalo' ? (
                 <div className="sm:col-span-2">
                   <BigLabel>Ostalo delo</BigLabel>
@@ -493,7 +626,6 @@ export default function MontazaWorkerEntry({ currentUser }) {
                 </>
               )}
 
-              {/* Šifra + normativ (avtomatsko) */}
               {segment !== 'ostalo' && (
               <div className="sm:col-span-2">
                 {cat ? (
@@ -502,7 +634,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
                     {segment === 'rocna' ? (
                       <> · stiskanje <strong>{formatNumber(cat.normativ_stiskanje_kos_h)} kos/h</strong> · vijačenje+pak. <strong>{formatNumber(cat.normativ_vijacenje_kos_h)} kos/h</strong></>
                     ) : (
-                      <> · normativ <strong>{formatNumber(cat.normativ_kos_h)} {segment === 'vrece' ? 'vrečk/h' : segment === 'titus' ? 'škatel/h' : 'kos/h'}</strong></>
+                      <> · normativ <strong>{formatNumber(cat.normativ_kos_h)} {segment === 'vrece' ? 'vrečk/h' : segment === 'titus' ? 'škatel/h' : 'kos/h'}</strong>{segment === 'avtomat' ? ' (na čas stroja)' : ''}</>
                     )}
                   </div>
                 ) : (
@@ -513,7 +645,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
 
               {/* Količine in časi */}
               {segment === 'ostalo' ? (
-                <TimeField label="Čas delavca" h={o.delH} m={o.delM} setH={(v) => setOrder(o.key, { delH: v })} setM={(v) => setOrder(o.key, { delM: v })} />
+                <TimeField label="Čas" h={o.delH} m={o.delM} setH={(v) => setOrder(o.key, { delH: v })} setM={(v) => setOrder(o.key, { delM: v })} />
               ) : segment === 'rocna' ? (
                 <>
                   <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg border border-as-gray-200">
@@ -539,9 +671,10 @@ export default function MontazaWorkerEntry({ currentUser }) {
                     <BigLabel>Količina ({segment === 'vrece' ? 'vrečke' : segment === 'titus' ? 'škatle' : 'kos'})</BigLabel>
                     <input type="number" inputMode="numeric" value={o.kolicina} onChange={(e) => setOrder(o.key, { kolicina: e.target.value })} className={inpCls} placeholder="0" />
                   </div>
-                  <TimeField label="Čas dela" h={o.delH} m={o.delM} setH={(v) => setOrder(o.key, { delH: v })} setM={(v) => setOrder(o.key, { delM: v })} />
-                  {segment === 'avtomat' && (
+                  {segment === 'avtomat' ? (
                     <TimeField label="Čas stroja" h={o.strojH} m={o.strojM} setH={(v) => setOrder(o.key, { strojH: v })} setM={(v) => setOrder(o.key, { strojM: v })} />
+                  ) : (
+                    <TimeField label="Čas dela" h={o.delH} m={o.delM} setH={(v) => setOrder(o.key, { delH: v })} setM={(v) => setOrder(o.key, { delM: v })} />
                   )}
                 </>
               )}
@@ -554,48 +687,37 @@ export default function MontazaWorkerEntry({ currentUser }) {
         <Plus className="w-4 h-4" /> Dodaj nalog
       </button>
 
-      {/* Zastoji */}
-      <div className="mt-5 mb-1 flex items-center justify-between">
-        <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: '#F39C12' }}><span className="inline-block w-1.5 h-5 rounded" style={{ background: '#F39C12' }} />Zastoji <span className="text-as-gray-400 font-normal text-sm">(neobvezno)</span></h2>
-      </div>
-      {stops.map((s, idx) => (
-        <Card key={s.key}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-as-gray-500">Zastoj #{idx + 1}</span>
-            <button onClick={() => removeStop(s.key)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
+      {/* Moji današnji nalogi */}
+      {dayLogs.length > 0 && (
+        <>
+          <div className="mt-5 mb-1">
+            <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: AS_RED }}>
+              <span className="inline-block w-1.5 h-5 rounded" style={{ background: AS_RED }} />
+              Moji shranjeni nalogi ({new Date(datum).toLocaleDateString('sl-SI')})
+            </h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <BigLabel>Razlog</BigLabel>
-              <select value={s.reason} onChange={(e) => setStop(s.key, 'reason', e.target.value)} className={selCls}>
-                <option value="">— izberi razlog —</option>
-                {reasons.map((r) => <option key={r.id} value={r.reason}>{r.reason}</option>)}
-                <option value="__new__">➕ Nov razlog…</option>
-              </select>
-              {s.reason === '__new__' && (
-                <input value={s.newReason} onChange={(e) => setStop(s.key, 'newReason', e.target.value)} className={inpCls + ' mt-2'} placeholder="vpiši nov razlog (ostane shranjen)" />
-              )}
+          <Card>
+            <div className="space-y-1">
+              {dayLogs.map((r) => (
+                <div key={r.id} className="flex items-center justify-between text-sm border-b border-as-gray-100 py-1 gap-2">
+                  <span className="flex-1">
+                    {segLabel(r)} · {r.segment === 'ostalo' ? (r.artikel || '') : `${r.sifra}${r.dimenzija ? ` (${r.artikel} ${r.dimenzija})` : ''}`}
+                    {r.delovni_nalog ? ` · nalog ${r.delovni_nalog}` : ''}
+                    {Number(r.kolicina) ? ` · ${formatNumber(r.kolicina)} kos` : ''}
+                    {` · ${hoursToHM(r.segment === 'avtomat' ? r.cas_stroja_ur : r.cas_dela_ur)}`}
+                  </span>
+                  {canEditDay ? (
+                    <button onClick={() => deleteLog(r)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
+                  ) : (
+                    <span className="text-xs text-as-gray-400">🔒 zaklenjeno</span>
+                  )}
+                </div>
+              ))}
             </div>
-            <div>
-              <BigLabel>Vezan na nalog</BigLabel>
-              <select value={s.linkKey} onChange={(e) => setStop(s.key, 'linkKey', e.target.value)} className={selCls}>
-                <option value="">Ni vezan (splošno)</option>
-                {orders.filter(orderHasData).map((o, i) => (
-                  <option key={o.key} value={o.key}>{(o.nalog || o.opis || o.sifra) || `Nalog ${i + 1}`}</option>
-                ))}
-              </select>
-            </div>
-            <TimeField label="Trajanje" h={s.h} m={s.m} setH={(v) => setStop(s.key, 'h', v)} setM={(v) => setStop(s.key, 'm', v)} />
-            <div className="sm:col-span-2">
-              <BigLabel>Opomba</BigLabel>
-              <input value={s.opomba} onChange={(e) => setStop(s.key, 'opomba', e.target.value)} className={inpCls} placeholder="neobvezno" />
-            </div>
-          </div>
-        </Card>
-      ))}
-      <button onClick={addStop} className="w-full py-3 rounded-lg border-2 border-dashed font-semibold inline-flex items-center justify-center gap-2 border-as-gray-300 text-as-gray-600">
-        <Plus className="w-4 h-4" /> Dodaj zastoj
-      </button>
+            {!canEditDay && <div className="text-xs text-as-gray-400 mt-2">Vnose za pretekle dni lahko popravi samo Milena/admin.</div>}
+          </Card>
+        </>
+      )}
 
       {/* Sticky SHRANI */}
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-as-gray-200">
@@ -603,11 +725,10 @@ export default function MontazaWorkerEntry({ currentUser }) {
           className="max-w-3xl mx-auto w-full py-4 rounded-xl text-white font-bold text-lg inline-flex items-center justify-center gap-2 disabled:opacity-60"
           style={{ background: AS_RED }}>
           {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-          {saving ? 'Shranjujem…' : 'SHRANI VNOS'}
+          {saving ? 'Shranjujem…' : 'SHRANI NALOGE'}
         </button>
       </div>
 
-      {/* Uspeh */}
       {success && (
         <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl px-8 py-6 text-center shadow-xl">
