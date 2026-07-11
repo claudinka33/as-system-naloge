@@ -24,6 +24,10 @@ function hmToHours(h, m) {
   const mm = parseInt(m, 10) || 0;
   return Math.round((hh + mm / 60) * 1000) / 1000;
 }
+function hoursToSplit(h) {
+  const total = Math.round(Number(h || 0) * 60);
+  return { h: String(Math.floor(total / 60)), m: String(total % 60) };
+}
 function hoursToHM(h) {
   const total = Math.round(Number(h || 0) * 60);
   const hh = Math.floor(Math.abs(total) / 60), mm = Math.abs(total) % 60;
@@ -64,6 +68,8 @@ export default function MontazaWorkerEntry({ currentUser }) {
   // moj čas
   const [timeH, setTimeH] = useState('');
   const [timeM, setTimeM] = useState('');
+  const [timeVrsta, setTimeVrsta] = useState('stroj');
+  const [timeOpis, setTimeOpis] = useState('');
   const [savingTime, setSavingTime] = useState(false);
 
   // današnji podatki (za števec in sezname)
@@ -74,6 +80,8 @@ export default function MontazaWorkerEntry({ currentUser }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [editStopId, setEditStopId] = useState(null);
+  const [editLog, setEditLog] = useState(null); // { id, faza }
 
   // delavec sme urejati samo današnji dan
   const canEditDay = datum === today;
@@ -98,9 +106,9 @@ export default function MontazaWorkerEntry({ currentUser }) {
   async function loadDay(w, d) {
     if (!w || !d) { setDayTime([]); setDayStops([]); setDayLogs([]); return; }
     const [t, st, lg] = await Promise.all([
-      supabase.from('assembly_daily_time').select('id,date,cas_ur').eq('worker_id', w).eq('date', d).order('id'),
+      supabase.from('assembly_daily_time').select('id,date,cas_ur,vrsta,opomba').eq('worker_id', w).eq('date', d).order('id'),
       supabase.from('assembly_work_stops').select('id,date,reason,delovni_nalog,cas_ur,opomba').eq('worker_id', w).eq('date', d).order('id'),
-      supabase.from('assembly_work_log').select('id,date,segment,faza,delovni_nalog,sifra,artikel,dimenzija,kolicina,cas_dela_ur,cas_stroja_ur').eq('worker_id', w).eq('date', d).order('id'),
+      supabase.from('assembly_work_log').select('id,date,segment,faza,delovni_nalog,sifra,artikel,dimenzija,machine_name,kolicina,cas_dela_ur,cas_stroja_ur').eq('worker_id', w).eq('date', d).order('id'),
     ]);
     setDayTime(t.data || []);
     setDayStops(st.data || []);
@@ -108,9 +116,9 @@ export default function MontazaWorkerEntry({ currentUser }) {
   }
   useEffect(() => { loadDay(wid, datum); /* eslint-disable-next-line */ }, [wid, datum]);
 
-  const mojCas = dayTime.reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
-  const zastojiCas = dayStops.reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
-  const dayTotal = Math.round((mojCas + zastojiCas) * 1000) / 1000;
+  const casDelo = dayTime.filter((r) => r.vrsta !== 'malica').reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
+  const casMalica = dayTime.filter((r) => r.vrsta === 'malica').reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
+  const dayTotal = Math.round((casDelo + casMalica) * 1000) / 1000; // delovni dan = delo + malica (cilj 8:00)
 
   const allowedSegments = useMemo(() => {
     const segs = selWorker?.segments || [];
@@ -176,14 +184,16 @@ export default function MontazaWorkerEntry({ currentUser }) {
     if (!canEditDay && fixedWorkerId) { setError('Vnos za pretekle dni je zaklenjen.'); return; }
     const c = hmToHours(timeH, timeM);
     if (!c) { setError('Vpiši svoj čas (ure in/ali minute).'); return; }
+    if (timeVrsta === 'ostalo' && !(timeOpis || '').trim()) { setError('Ostalo: vpiši kaj si delala (opis).'); return; }
     setSavingTime(true);
     const { error: e } = await supabase.from('assembly_daily_time').insert({
       date: datum, worker_id: wid, worker_name: workerName || null, cas_ur: c,
+      vrsta: timeVrsta, opomba: timeVrsta === 'ostalo' ? (timeOpis || '').trim() : null,
       created_by: currentUser?.email || null,
     });
     setSavingTime(false);
     if (e) { setError(e.message); return; }
-    setTimeH(''); setTimeM('');
+    setTimeH(''); setTimeM(''); setTimeOpis('');
     loadDay(wid, datum);
   }
   async function deleteMyTime(r) {
@@ -213,22 +223,69 @@ export default function MontazaWorkerEntry({ currentUser }) {
           setReasons(mr.data || []);
         }
       }
-      const { error: e } = await supabase.from('assembly_work_stops').insert({
+      const rec = {
         date: datum, worker_id: wid, worker_name: workerName || null,
         reason: rname, cas_ur: c,
         opomba: (stop.opomba || '').trim(),
         delovni_nalog: (stop.nalog || '').trim() || null,
-        log_id: null,
         created_by: currentUser?.email || null,
-      });
+      };
+      const { error: e } = editStopId
+        ? await supabase.from('assembly_work_stops').update(rec).eq('id', editStopId)
+        : await supabase.from('assembly_work_stops').insert({ ...rec, log_id: null });
       if (e) throw e;
       setStop({ reason: '', newReason: '', nalog: '', h: '', m: '', opomba: '' });
+      setEditStopId(null);
       loadDay(wid, datum);
     } catch (e) {
       setError(e.message || 'Napaka pri shranjevanju zastoja.');
     } finally {
       setSavingStop(false);
     }
+  }
+  function startEditStop(r) {
+    const t = hoursToSplit(r.cas_ur);
+    const known = reasons.some((x) => x.reason === r.reason);
+    setStop({ reason: known ? r.reason : '__new__', newReason: known ? '' : (r.reason || ''), nalog: r.delovni_nalog || '', h: t.h, m: t.m, opomba: r.opomba || '' });
+    setEditStopId(r.id);
+    setError('');
+  }
+  function cancelEditStop() {
+    setStop({ reason: '', newReason: '', nalog: '', h: '', m: '', opomba: '' });
+    setEditStopId(null);
+  }
+  function startEditLog(r) {
+    setSegment(r.segment || 'avtomat');
+    const o = blankOrder();
+    o.nalog = r.delovni_nalog || '';
+    if (r.segment === 'ostalo') {
+      o.opis = r.artikel || '';
+      const t = hoursToSplit(r.cas_dela_ur); o.delH = t.h; o.delM = t.m;
+    } else if (r.segment === 'avtomat') {
+      o.stroj = r.machine_name || ''; o.artikel = r.artikel || ''; o.dimenzija = r.dimenzija || '';
+      o.kolicina = String(r.kolicina ?? '');
+      const t = hoursToSplit(r.cas_stroja_ur); o.strojH = t.h; o.strojM = t.m;
+    } else if (r.segment === 'rocna') {
+      o.artikel = r.artikel || ''; o.dimenzija = r.dimenzija || '';
+      const t = hoursToSplit(r.cas_dela_ur);
+      if (r.faza === 'stiskanje') { o.kolSt = String(r.kolicina ?? ''); o.hSt = t.h; o.mSt = t.m; }
+      else { o.kolVj = String(r.kolicina ?? ''); o.hVj = t.h; o.mVj = t.m; }
+    } else if (r.segment === 'vrece') {
+      o.stroj = r.machine_name || ''; o.artikel = r.artikel || ''; o.dimenzija = r.dimenzija || '';
+      o.kolicina = String(r.kolicina ?? '');
+      const t = hoursToSplit(r.cas_dela_ur); o.delH = t.h; o.delM = t.m;
+    } else { // titus
+      o.sifra = r.sifra || ''; o.kolicina = String(r.kolicina ?? '');
+      const t = hoursToSplit(r.cas_dela_ur); o.delH = t.h; o.delM = t.m;
+    }
+    setOrders([o]);
+    setEditLog({ id: r.id, faza: r.faza || null });
+    setError('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function cancelEditLog() {
+    setOrders([blankOrder()]);
+    setEditLog(null);
   }
   async function deleteStop(r) {
     if (fixedWorkerId && r.date !== today) { setError('Vnos za pretekle dni je zaklenjen.'); return; }
@@ -300,13 +357,15 @@ export default function MontazaWorkerEntry({ currentUser }) {
             cas_stroja_ur: hmToHours(o.strojH, o.strojM),
             normativ_kos_h: Number(cat.normativ_kos_h) || 0 });
         } else if (segment === 'rocna') {
-          if (Number(o.kolSt) || o.hSt || o.mSt) {
+          const allowSt = !editLog || editLog.faza === 'stiskanje';
+          const allowVj = !editLog || editLog.faza === 'vijacenje';
+          if (allowSt && (Number(o.kolSt) || o.hSt || o.mSt)) {
             payload.push({ ...base, machine_name: null, faza: 'stiskanje',
               kolicina: Number(o.kolSt) || 0,
               cas_dela_ur: hmToHours(o.hSt, o.mSt), cas_stroja_ur: 0,
               normativ_kos_h: Number(cat.normativ_stiskanje_kos_h) || 0 });
           }
-          if (Number(o.kolVj) || o.hVj || o.mVj) {
+          if (allowVj && (Number(o.kolVj) || o.hVj || o.mVj)) {
             payload.push({ ...base, machine_name: null, faza: 'vijacenje',
               kolicina: Number(o.kolVj) || 0,
               cas_dela_ur: hmToHours(o.hVj, o.mVj), cas_stroja_ur: 0,
@@ -325,8 +384,15 @@ export default function MontazaWorkerEntry({ currentUser }) {
         }
       }
 
-      const { error: e1 } = await supabase.from('assembly_work_log').insert(payload);
-      if (e1) throw e1;
+      if (editLog) {
+        const upd = { ...payload[0] };
+        const { error: e1 } = await supabase.from('assembly_work_log').update(upd).eq('id', editLog.id);
+        if (e1) throw e1;
+        setEditLog(null);
+      } else {
+        const { error: e1 } = await supabase.from('assembly_work_log').insert(payload);
+        if (e1) throw e1;
+      }
 
       setSuccess(true);
       setOrders([blankOrder()]);
@@ -424,55 +490,80 @@ export default function MontazaWorkerEntry({ currentUser }) {
       {wid && (
         <Card>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-as-gray-600 inline-flex items-center gap-1"><Clock className="w-4 h-4" /> Moj čas danes (delo + zastoji)</span>
+            <span className="text-sm font-semibold text-as-gray-600 inline-flex items-center gap-1"><Clock className="w-4 h-4" /> Moj delovni dan</span>
             {(() => {
-              const diff = Math.round((DAY_TARGET - dayTotal) * 1000) / 1000;
+              const target = 8;
+              const diff = Math.round((target - dayTotal) * 1000) / 1000;
               const full = Math.abs(diff) < 0.009;
               const over = diff < -0.009;
               const color = full ? '#1b5e20' : over ? '#C8102E' : '#F39C12';
-              return <span className="text-lg font-bold" style={{ color }}>{hoursToHM(dayTotal)} / 7:30</span>;
+              return <span className="text-lg font-bold" style={{ color }}>{hoursToHM(dayTotal)} / 8:00</span>;
             })()}
           </div>
           {(() => {
-            const diff = Math.round((DAY_TARGET - dayTotal) * 1000) / 1000;
+            const target = 8;
+            const diff = Math.round((target - dayTotal) * 1000) / 1000;
             const full = Math.abs(diff) < 0.009;
             const over = diff < -0.009;
             const color = full ? '#1b5e20' : over ? '#C8102E' : '#F39C12';
-            const msg = full ? 'Dan je poln (7:30) ✔' : over ? `Preseženo za ${hoursToHM(-diff)} (nadure)` : `Manjka še ${hoursToHM(diff)}`;
-            const pctW = Math.max(0, Math.min(100, (dayTotal / DAY_TARGET) * 100));
+            const msg = full ? 'Dan je poln (8:00) ✔' : over ? `Preseženo za ${hoursToHM(-diff)} (nadure)` : `Manjka še ${hoursToHM(diff)}`;
+            const pctW = Math.max(0, Math.min(100, (dayTotal / target) * 100));
             return (
               <>
                 <div className="w-full h-3 rounded-full bg-as-gray-100 overflow-hidden">
                   <div className="h-3 rounded-full transition-all" style={{ width: `${pctW}%`, background: color }} />
                 </div>
-                <div className="text-xs font-semibold mt-1 mb-3" style={{ color }}>{msg} · delo {hoursToHM(mojCas)} + zastoji {hoursToHM(zastojiCas)}</div>
+                <div className="text-xs font-semibold mt-1 mb-3" style={{ color }}>{msg} · delo {hoursToHM(casDelo)} / 7:30 · malica {hoursToHM(casMalica)}</div>
               </>
             );
           })()}
-          <div className="flex items-end gap-2 flex-wrap">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
             <div>
-              <BigLabel>Dodaj svoj čas dela</BigLabel>
-              <div className="flex items-center gap-2">
-                <input type="number" inputMode="numeric" value={timeH} onChange={(e) => setTimeH(e.target.value)} className={inpCls + ' w-20'} placeholder="ur" />
-                <span className="text-as-gray-400">:</span>
-                <input type="number" inputMode="numeric" value={timeM} onChange={(e) => setTimeM(e.target.value)} className={inpCls + ' w-20'} placeholder="min" />
-              </div>
+              <BigLabel>Vrsta</BigLabel>
+              <select value={timeVrsta} onChange={(e) => setTimeVrsta(e.target.value)} className={selCls}>
+                <option value="stroj">Delo na stroju</option>
+                <option value="malica">Malica</option>
+                <option value="ostalo">Ostalo (čiščenje, karton…)</option>
+              </select>
             </div>
+            <TimeField label="Čas" h={timeH} m={timeM} setH={setTimeH} setM={setTimeM} />
             <button onClick={saveMyTime} disabled={savingTime}
-              className="px-4 py-3 text-white text-sm font-bold rounded-lg inline-flex items-center gap-2 disabled:opacity-50" style={{ background: AS_RED }}>
+              className="px-4 py-3 text-white text-sm font-bold rounded-lg inline-flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: AS_RED }}>
               {savingTime ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Dodaj čas
             </button>
+            {timeVrsta === 'ostalo' && (
+              <div className="sm:col-span-3">
+                <BigLabel>Kaj si delala (opis)</BigLabel>
+                <input value={timeOpis} onChange={(e) => setTimeOpis(e.target.value)} className={inpCls} placeholder="npr. čiščenje, stiskanje kartona…" />
+              </div>
+            )}
           </div>
           {dayTime.length > 0 && (
-            <div className="mt-3 space-y-1">
-              {dayTime.map((r) => (
-                <div key={r.id} className="flex items-center justify-between text-sm border-b border-as-gray-100 py-1">
-                  <span>Delo: <strong>{hoursToHM(r.cas_ur)}</strong></span>
-                  {canEditDay && (
-                    <button onClick={() => deleteMyTime(r)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
-                  )}
-                </div>
-              ))}
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-as-gray-500 border-b border-as-gray-200">
+                    <th className="text-left p-2">Vrsta</th>
+                    <th className="text-left p-2">Opis</th>
+                    <th className="text-right p-2">Čas</th>
+                    <th className="text-right p-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dayTime.map((r) => (
+                    <tr key={r.id} className="border-b border-as-gray-100">
+                      <td className="p-2">{r.vrsta === 'malica' ? 'Malica' : r.vrsta === 'ostalo' ? 'Ostalo' : 'Delo na stroju'}</td>
+                      <td className="p-2">{r.opomba || '—'}</td>
+                      <td className="p-2 text-right font-semibold">{hoursToHM(r.cas_ur)}</td>
+                      <td className="p-2 text-right">
+                        {canEditDay && (
+                          <button onClick={() => deleteMyTime(r)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>
@@ -511,21 +602,47 @@ export default function MontazaWorkerEntry({ currentUser }) {
                 <input value={stop.opomba} onChange={(e) => setStop((p) => ({ ...p, opomba: e.target.value }))} className={inpCls} placeholder="neobvezno" />
               </div>
             </div>
-            <button onClick={saveStop} disabled={savingStop}
-              className="mt-3 w-full py-3 rounded-lg text-white font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: '#F39C12' }}>
-              {savingStop ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />} SHRANI ZASTOJ
-            </button>
+            <div className="mt-3 flex gap-2">
+              <button onClick={saveStop} disabled={savingStop}
+                className="flex-1 py-3 rounded-lg text-white font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: '#F39C12' }}>
+                {savingStop ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />} {editStopId ? 'POSODOBI ZASTOJ' : 'SHRANI ZASTOJ'}
+              </button>
+              {editStopId && (
+                <button onClick={cancelEditStop} className="px-4 py-3 rounded-lg border border-as-gray-200 font-semibold">Prekliči</button>
+              )}
+            </div>
             {dayStops.length > 0 && (
-              <div className="mt-3 space-y-1">
-                <div className="text-xs font-semibold text-as-gray-500">Današnji zastoji:</div>
-                {dayStops.map((r) => (
-                  <div key={r.id} className="flex items-center justify-between text-sm border-b border-as-gray-100 py-1">
-                    <span>{r.reason} · {hoursToHM(r.cas_ur)}{r.delovni_nalog ? ` · nalog ${r.delovni_nalog}` : ''}</span>
-                    {canEditDay && (
-                      <button onClick={() => deleteStop(r)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
-                    )}
-                  </div>
-                ))}
+              <div className="mt-3 overflow-x-auto">
+                <div className="text-xs font-semibold text-as-gray-500 mb-1">Današnji zastoji:</div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-as-gray-500 border-b border-as-gray-200">
+                      <th className="text-left p-2">Razlog</th>
+                      <th className="text-left p-2">Nalog</th>
+                      <th className="text-right p-2">Čas</th>
+                      <th className="text-left p-2">Opomba</th>
+                      <th className="text-right p-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dayStops.map((r) => (
+                      <tr key={r.id} className="border-b border-as-gray-100">
+                        <td className="p-2">{r.reason}</td>
+                        <td className="p-2">{r.delovni_nalog || '—'}</td>
+                        <td className="p-2 text-right font-semibold">{hoursToHM(r.cas_ur)}</td>
+                        <td className="p-2">{r.opomba || '—'}</td>
+                        <td className="p-2 text-right whitespace-nowrap">
+                          {canEditDay ? (
+                            <>
+                              <button onClick={() => startEditStop(r)} className="text-xs px-2 py-1 rounded border border-as-gray-200 hover:bg-as-gray-50 mr-1">Uredi</button>
+                              <button onClick={() => deleteStop(r)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          ) : <span className="text-xs text-as-gray-400">🔒</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </Card>
@@ -550,8 +667,11 @@ export default function MontazaWorkerEntry({ currentUser }) {
         <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: AS_RED }}>
           <span className="inline-block w-1.5 h-5 rounded" style={{ background: AS_RED }} />
           Delovni nalogi — {SEGMENT_DEFS.find((s) => s.key === segment)?.label || ''}
-          <span className="text-as-gray-400 font-normal text-sm">(vpiši na koncu dneva)</span>
+          <span className="text-as-gray-400 font-normal text-sm">{editLog ? '(urejaš shranjen vnos)' : '(vpiši na koncu dneva)'}</span>
         </h2>
+        {editLog && (
+          <button onClick={cancelEditLog} className="px-3 py-1.5 rounded-lg border border-as-gray-200 text-sm font-semibold">Prekliči urejanje</button>
+        )}
       </div>
 
       {orders.map((o, idx) => {
@@ -682,10 +802,12 @@ export default function MontazaWorkerEntry({ currentUser }) {
           </Card>
         );
       })}
+      {!editLog && (
       <button onClick={addOrder} className="w-full py-3 rounded-lg border-2 border-dashed font-semibold inline-flex items-center justify-center gap-2"
         style={{ borderColor: AS_RED, color: AS_RED }}>
         <Plus className="w-4 h-4" /> Dodaj nalog
       </button>
+      )}
 
       {/* Moji današnji nalogi */}
       {dayLogs.length > 0 && (
@@ -697,22 +819,42 @@ export default function MontazaWorkerEntry({ currentUser }) {
             </h2>
           </div>
           <Card>
-            <div className="space-y-1">
-              {dayLogs.map((r) => (
-                <div key={r.id} className="flex items-center justify-between text-sm border-b border-as-gray-100 py-1 gap-2">
-                  <span className="flex-1">
-                    {segLabel(r)} · {r.segment === 'ostalo' ? (r.artikel || '') : `${r.sifra}${r.dimenzija ? ` (${r.artikel} ${r.dimenzija})` : ''}`}
-                    {r.delovni_nalog ? ` · nalog ${r.delovni_nalog}` : ''}
-                    {Number(r.kolicina) ? ` · ${formatNumber(r.kolicina)} kos` : ''}
-                    {` · ${hoursToHM(r.segment === 'avtomat' ? r.cas_stroja_ur : r.cas_dela_ur)}`}
-                  </span>
-                  {canEditDay ? (
-                    <button onClick={() => deleteLog(r)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
-                  ) : (
-                    <span className="text-xs text-as-gray-400">🔒 zaklenjeno</span>
-                  )}
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-as-gray-500 border-b border-as-gray-200">
+                    <th className="text-left p-2">Segment</th>
+                    <th className="text-left p-2">Šifra / opis</th>
+                    <th className="text-left p-2">Artikel</th>
+                    <th className="text-left p-2">Nalog</th>
+                    <th className="text-right p-2">Kos</th>
+                    <th className="text-right p-2">Čas</th>
+                    <th className="text-right p-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dayLogs.map((r) => (
+                    <tr key={r.id} className="border-b border-as-gray-100">
+                      <td className="p-2">{segLabel(r)}</td>
+                      <td className="p-2">{r.segment === 'ostalo' ? (r.artikel || '—') : (r.sifra || '—')}</td>
+                      <td className="p-2">{r.segment === 'ostalo' ? '—' : [r.artikel, r.dimenzija].filter(Boolean).join(' · ') || '—'}</td>
+                      <td className="p-2">{r.delovni_nalog || '—'}</td>
+                      <td className="p-2 text-right">{Number(r.kolicina) ? formatNumber(r.kolicina) : '—'}</td>
+                      <td className="p-2 text-right font-semibold">{hoursToHM(r.segment === 'avtomat' ? r.cas_stroja_ur : r.cas_dela_ur)}</td>
+                      <td className="p-2 text-right whitespace-nowrap">
+                        {canEditDay ? (
+                          <>
+                            <button onClick={() => startEditLog(r)} className="text-xs px-2 py-1 rounded border border-as-gray-200 hover:bg-as-gray-50 mr-1">Uredi</button>
+                            <button onClick={() => deleteLog(r)} className="text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-as-gray-400">🔒</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
             {!canEditDay && <div className="text-xs text-as-gray-400 mt-2">Vnose za pretekle dni lahko popravi samo Milena/admin.</div>}
           </Card>
@@ -725,7 +867,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
           className="max-w-3xl mx-auto w-full py-4 rounded-xl text-white font-bold text-lg inline-flex items-center justify-center gap-2 disabled:opacity-60"
           style={{ background: AS_RED }}>
           {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-          {saving ? 'Shranjujem…' : 'SHRANI NALOGE'}
+          {saving ? 'Shranjujem…' : editLog ? 'SHRANI SPREMEMBO' : 'SHRANI NALOGE'}
         </button>
       </div>
 
