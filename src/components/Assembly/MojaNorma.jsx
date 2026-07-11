@@ -13,6 +13,7 @@ function monthRange(ym) {
   const end = endD.toISOString().slice(0, 10);
   return { start, end };
 }
+const normTime = (r) => Number(r.segment === 'avtomat' ? r.cas_stroja_ur : r.cas_dela_ur) || 0;
 function pct(kolicina, cas, normativ) {
   const target = cas * normativ;
   if (!target) return null;
@@ -40,7 +41,7 @@ export default function MojaNorma({ workerId, workerName }) {
       setLoading(true); setErr('');
       const { start, end } = monthRange(month);
       const { data, error } = await supabase.from('assembly_work_log')
-        .select('date,segment,faza,sifra,artikel,dimenzija,delovni_nalog,kolicina,cas_dela_ur,normativ_kos_h')
+        .select('date,segment,faza,sifra,artikel,dimenzija,delovni_nalog,kolicina,cas_dela_ur,cas_stroja_ur,normativ_kos_h')
         .eq('worker_id', workerId)
         .gte('date', start).lt('date', end)
         .order('date', { ascending: true });
@@ -51,11 +52,11 @@ export default function MojaNorma({ workerId, workerName }) {
   }, [workerId, month]);
 
   // vrstice, ki štejejo v normo (imajo čas in normativ)
-  const scored = useMemo(() => rows.filter((r) => Number(r.cas_dela_ur) > 0 && Number(r.normativ_kos_h) > 0), [rows]);
+  const scored = useMemo(() => rows.filter((r) => normTime(r) > 0 && Number(r.normativ_kos_h) > 0), [rows]);
 
   const monthPct = useMemo(() => {
     const kol = scored.reduce((s, r) => s + Number(r.kolicina || 0), 0);
-    const target = scored.reduce((s, r) => s + Number(r.cas_dela_ur) * Number(r.normativ_kos_h), 0);
+    const target = scored.reduce((s, r) => s + normTime(r) * Number(r.normativ_kos_h), 0);
     return target ? (kol / target) * 100 : null;
   }, [scored]);
 
@@ -64,7 +65,7 @@ export default function MojaNorma({ workerId, workerName }) {
     for (const r of scored) {
       if (!map[r.date]) map[r.date] = { kol: 0, target: 0, n: 0 };
       map[r.date].kol += Number(r.kolicina || 0);
-      map[r.date].target += Number(r.cas_dela_ur) * Number(r.normativ_kos_h);
+      map[r.date].target += normTime(r) * Number(r.normativ_kos_h);
       map[r.date].n += 1;
     }
     return Object.entries(map)
@@ -148,7 +149,7 @@ export default function MojaNorma({ workerId, workerName }) {
                   </thead>
                   <tbody>
                     {rows.map((r, i) => {
-                      const p = pct(Number(r.kolicina || 0), Number(r.cas_dela_ur || 0), Number(r.normativ_kos_h || 0));
+                      const p = pct(Number(r.kolicina || 0), normTime(r), Number(r.normativ_kos_h || 0));
                       return (
                         <tr key={i} className="border-b border-as-gray-100">
                           <td className="p-2">{new Date(r.date + 'T12:00:00').toLocaleDateString('sl-SI')}</td>
@@ -156,7 +157,7 @@ export default function MojaNorma({ workerId, workerName }) {
                           <td className="p-2">{[r.artikel, r.dimenzija].filter(Boolean).join(' · ') || '—'}</td>
                           <td className="p-2">{r.sifra || '—'}</td>
                           <td className="p-2 text-right">{Number(r.kolicina || 0).toLocaleString('sl-SI')}</td>
-                          <td className="p-2 text-right">{(Math.round(Number(r.cas_dela_ur || 0) * 10) / 10).toLocaleString('sl-SI')}</td>
+                          <td className="p-2 text-right">{(Math.round(normTime(r) * 10) / 10).toLocaleString('sl-SI')}</td>
                           <td className="p-2 text-right font-semibold" style={{ color: pctColor(p) }}>{fmtPct(p)}</td>
                         </tr>
                       );
