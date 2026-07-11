@@ -24,7 +24,8 @@ const segLabel = (r) => {
   return r.faza ? `${s} · ${r.faza === 'vijacenje' ? 'vijačenje' : r.faza}` : s;
 };
 const fmtDate = (d) => (d ? new Date(d + 'T12:00:00').toLocaleDateString('sl-SI') : '—');
-const rowPct = (r) => pct(num(r.kolicina), num(r.normativ_kos_h) * num(r.cas_dela_ur));
+const normTimeOf = (r) => (r.segment === 'avtomat' ? num(r.cas_stroja_ur) : num(r.cas_dela_ur));
+const rowPct = (r) => pct(num(r.kolicina), num(r.normativ_kos_h) * normTimeOf(r));
 const pctTxt = (p) => (p == null ? '—' : `${p}%`);
 
 function addDays(dateStr, n) { const d = new Date(dateStr); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
@@ -80,7 +81,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
     const byWorker = {}, bySifra = {};
     for (const r of logs) {
       const k = num(r.kolicina), cd = num(r.cas_dela_ur), cs = num(r.cas_stroja_ur), nh = num(r.normativ_kos_h);
-      const exp = nh > 0 ? nh * cd : 0;
+      const exp = nh > 0 ? nh * normTimeOf(r) : 0;
       kos += k; dela += cd; stroja += cs; expected += exp;
       if (exp > 0) kosN += k;
       const wn = r.worker_name || '(brez)';
