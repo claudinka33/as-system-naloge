@@ -168,9 +168,9 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
     }
     lines.push('');
     lines.push('ZASTOJI');
-    lines.push('Datum;Delavka;Razlog;Nalog;Čas (h);Opomba');
+    lines.push('Datum;Delavka;Razlog;Stroj;Nalog;Čas (h);Opomba');
     for (const st of stops) {
-      lines.push([st.date || '', st.worker_name || '', st.reason || '', st.delovni_nalog || '', Number(num(st.cas_ur)).toFixed(2), st.opomba || ''].join(';'));
+      lines.push([st.date || '', st.worker_name || '', st.reason || '', st.machine_name || '', st.delovni_nalog || '', Number(num(st.cas_ur)).toFixed(2), st.opomba || ''].join(';'));
     }
     const csv = '\uFEFF' + lines.join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -340,9 +340,9 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
       {/* Zastoji — podrobno */}
       {a.stopRows.length > 0 && (
         <Section title="Zastoji">
-          <Table head={['Datum', 'Delavka', 'Razlog', 'Nalog', 'Čas (h)', 'Opomba']}>
+          <Table head={['Datum', 'Delavka', 'Razlog', 'Stroj', 'Nalog', 'Čas (h)', 'Opomba']}>
             {a.stopRows.map((s) => (
-              <Row key={s.id} cells={[fmtDate(s.date), s.worker_name || '—', s.reason || '—', s.delovni_nalog || 'splošno', h1(s.cas_ur), s.opomba || '—']} />
+              <Row key={s.id} cells={[fmtDate(s.date), s.worker_name || '—', s.reason || '—', s.machine_name || '—', s.delovni_nalog || 'splošno', h1(s.cas_ur), s.opomba || '—']} />
             ))}
           </Table>
         </Section>
