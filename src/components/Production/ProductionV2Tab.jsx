@@ -7,6 +7,7 @@ import { supabase } from '../../supabase';
 import { calculateEfficiency, SEGMENTS_META, loadMachines, buildSegments, makeFindMachine } from './productionV2Config';
 import ProductionAdmin from './ProductionAdmin';
 import ProductionDetails from './ProductionDetails.jsx';
+import WorkerHours from '../WorkerHours.jsx';
 
 const AS_RED = '#C8102E';
 
@@ -770,6 +771,8 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
 
           <ProductionDetails entries={dayEntries} stops={dayStops} mode="day" />
 
+          <WorkerHours source="production" mode="day" date={filterDate} />
+
           {/* Zastoji - mini kartoni po razlogih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="font-bold text-as-gray-700 mb-3">⚠️ Zastoji po razlogih</h3>
@@ -1035,6 +1038,8 @@ function MonthlyView({ entries, stops, wastes, loading }) {
           </div>
 
           <ProductionDetails entries={monthEntries} stops={monthStops} mode="month" periodLabel={`${SLOVENIAN_MONTHS[month - 1]} ${year}`} />
+
+          <WorkerHours source="production" mode="month" year={year} month={month} />
 
           {/* Zastoji po razlogih */}
           <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
