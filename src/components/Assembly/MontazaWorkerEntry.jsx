@@ -62,7 +62,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
   const [orders, setOrders] = useState([blankOrder()]);
 
   // zastoj (sprotni vnos)
-  const [stop, setStop] = useState({ reason: '', newReason: '', nalog: '', h: '', m: '', opomba: '' });
+  const [stop, setStop] = useState({ reason: '', newReason: '', nalog: '', stroj: '', h: '', m: '', opomba: '' });
   const [savingStop, setSavingStop] = useState(false);
 
   // moj čas
@@ -107,7 +107,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
     if (!w || !d) { setDayTime([]); setDayStops([]); setDayLogs([]); return; }
     const [t, st, lg] = await Promise.all([
       supabase.from('assembly_daily_time').select('id,date,cas_ur,vrsta,opomba').eq('worker_id', w).eq('date', d).order('id'),
-      supabase.from('assembly_work_stops').select('id,date,reason,delovni_nalog,cas_ur,opomba').eq('worker_id', w).eq('date', d).order('id'),
+      supabase.from('assembly_work_stops').select('id,date,reason,delovni_nalog,cas_ur,opomba,machine_name').eq('worker_id', w).eq('date', d).order('id'),
       supabase.from('assembly_work_log').select('id,date,segment,faza,delovni_nalog,sifra,artikel,dimenzija,machine_name,kolicina,cas_dela_ur,cas_stroja_ur').eq('worker_id', w).eq('date', d).order('id'),
     ]);
     setDayTime(t.data || []);
@@ -160,6 +160,10 @@ export default function MontazaWorkerEntry({ currentUser }) {
       return (pa[0] - pb[0]) || ((pa[1] || 0) - (pb[1] || 0));
     });
   };
+  const stopStrojOptions = useMemo(() => {
+    const avt = uniq(catalog.filter((c) => c.segment === 'avtomat').map((c) => c.stroj)).sort();
+    return [...avt, ...VRECE_STROJI];
+  }, [catalog]);
   const catRowFor = (o) => {
     if (segment === 'titus') return segCatalog.find((c) => c.sifra === o.sifra) || null;
     return segCatalog.find((c) =>
@@ -228,13 +232,14 @@ export default function MontazaWorkerEntry({ currentUser }) {
         reason: rname, cas_ur: c,
         opomba: (stop.opomba || '').trim(),
         delovni_nalog: (stop.nalog || '').trim() || null,
+        machine_name: stop.stroj || null,
         created_by: currentUser?.email || null,
       };
       const { error: e } = editStopId
         ? await supabase.from('assembly_work_stops').update(rec).eq('id', editStopId)
         : await supabase.from('assembly_work_stops').insert({ ...rec, log_id: null });
       if (e) throw e;
-      setStop({ reason: '', newReason: '', nalog: '', h: '', m: '', opomba: '' });
+      setStop({ reason: '', newReason: '', nalog: '', stroj: '', h: '', m: '', opomba: '' });
       setEditStopId(null);
       loadDay(wid, datum);
     } catch (e) {
@@ -246,12 +251,12 @@ export default function MontazaWorkerEntry({ currentUser }) {
   function startEditStop(r) {
     const t = hoursToSplit(r.cas_ur);
     const known = reasons.some((x) => x.reason === r.reason);
-    setStop({ reason: known ? r.reason : '__new__', newReason: known ? '' : (r.reason || ''), nalog: r.delovni_nalog || '', h: t.h, m: t.m, opomba: r.opomba || '' });
+    setStop({ reason: known ? r.reason : '__new__', newReason: known ? '' : (r.reason || ''), nalog: r.delovni_nalog || '', stroj: r.machine_name || '', h: t.h, m: t.m, opomba: r.opomba || '' });
     setEditStopId(r.id);
     setError('');
   }
   function cancelEditStop() {
-    setStop({ reason: '', newReason: '', nalog: '', h: '', m: '', opomba: '' });
+    setStop({ reason: '', newReason: '', nalog: '', stroj: '', h: '', m: '', opomba: '' });
     setEditStopId(null);
   }
   function startEditLog(r) {
@@ -595,6 +600,13 @@ export default function MontazaWorkerEntry({ currentUser }) {
                 <BigLabel>Št. delovnega naloga (neobvezno)</BigLabel>
                 <input value={stop.nalog} onChange={(e) => setStop((p) => ({ ...p, nalog: e.target.value }))} className={inpCls} placeholder="npr. DN-1234 ali prazno" />
               </div>
+              <div>
+                <BigLabel>Stroj (neobvezno — avtomat/vrečke)</BigLabel>
+                <select value={stop.stroj} onChange={(e) => setStop((p) => ({ ...p, stroj: e.target.value }))} className={selCls}>
+                  <option value="">— brez stroja (ročna, titus) —</option>
+                  {stopStrojOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
               <TimeField label="Trajanje" h={stop.h} m={stop.m}
                 setH={(v) => setStop((p) => ({ ...p, h: v }))} setM={(v) => setStop((p) => ({ ...p, m: v }))} />
               <div>
@@ -618,6 +630,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
                   <thead>
                     <tr className="text-as-gray-500 border-b border-as-gray-200">
                       <th className="text-left p-2">Razlog</th>
+                      <th className="text-left p-2">Stroj</th>
                       <th className="text-left p-2">Nalog</th>
                       <th className="text-right p-2">Čas</th>
                       <th className="text-left p-2">Opomba</th>
@@ -628,6 +641,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
                     {dayStops.map((r) => (
                       <tr key={r.id} className="border-b border-as-gray-100">
                         <td className="p-2">{r.reason}</td>
+                        <td className="p-2">{r.machine_name || '—'}</td>
                         <td className="p-2">{r.delovni_nalog || '—'}</td>
                         <td className="p-2 text-right font-semibold">{hoursToHM(r.cas_ur)}</td>
                         <td className="p-2">{r.opomba || '—'}</td>
