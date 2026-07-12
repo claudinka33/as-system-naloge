@@ -6,6 +6,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, BarChart3, ChevronLeft, ChevronRight, ChevronDown, Loader2, Download } from 'lucide-react';
 import { getAssemblyWorkLog, getAssemblyWorkStops, formatNumber, SLOVENIAN_MONTHS } from '../../lib/assemblyApi.js';
 import { supabase } from '../../supabase';
+import WorkerHours from '../WorkerHours.jsx';
 
 const AS_RED = '#C8102E';
 const num = (v) => Number(v) || 0;
@@ -347,6 +348,9 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
           </Table>
         </Section>
       )}
+
+      {/* Ure delavcev */}
+      <WorkerHours source="assembly" mode={mode} date={date} year={year} month={month} />
 
       <div className="text-xs text-as-gray-400">
         Doseganje = količina / (normativ × čas dela). Normativ se vzame iz šifranta ob vnosu.
