@@ -456,7 +456,7 @@ export default function WorkerEntry({ currentUser }) {
                 <BigLabel>Stroj (neobvezno)</BigLabel>
                 <select value={stop.machineId} onChange={(e) => setStop((p) => ({ ...p, machineId: e.target.value }))} className={selCls}>
                   <option value="">— brez stroja —</option>
-                  {allMachines.map((m) => <option key={m.id} value={m.id}>{m.segLabel} · {m.stroj}</option>)}
+                  {allMachines.map((m) => <option key={m.id} value={m.id}>{m.segLabel} · {m.id} - {m.stroj}</option>)}
                 </select>
               </div>
               <div>
@@ -497,7 +497,7 @@ export default function WorkerEntry({ currentUser }) {
                     {dayStops.map((r) => (
                       <tr key={r.id} className="border-b border-as-gray-100">
                         <td className="p-2">{r.reason_category || '—'}</td>
-                        <td className="p-2">{r.machine_name || '—'}</td>
+                        <td className="p-2">{r.machine_id ? `${r.machine_id} - ${r.machine_name || ''}` : (r.machine_name || '—')}</td>
                         <td className="p-2">{r.delovni_nalog || '—'}</td>
                         <td className="p-2 text-right font-semibold">{hoursToHM(r.duration_hours)}</td>
                         <td className="p-2">{r.description || '—'}</td>
@@ -559,7 +559,7 @@ export default function WorkerEntry({ currentUser }) {
                   onChange={(e) => setOrder(o.key, { machineId: e.target.value })} className={selCls}>
                   <option value="">— izberi stroj —</option>
                   {machinesFor(o.segmentId).map((m) => (
-                    <option key={m.id} value={m.id} disabled={m.vOkvari}>{m.stroj}{m.vOkvari ? ' (V OKVARI)' : ''}</option>
+                    <option key={m.id} value={m.id} disabled={m.vOkvari}>{m.id} - {m.stroj}{m.vOkvari ? ' (V OKVARI)' : ''}</option>
                   ))}
                 </select>
               </div>
@@ -569,7 +569,7 @@ export default function WorkerEntry({ currentUser }) {
               </div>
               {mi && (
                 <div className="sm:col-span-2 p-3 rounded-lg text-sm" style={{ background: '#f0f7f0', border: '1px solid #cde5cd' }}>
-                  {mi.stroj} · {mi.operacija} · normativ <strong>{formatNumber(mi.normativ_h)} kos/h</strong> (na čas stroja)
+                  {o.machineId} - {mi.stroj} · {mi.operacija} · normativ <strong>{formatNumber(mi.normativ_h)} kos/h</strong> (na čas stroja)
                 </div>
               )}
               <div>
@@ -617,7 +617,7 @@ export default function WorkerEntry({ currentUser }) {
                   {dayLogs.map((r) => (
                     <tr key={r.id} className="border-b border-as-gray-100">
                       <td className="p-2">{segLabelOf(r.segment)}</td>
-                      <td className="p-2">{r.machine_name || '—'}</td>
+                      <td className="p-2">{r.machine_id ? `${r.machine_id} - ${r.machine_name || ''}` : (r.machine_name || '—')}</td>
                       <td className="p-2">{r.tip_vijaka || '—'}</td>
                       <td className="p-2">{r.delovni_nalog || '—'}</td>
                       <td className="p-2 text-right">{formatNumber(r.kosi)}</td>
