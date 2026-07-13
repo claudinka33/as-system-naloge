@@ -26,6 +26,18 @@ const OPERATERJI = [
   'Boris Černelc',
 ];
 
+function useOperaterji() {
+  const [ops, setOps] = React.useState(OPERATERJI);
+  React.useEffect(() => {
+    supabase.from('production_v2_workers').select('name').eq('active', true).order('display_order')
+      .then(({ data }) => {
+        const names = (data || []).map((w) => w.name).filter(Boolean);
+        if (names.length) setOps(names);
+      });
+  }, []);
+  return ops;
+}
+
 const STOP_REASONS = [
   'Drugo', 'Menjava', 'Menjava orodja', 'Menjava žice', 'Nastavitev proge',
   'Nastavitev senzorja', 'Nastavitev valjanja', 'Razširilo progo',
@@ -216,6 +228,7 @@ function SectionPill({ active, onClick, icon, label, color, bgColor }) {
 
 // ─── PROIZVODNJA FORM ───
 function ProductionForm({ currentUser, onSaved, setError }) {
+  const operaterji = useOperaterji();
   const { segments: SEGMENTS, findMachine } = useMachines();
   const [selectedSegment, setSelectedSegment] = useState('');
   const [selectedMachine, setSelectedMachine] = useState('');
@@ -295,7 +308,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
         <FormField label="Delavec / Operater *">
           <select value={formOperater} onChange={(e) => setFormOperater(e.target.value)} required className={inputCls}>
             <option value="">— izberi delavca —</option>
-            {OPERATERJI.map((d) => <option key={d} value={d}>{d}</option>)}
+            {operaterji.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </FormField>
       </div>
@@ -394,6 +407,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
 
 // ─── ZASTOJ FORM ───
 function StopForm({ currentUser, onSaved, setError }) {
+  const operaterji = useOperaterji();
   const { segments: SEGMENTS, findMachine } = useMachines();
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formTime, setFormTime] = useState('');
@@ -501,7 +515,7 @@ function StopForm({ currentUser, onSaved, setError }) {
       <FormField label="Delavec / Operater *">
         <select value={formOperater} onChange={(e) => setFormOperater(e.target.value)} required className={inputCls}>
             <option value="">— izberi delavca —</option>
-            {OPERATERJI.map((d) => <option key={d} value={d}>{d}</option>)}
+            {operaterji.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
       </FormField>
 
@@ -516,6 +530,7 @@ function StopForm({ currentUser, onSaved, setError }) {
 
 // ─── ODPADEK FORM ───
 function WasteForm({ currentUser, onSaved, setError }) {
+  const operaterji = useOperaterji();
   const { segments: SEGMENTS, findMachine } = useMachines();
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formWeight, setFormWeight] = useState('');
@@ -619,7 +634,7 @@ function WasteForm({ currentUser, onSaved, setError }) {
       <FormField label="Delavec / Operater *">
         <select value={formOperater} onChange={(e) => setFormOperater(e.target.value)} required className={inputCls}>
             <option value="">— izberi delavca —</option>
-            {OPERATERJI.map((d) => <option key={d} value={d}>{d}</option>)}
+            {operaterji.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
       </FormField>
 
