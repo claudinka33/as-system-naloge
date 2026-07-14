@@ -15,7 +15,6 @@ const SEGMENT_DEFS = [
   { key: 'rocna', label: 'Ročna' },
   { key: 'vrece', label: 'Vrečke' },
   { key: 'titus', label: 'Titus' },
-  { key: 'ostalo', label: 'Ostalo' },
 ];
 const VRECE_STROJI = ['Vrečke 1', 'Vrečke 2'];
 
@@ -117,14 +116,12 @@ export default function MontazaWorkerEntry({ currentUser }) {
   useEffect(() => { loadDay(wid, datum); /* eslint-disable-next-line */ }, [wid, datum]);
 
   const casDelo = dayTime.filter((r) => r.vrsta !== 'malica').reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
-  const casMalica = dayTime.filter((r) => r.vrsta === 'malica').reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
+  const casMalica = casDelo > 4 ? 0.5 : 0; // malica avtomatsko: 0:30, če je dela več kot 4 h
   const dayTotal = Math.round((casDelo + casMalica) * 1000) / 1000; // delovni dan = delo + malica (cilj 8:00)
 
   const allowedSegments = useMemo(() => {
     const segs = selWorker?.segments || [];
-    const rest = SEGMENT_DEFS.filter((s) => s.key !== 'ostalo');
-    const base = segs.length ? rest.filter((s) => segs.includes(s.key)) : rest;
-    return [...base, SEGMENT_DEFS.find((s) => s.key === 'ostalo')];
+    return segs.length ? SEGMENT_DEFS.filter((s) => segs.includes(s.key)) : SEGMENT_DEFS;
   }, [selWorker]);
 
   useEffect(() => {
@@ -518,7 +515,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
                 <div className="w-full h-3 rounded-full bg-as-gray-100 overflow-hidden">
                   <div className="h-3 rounded-full transition-all" style={{ width: `${pctW}%`, background: color }} />
                 </div>
-                <div className="text-xs font-semibold mt-1 mb-3" style={{ color }}>{msg} · delo {hoursToHM(casDelo)} / 7:30 · malica {hoursToHM(casMalica)}</div>
+                <div className="text-xs font-semibold mt-1 mb-3" style={{ color }}>{msg} · delo {hoursToHM(casDelo)} / 7:30 · malica {hoursToHM(casMalica)} (avtomatsko)</div>
               </>
             );
           })()}
@@ -527,7 +524,6 @@ export default function MontazaWorkerEntry({ currentUser }) {
               <BigLabel>Vrsta</BigLabel>
               <select value={timeVrsta} onChange={(e) => setTimeVrsta(e.target.value)} className={selCls}>
                 <option value="stroj">Delo na stroju</option>
-                <option value="malica">Malica</option>
                 <option value="ostalo">Ostalo (čiščenje, karton…)</option>
               </select>
             </div>
