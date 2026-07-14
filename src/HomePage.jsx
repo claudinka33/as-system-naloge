@@ -21,7 +21,7 @@ const ODDELEK_ALLOWED = {
 };
 import { supabase } from './supabase.js';
 import { getTodayQuote } from './quotes.js';
-import { canAccessProduction } from './components/Production/ProductionTab.jsx';
+import { canAccessProduction } from './components/Production/ProductionV2Tab.jsx';
 import { canAccessAssembly } from './components/Assembly/AssemblyTab.jsx';
 import HomeWeekCalendar from './components/HomeWeekCalendar.jsx';
 
