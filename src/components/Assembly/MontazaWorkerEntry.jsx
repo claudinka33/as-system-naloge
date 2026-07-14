@@ -563,6 +563,14 @@ export default function MontazaWorkerEntry({ currentUser }) {
                       </td>
                     </tr>
                   ))}
+                  {casMalica > 0 && (
+                    <tr className="border-b border-as-gray-100" style={{ background: '#fafafa' }}>
+                      <td className="p-2">Malica</td>
+                      <td className="p-2 text-as-gray-400">avtomatsko (delo &gt; 4 h)</td>
+                      <td className="p-2 text-right font-semibold">{hoursToHM(casMalica)}</td>
+                      <td className="p-2"></td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
