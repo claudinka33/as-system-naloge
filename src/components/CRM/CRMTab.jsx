@@ -52,6 +52,26 @@ export const CRM_ALLOWED_EMAILS = [
 const CRM_TEAM_LEADS = ['alen.drofenik@as-system.si', 'tjasa.mihevc@as-system.si'];
 const CRM_TEAM_MEMBER = 'hermina.leskovec@as-system.si';
 
+// CRM pravice iz Nastavitve → Uporabniki (app_users.crm_scope)
+function useCrmScope(currentUser, isAdmin) {
+  const [crmScope, setCrmScope] = useState(null);
+  useEffect(() => {
+    if (!currentUser?.email) return;
+    supabase.from('app_users').select('crm_scope').eq('email', currentUser.email).maybeSingle()
+      .then(({ data }) => setCrmScope(data?.crm_scope || null));
+  }, [currentUser?.email]);
+  const legacyTeamLead = !isAdmin && CRM_TEAM_LEADS.includes(currentUser?.email);
+  const scopeMode = crmScope?.mode || (legacyTeamLead ? 'team' : 'own');
+  const applyScope = (qy) => {
+    if (isAdmin || scopeMode === 'all') return qy;
+    if (scopeMode === 'selected') return qy.in('created_by', [currentUser?.email, ...(crmScope?.users || [])]);
+    if (scopeMode === 'team') return qy.in('created_by', [currentUser?.email, CRM_TEAM_MEMBER]);
+    return qy.eq('created_by', currentUser?.email);
+  };
+  return { scopeMode, crmScope, applyScope, isTeamLead: !isAdmin && scopeMode !== 'own' };
+}
+
+
 export function canAccessCRM(email) {
   return CRM_ALLOWED_EMAILS.includes(email);
 }
@@ -115,7 +135,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [flash, setFlash] = useState('');
-  const isTeamLead = !isAdmin && CRM_TEAM_LEADS.includes(currentUser?.email);
+  const { scopeMode, crmScope, applyScope, isTeamLead } = useCrmScope(currentUser, isAdmin);
   const [personFilter, setPersonFilter] = useState((isAdmin || isTeamLead) ? 'all' : (currentUser?.email || 'all'));
 
   // Zelena potrditev se sama skrije
@@ -135,13 +155,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
         .order('visit_date', { ascending: false })
         .order('arrival_time', { ascending: true })
         .limit(2000);
-      if (!isAdmin) {
-        if (isTeamLead) {
-          qy = qy.in('created_by', [currentUser?.email, CRM_TEAM_MEMBER]);
-        } else {
-          qy = qy.eq('created_by', currentUser?.email);
-        }
-      }
+      qy = applyScope(qy);
       const { data, error } = await qy;
       if (error) throw error;
       setVisits(data || []);
@@ -152,7 +166,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
     }
   }
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [scopeMode, JSON.stringify(crmScope?.users || [])]);
 
   // Skupna funkcija po shranjevanju: osveži + pokaži zeleno potrditev
   function handleSaved(msg) {
@@ -2099,16 +2113,13 @@ function PipelineView({ currentUser, isAdmin, employees }) {
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  const isTeamLead = !isAdmin && CRM_TEAM_LEADS.includes(currentUser?.email);
+  const { scopeMode, crmScope, applyScope, isTeamLead } = useCrmScope(currentUser, isAdmin);
 
   async function load() {
     setLoading(true); setError('');
     try {
       let qy = supabase.from('crm_deals').select('*').order('created_at', { ascending: false }).limit(2000);
-      if (!isAdmin) {
-        if (isTeamLead) qy = qy.in('created_by', [currentUser?.email, CRM_TEAM_MEMBER]);
-        else qy = qy.eq('created_by', currentUser?.email);
-      }
+      qy = applyScope(qy);
       const { data, error } = await qy;
       if (error) throw error;
       setDeals(data || []);
