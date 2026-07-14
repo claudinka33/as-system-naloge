@@ -158,11 +158,11 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
     lines.push(naslov);
     lines.push('');
     lines.push('VNOSI');
-    lines.push('Delavka;Datum;Nalog;Segment;Faza;Artikel;Dimenzija;Šifra;Količina;Normativ (kos/h);Čas dela (h);Čas stroja (h);Doseganje (%)');
+    lines.push('Delavka;Datum;Nalog;Segment;Faza;Stroj;Artikel;Dimenzija;Šifra;Količina;Normativ (kos/h);Čas dela (h);Čas stroja (h);Doseganje (%)');
     for (const r of logs) {
       lines.push([
         r.worker_name || '', r.date || '', r.delovni_nalog || '', SEG_LABELS[r.segment] || r.segment || '',
-        r.faza === 'vijacenje' ? 'vijačenje' : (r.faza || ''), r.artikel || '', r.dimenzija || '', r.sifra || '',
+        r.faza === 'vijacenje' ? 'vijačenje' : (r.faza || ''), r.machine_name || '', r.artikel || '', r.dimenzija || '', r.sifra || '',
         num(r.kolicina), num(r.normativ_kos_h) || '', Number(num(r.cas_dela_ur)).toFixed(2), Number(num(r.cas_stroja_ur)).toFixed(2),
         rowPct(r) ?? '',
       ].join(';'));
@@ -186,17 +186,19 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
   }
 
   // Stolpci — POVSOD ISTI
-  const HEAD_W = ['Delavka', 'Datum', 'Nalog', 'Segment', 'Artikel', 'Dimenzija', 'Šifra', 'Količina', 'Norm. (kos/h)', 'Čas dela (h)', 'Čas stroja (h)', 'Doseganje'];
-  const HEAD_S = ['Šifra', 'Artikel', 'Dimenzija', 'Delavka', 'Datum', 'Nalog', 'Segment', 'Količina', 'Norm. (kos/h)', 'Čas dela (h)', 'Doseganje'];
+  const HEAD_W = ['Delavka', 'Datum', 'Nalog', 'Segment', 'Stroj', 'Artikel', 'Dimenzija', 'Šifra', 'Količina', 'Norm. (kos/h)', 'Čas dela (h)', 'Čas stroja (h)', 'Doseganje'];
+  const HEAD_S = ['Šifra', 'Artikel', 'Dimenzija', 'Delavka', 'Datum', 'Nalog', 'Segment', 'Stroj', 'Količina', 'Norm. (kos/h)', 'Čas dela (h)', 'Doseganje'];
 
   const workerEntryCells = (r, showName) => [
     showName ? (r.worker_name || '—') : '', fmtDate(r.date), r.delovni_nalog || '—', segLabel(r),
+    r.machine_name || '—',
     r.artikel || '—', r.dimenzija || '—', r.sifra || '—',
     formatNumber(num(r.kolicina)), num(r.normativ_kos_h) > 0 ? formatNumber(Math.round(num(r.normativ_kos_h))) : '—',
     h1(r.cas_dela_ur), h1(r.cas_stroja_ur), pctTxt(rowPct(r)),
   ];
   const sifraEntryCells = (r) => [
     '', r.artikel || '—', r.dimenzija || '—', r.worker_name || '—', fmtDate(r.date), r.delovni_nalog || '—', segLabel(r),
+    r.machine_name || '—',
     formatNumber(num(r.kolicina)), num(r.normativ_kos_h) > 0 ? formatNumber(Math.round(num(r.normativ_kos_h))) : '—',
     h1(r.cas_dela_ur), pctTxt(rowPct(r)),
   ];
@@ -234,7 +236,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
       {/* Skupne kartice */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <BigStat icon="📦" label="Količina" value={formatNumber(a.kos)} unit="kos" color="#0066CC" bgColor="#E6F0FB" />
-        <BigStat icon="⏱️" label="Čas dela" value={h1(a.dela)} unit="h" color="#8E44AD" bgColor="#F3E9F8" />
+        <BigStat icon="⏱️" label="Čas dela (nalogi)" value={h1(a.dela)} unit="h" color="#8E44AD" bgColor="#F3E9F8" />
         <BigStat icon="⚙️" label="Čas stroja" value={h1(a.stroja)} unit="h" color="#16A085" bgColor="#E4F5F1" />
         <BigStat icon="🛑" label="Zastoji" value={h1(a.stopHours)} unit={`h · ${a.stopCount}×`} color="#F39C12" bgColor="#FEF3E0" />
       </div>
@@ -266,7 +268,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
           <Table head={HEAD_W}>
             {a.workers.map((w) => {
               const totalCells = [
-                w.name, mode === 'day' ? fmtDate(mode === 'day' ? date : null) : monthLabel, `${w.nalogi}× nalog`, '—', '—', '—', '—',
+                w.name, mode === 'day' ? fmtDate(mode === 'day' ? date : null) : monthLabel, `${w.nalogi}× nalog`, '—', '—', '—', '—', '—',
                 formatNumber(w.kos), '—', h1(w.dela), h1(w.stroja), w.exp > 0 ? `${pct(w.kosN, w.exp)}%` : '—',
               ];
               if (mode === 'day') {
@@ -305,7 +307,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
           <Table head={HEAD_S}>
             {a.sifre.map((s) => {
               const totalCells = [
-                s.sifra, s.artikel || '—', s.dimenzija || '—', '—', mode === 'day' ? '' : monthLabel, `${s.nalogi}× nalog`, '—',
+                s.sifra, s.artikel || '—', s.dimenzija || '—', '—', mode === 'day' ? '' : monthLabel, `${s.nalogi}× nalog`, '—', '—',
                 formatNumber(s.kos), s.nh > 0 ? formatNumber(s.nh) : '—', h1(s.dela), s.exp > 0 ? `${pct(s.kosN, s.exp)}%` : '—',
               ];
               if (mode === 'day') {
