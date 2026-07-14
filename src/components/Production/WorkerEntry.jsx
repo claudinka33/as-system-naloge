@@ -100,7 +100,7 @@ export default function WorkerEntry({ currentUser }) {
   useEffect(() => { loadDay(operater, datum); /* eslint-disable-next-line */ }, [operater, datum]);
 
   const casDelo = dayTime.filter((r) => r.vrsta !== 'malica').reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
-  const casMalica = dayTime.filter((r) => r.vrsta === 'malica').reduce((a, r) => a + (Number(r.cas_ur) || 0), 0);
+  const casMalica = casDelo > 4 ? 0.5 : 0; // malica avtomatsko: 0:30, če je dela več kot 4 h
   const dayTotal = Math.round((casDelo + casMalica) * 1000) / 1000;
 
   const setOrder = (key, patch) => setOrders((p) => p.map((o) => (o.key === key ? { ...o, ...patch } : o)));
@@ -378,7 +378,7 @@ export default function WorkerEntry({ currentUser }) {
                 <div className="w-full h-3 rounded-full bg-as-gray-100 overflow-hidden">
                   <div className="h-3 rounded-full transition-all" style={{ width: `${pctW}%`, background: color }} />
                 </div>
-                <div className="text-xs font-semibold mt-1 mb-3" style={{ color }}>{msg} · delo {hoursToHM(casDelo)} / 7:30 · malica {hoursToHM(casMalica)}</div>
+                <div className="text-xs font-semibold mt-1 mb-3" style={{ color }}>{msg} · delo {hoursToHM(casDelo)} / 7:30 · malica {hoursToHM(casMalica)} (avtomatsko)</div>
               </>
             );
           })()}
@@ -387,7 +387,6 @@ export default function WorkerEntry({ currentUser }) {
               <BigLabel>Vrsta</BigLabel>
               <select value={timeVrsta} onChange={(e) => setTimeVrsta(e.target.value)} className={selCls}>
                 <option value="stroj">Delo na stroju</option>
-                <option value="malica">Malica</option>
                 <option value="ostalo">Ostalo (čiščenje, karton…)</option>
               </select>
             </div>
