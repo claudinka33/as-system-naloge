@@ -68,19 +68,27 @@ export default function WorkerHours({ source, mode, date, year, month }) {
   const byWorker = useMemo(() => {
     const map = {};
     for (const r of rows) {
+      if (r.vrsta === 'malica') continue; // staro — malica se obračuna avtomatsko
       const name = r[nameField] || '(brez)';
       const c = Number(r.cas_ur) || 0;
-      (map[name] = map[name] || { name, delo: 0, malica: 0, days: {} });
-      const w = map[name];
-      const d = (w.days[r.date] = w.days[r.date] || { date: r.date, delo: 0, malica: 0 });
-      if (r.vrsta === 'malica') { w.malica += c; d.malica += c; }
-      else { w.delo += c; d.delo += c; }
+      (map[name] = map[name] || { name, days: {} });
+      const d = (map[name].days[r.date] = map[name].days[r.date] || { date: r.date, stroj: 0, ostalo: 0 });
+      if (r.vrsta === 'ostalo') d.ostalo += c; else d.stroj += c;
     }
     return Object.values(map).map((w) => {
-      const days = Object.values(w.days).sort((a, b) => a.date.localeCompare(b.date));
-      return { ...w, days, dni: days.length, skupaj: w.delo + w.malica };
+      const days = Object.values(w.days).sort((a, b) => a.date.localeCompare(b.date)).map((d) => {
+        const delo = d.stroj + d.ostalo;
+        const malica = delo > 4 ? 0.5 : 0; // avtomatsko: 0:30, če je dela več kot 4 h
+        return { ...d, delo, malica, skupaj: delo + malica };
+      });
+      const sum = (k) => days.reduce((a, d) => a + d[k], 0);
+      return { name: w.name, days, dni: days.length, stroj: sum('stroj'), ostalo: sum('ostalo'), delo: sum('delo'), malica: sum('malica'), skupaj: sum('skupaj') };
     }).sort((a, b) => a.name.localeCompare(b.name, 'sl'));
   }, [rows, nameField]);
+
+  const ostaloRows = useMemo(() =>
+    rows.filter((r) => r.vrsta === 'ostalo').map((r) => ({ date: r.date, name: r[nameField] || '(brez)', opis: r.opomba || '—', cas: Number(r.cas_ur) || 0 })),
+  [rows, nameField]);
 
   if (loading) {
     return (
@@ -95,7 +103,7 @@ export default function WorkerHours({ source, mode, date, year, month }) {
     <div className="bg-white border border-as-gray-200 rounded-xl p-5 shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-as-gray-700 inline-flex items-center gap-2"><Clock className="w-4 h-4" /> Ure delavcev (Moj delovni dan)</h3>
-        <span className="text-xs text-as-gray-400">Cilj: 8:00/dan (delo 7:30 + malica 0:30){mode === 'month' ? ' · klikni delavca za dneve' : ''}</span>
+        <span className="text-xs text-as-gray-400">Cilj: 8:00/dan · malica 0:30 avtomatsko (delo &gt; 4 h){mode === 'month' ? ' · klikni delavca za dneve' : ''}</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -103,6 +111,8 @@ export default function WorkerHours({ source, mode, date, year, month }) {
             <tr className="text-as-gray-500 border-b border-as-gray-200">
               <th className="text-left p-2">Delavec</th>
               {mode === 'month' && <th className="text-right p-2">Dni</th>}
+              <th className="text-right p-2">Stroj</th>
+              <th className="text-right p-2">Ostalo</th>
               <th className="text-right p-2">Delo</th>
               <th className="text-right p-2">Malica</th>
               <th className="text-right p-2">Skupaj</th>
@@ -119,6 +129,8 @@ export default function WorkerHours({ source, mode, date, year, month }) {
                 return (
                   <tr key={w.name} className="border-b border-as-gray-100">
                     <td className="p-2 font-medium">{w.name}</td>
+                    <td className="p-2 text-right">{hoursToHM(w.stroj)}</td>
+                    <td className="p-2 text-right">{hoursToHM(w.ostalo)}</td>
                     <td className="p-2 text-right">{hoursToHM(w.delo)}</td>
                     <td className="p-2 text-right">{hoursToHM(w.malica)}</td>
                     <td className="p-2 text-right font-semibold">{hoursToHM(w.skupaj)}</td>
@@ -138,6 +150,8 @@ export default function WorkerHours({ source, mode, date, year, month }) {
                       </span>
                     </td>
                     <td className="p-2 text-right">{w.dni}</td>
+                    <td className="p-2 text-right">{hoursToHM(w.stroj)}</td>
+                    <td className="p-2 text-right">{hoursToHM(w.ostalo)}</td>
                     <td className="p-2 text-right">{hoursToHM(w.delo)}</td>
                     <td className="p-2 text-right">{hoursToHM(w.malica)}</td>
                     <td className="p-2 text-right">{hoursToHM(w.skupaj)}</td>
@@ -146,14 +160,16 @@ export default function WorkerHours({ source, mode, date, year, month }) {
                     <td className="p-2 text-right font-bold" style={{ color: st.color }}>{st.label}</td>
                   </tr>
                   {open[w.name] && w.days.map((d) => {
-                    const ds = statusOf(d.delo + d.malica, TARGET);
+                    const ds = statusOf(d.skupaj, TARGET);
                     return (
                       <tr key={d.date} className="border-b border-as-gray-100 text-xs" style={{ background: '#fdfdfd' }}>
                         <td className="p-2 pl-8">{fmtDate(d.date)}</td>
                         <td className="p-2"></td>
+                        <td className="p-2 text-right">{hoursToHM(d.stroj)}</td>
+                        <td className="p-2 text-right">{hoursToHM(d.ostalo)}</td>
                         <td className="p-2 text-right">{hoursToHM(d.delo)}</td>
                         <td className="p-2 text-right">{hoursToHM(d.malica)}</td>
-                        <td className="p-2 text-right font-semibold">{hoursToHM(d.delo + d.malica)}</td>
+                        <td className="p-2 text-right font-semibold">{hoursToHM(d.skupaj)}</td>
                         <td className="p-2 text-right">{hoursToHM(TARGET)}</td>
                         <td className="p-2 text-right" style={{ color: ds.color }}>{ds.diff >= 0 ? '+' : ''}{hoursToHM(ds.diff)}</td>
                         <td className="p-2 text-right font-bold" style={{ color: ds.color }}>{ds.label}</td>
@@ -166,6 +182,34 @@ export default function WorkerHours({ source, mode, date, year, month }) {
           </tbody>
         </table>
       </div>
+
+      {ostaloRows.length > 0 && (
+        <div className="mt-4">
+          <div className="text-sm font-bold text-as-gray-700 mb-1">Ostalo — kaj in koliko časa</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-as-gray-500 border-b border-as-gray-200">
+                  <th className="text-left p-2">Datum</th>
+                  <th className="text-left p-2">Delavec</th>
+                  <th className="text-left p-2">Opis</th>
+                  <th className="text-right p-2">Čas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ostaloRows.map((r, i) => (
+                  <tr key={i} className="border-b border-as-gray-100">
+                    <td className="p-2">{fmtDate(r.date)}</td>
+                    <td className="p-2">{r.name}</td>
+                    <td className="p-2">{r.opis}</td>
+                    <td className="p-2 text-right font-semibold">{hoursToHM(r.cas)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
