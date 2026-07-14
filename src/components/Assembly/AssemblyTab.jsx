@@ -16,7 +16,7 @@ export function canAccessAssembly(email, isAdmin = false) {
 }
 
 export default function AssemblyTab({ currentUser }) {
-  const [view, setView] = useState('month');
+  const [view, setView] = useState('vnos');
 
   if (!canAccessAssembly(currentUser?.email, currentUser?.is_admin)) {
     return (
@@ -40,8 +40,6 @@ export default function AssemblyTab({ currentUser }) {
             icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
           <SubTab active={view === 'month'} onClick={() => setView('month')}
             icon={<BarChart3 className="w-4 h-4" />} label="Mesečno" />
-          <SubTab active={view === 'linije'} onClick={() => setView('linije')}
-            icon={<Wrench className="w-4 h-4" />} label="Linije" />
           <SubTab active={view === 'admin'} onClick={() => setView('admin')}
             icon={<Settings className="w-4 h-4" />} label="Urejanje" />
         </div>
@@ -51,7 +49,6 @@ export default function AssemblyTab({ currentUser }) {
       {view === 'vnos' && <MontazaWorkerEntry currentUser={currentUser} />}
       {view === 'day' && <AssemblyWorkAnalysis lockMode="day" />}
       {view === 'month' && <AssemblyWorkAnalysis lockMode="month" />}
-      {view === 'linije' && <AssemblyAdmin onlySection="linije" />}
       {view === 'admin' && <AssemblyAdmin />}
     </div>
   );
