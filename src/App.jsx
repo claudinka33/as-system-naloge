@@ -14,7 +14,7 @@ import TaskModal from './components/TaskModal.jsx';
 import CalendarView from './components/CalendarView.jsx';
 import QuoteOfTheDay from './components/QuoteOfTheDay.jsx';
 import { getFileIcon, formatFileSize, formatDate, isOverdue, priorityColors, priorityLabels, priorityRank } from './utils/taskHelpers.jsx';
-import ProductionTab, { canAccessProduction } from './components/Production/ProductionTab.jsx';
+import { canAccessProduction } from './components/Production/ProductionV2Tab.jsx';
 import ProductionV2Tab from './components/Production/ProductionV2Tab';
 import WorkerEntry from './components/Production/WorkerEntry.jsx';
 import MontazaWorkerEntry from './components/Assembly/MontazaWorkerEntry.jsx';
@@ -238,7 +238,7 @@ export default function App() {
     // poslušaj brskalniškov gumb "nazaj"
     const handlePopState = (event) => {
       const target = event.state?.section || (window.location.hash.replace('#', '') || 'home');
-      if (['home','tasks','daily','reports','production','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost','notes','gradiva','prodaja-v2','crm'].includes(target)) {
+      if (['home','tasks','daily','reports','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost','notes','gradiva','prodaja-v2','crm'].includes(target)) {
         setMainSection(target);
       } else {
         setMainSection('home');
@@ -1289,16 +1289,6 @@ mineUnseen: tasks.filter(t => {
                   <span className="hidden sm:inline">Poročila</span>
                 </button>
                 )}
-                {false && canAccessProduction(currentUser?.email) && (
-                  <button
-                    onClick={() => handleModuleClick('production')}
-                    className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'production' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
-                    style={mainSection === 'production' ? {backgroundColor: '#C8102E'} : {}}
-                  >
-                    <Factory className="w-4 h-4" />
-                    <span className="hidden sm:inline">Proizvodnja</span>
-                  </button>
-                )}
                 {canSeeModule('proizvodnja-v2') && (
               <button
   onClick={() => handleModuleClick('proizvodnja-v2')}
@@ -1482,9 +1472,7 @@ mineUnseen: tasks.filter(t => {
           <OddelekModule config={ODDELKI_CONFIG.kakovost} currentUser={currentUser} isAdmin={isAdmin} employees={employees} resetSignal={moduleResetCounters.kakovost || 0} />
         ) : mainSection === 'reports' ? (
           <Reports currentUser={currentUser} employees={employees} />
-     ) : mainSection === 'production' ? (
-              <ProductionTab currentUser={currentUser} resetSignal={moduleResetCounters.production || 0} />
-            ) : mainSection === 'proizvodnja-v2' ? (
+     ) : mainSection === 'proizvodnja-v2' ? (
               <ProductionV2Tab
                 currentUser={currentUser}
                 isAdmin={isAdmin}
