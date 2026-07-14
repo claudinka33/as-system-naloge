@@ -13,6 +13,16 @@ const AS_RED = '#C8102E';
 
 const MachinesCtx = React.createContext({ segments: [], findMachine: () => null, reloadMachines: () => {} });
 function useMachines() { return React.useContext(MachinesCtx); }
+const PRODUCTION_USERS = [
+  'boris.cernelc@as-system.si',
+  'ales.seidl@as-system.si',
+  'claudia.seidl@as-system.si',
+  'sara.jagodic@as-system.si',
+];
+export function canAccessProduction(email) {
+  return PRODUCTION_USERS.includes(email);
+}
+
 const MACHINE_ADMIN_EMAILS = ['boris.cernelc@as-system.si'];
 
 const OPERATERJI = [
@@ -25,6 +35,18 @@ const OPERATERJI = [
   'Danči Šolinc',
   'Boris Černelc',
 ];
+
+function useStopReasons() {
+  const [rs, setRs] = React.useState(STOP_REASONS);
+  React.useEffect(() => {
+    supabase.from('production_v2_stop_reasons').select('reason').eq('active', true).order('display_order')
+      .then(({ data }) => {
+        const names = (data || []).map((r) => r.reason).filter(Boolean);
+        if (names.length) setRs(names);
+      });
+  }, []);
+  return rs;
+}
 
 function useOperaterji() {
   const [ops, setOps] = React.useState(OPERATERJI);
@@ -408,6 +430,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
 // ─── ZASTOJ FORM ───
 function StopForm({ currentUser, onSaved, setError }) {
   const operaterji = useOperaterji();
+  const stopReasons = useStopReasons();
   const { segments: SEGMENTS, findMachine } = useMachines();
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formTime, setFormTime] = useState('');
@@ -491,7 +514,7 @@ function StopForm({ currentUser, onSaved, setError }) {
       <FormField label="Razlog (kategorija)">
         <select value={formReason} onChange={(e) => setFormReason(e.target.value)} className={inputCls}>
           <option value="">-- izberi razlog --</option>
-          {STOP_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+          {stopReasons.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </FormField>
 
@@ -670,7 +693,8 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
   const totalStopHours = dayStops.reduce((s, e) => s + Number(e.duration_hours || 0), 0);
   const totalWasteKg = dayWastes.reduce((s, e) => s + Number(e.weight_kg || 0), 0);
   const totalExpected = dayEntries.reduce((s, e) => s + Number(e.normativ_kos_h || 0) * Number(e.cas_ur || 0), 0);
-  const overallEfficiency = totalExpected > 0 ? Math.round((totalPieces / totalExpected) * 100) : null;
+  const totalPiecesNorm = dayEntries.reduce((s, e) => s + (Number(e.normativ_kos_h || 0) > 0 ? Number(e.kosi || 0) : 0), 0);
+  const overallEfficiency = totalExpected > 0 ? Math.round((totalPiecesNorm / totalExpected) * 100) : null;
 
   const controls = (
     <>
@@ -880,7 +904,8 @@ function MonthlyView({ entries, stops, wastes, loading }) {
 
   // Pričakovan output po normativu (skupaj)
   const totalExpected = monthEntries.reduce((s, e) => s + Number(e.normativ_kos_h || 0) * Number(e.cas_ur || 0), 0);
-  const overallEfficiency = totalExpected > 0 ? Math.round((totalPieces / totalExpected) * 100) : null;
+  const totalPiecesNorm = monthEntries.reduce((s, e) => s + (Number(e.normativ_kos_h || 0) > 0 ? Number(e.kosi || 0) : 0), 0);
+  const overallEfficiency = totalExpected > 0 ? Math.round((totalPiecesNorm / totalExpected) * 100) : null;
 
   // Po strojih
   const byMachine = useMemo(() => {
