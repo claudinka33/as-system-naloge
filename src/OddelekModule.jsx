@@ -15,6 +15,24 @@ import {
   CheckSquare, Square, Wallet
 } from 'lucide-react';
 import { supabase } from './supabase.js';
+import { getIcon } from './lib/iconRegistry.jsx';
+
+// Kategorije: sprejme array (novo, iz baze) ali objekt (staro) -> objekt {key: {..., icon: komponenta}}
+function normalizeCategories(cats) {
+  const resolveIcon = (ic) => (typeof ic === 'string' ? getIcon(ic) : (ic || getIcon('FileText')));
+  const out = {};
+  if (Array.isArray(cats)) {
+    for (const c of cats) {
+      if (!c || !c.key) continue;
+      out[c.key] = { ...c, icon: resolveIcon(c.icon), subKategorije: Array.isArray(c.subKategorije) ? c.subKategorije : [] };
+    }
+    return out;
+  }
+  for (const [k, c] of Object.entries(cats || {})) {
+    out[k] = { ...(c || {}), icon: resolveIcon(c && c.icon), subKategorije: Array.isArray(c && c.subKategorije) ? c.subKategorije : [] };
+  }
+  return out;
+}
 
 const STATUSI = [
   { key: 'open', label: 'Odprto', color: '#D97706', bgColor: '#FEF3C7' },
@@ -66,11 +84,15 @@ export default function OddelekModule({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const HeaderIcon = config.icon;
-  const tableName = config.tableName;
-  const commentsTable = `${tableName}_comments`;
-  const attachmentsTable = `${tableName}_attachments`;
-  const storageBucket = config.storageBucket || `${tableName.replace('_entries', '')}-attachments`;
+  const HeaderIcon = typeof config.icon === 'string' ? getIcon(config.icon) : config.icon;
+  const categories = useMemo(() => normalizeCategories(config.categories), [config.categories]);
+  const fields = Array.isArray(config.fields) ? config.fields : [];
+  const isShared = !!config.isShared;
+  const departmentKey = config.departmentKey || config.key || null;
+  const tableName = isShared ? 'md_entries' : config.tableName;
+  const commentsTable = isShared ? 'md_comments' : `${tableName}_comments`;
+  const attachmentsTable = isShared ? 'md_attachments' : `${tableName}_attachments`;
+  const storageBucket = isShared ? 'md-attachments' : (config.storageBucket || `${tableName.replace('_entries', '')}-attachments`);
 
   useEffect(() => {
     if (selectedCategoryFromHeader !== null && selectedCategoryFromHeader !== undefined) {
@@ -92,7 +114,7 @@ export default function OddelekModule({
   useEffect(() => {
     loadAll();
     const ch = supabase
-      .channel(`${tableName}-changes`)
+      .channel(`${tableName}-${departmentKey || 'x'}-changes`)
       .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, () => loadAll())
       .on('postgres_changes', { event: '*', schema: 'public', table: commentsTable }, () => loadAll())
       .on('postgres_changes', { event: '*', schema: 'public', table: attachmentsTable }, () => loadAll())
@@ -103,8 +125,11 @@ export default function OddelekModule({
   async function loadAll() {
     setLoading(true);
     try {
+      const entriesQuery = (isShared && departmentKey)
+        ? supabase.from(tableName).select('*').eq('department_key', departmentKey).order('created_at', { ascending: false })
+        : supabase.from(tableName).select('*').order('created_at', { ascending: false });
       const [entriesRes, commentsRes, attachRes] = await Promise.all([
-        supabase.from(tableName).select('*').order('created_at', { ascending: false }),
+        entriesQuery,
         supabase.from(commentsTable).select('*').order('created_at', { ascending: true }),
         supabase.from(attachmentsTable).select('*').order('created_at', { ascending: true }),
       ]);
@@ -129,13 +154,16 @@ export default function OddelekModule({
         employee_email: entry.employee_email || null, employee_name: entry.employee_name || null,
         due_date: entry.due_date || null, status: entry.status || 'open',
         notes: entry.notes || null, priority: entry.priority || 'medium',
+        ...(isShared ? { custom: entry.custom || {} } : {}),
       };
       let savedId = entry.id;
       if (entry.id) {
         const { error } = await supabase.from(tableName).update({ ...payload, updated_at: new Date().toISOString() }).eq('id', entry.id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.from(tableName).insert([{ ...payload, created_by_email: currentUser.email, created_by_name: currentUser.name }]).select().single();
+        const insertRow = { ...payload, created_by_email: currentUser.email, created_by_name: currentUser.name };
+        if (isShared && departmentKey) insertRow.department_key = departmentKey;
+        const { data, error } = await supabase.from(tableName).insert([insertRow]).select().single();
         if (error) throw error;
         savedId = data?.id;
       }
@@ -217,10 +245,12 @@ export default function OddelekModule({
       alert('Ni vnosov za izvoz.'); return;
     }
     const rows = selectedEntries.map(entry => {
-      const cat = config.categories[entry.category];
+      const cat = categories[entry.category];
       const status = STATUSI.find(s => s.key === computeAutoStatus(entry)) || STATUSI[0];
       const entryComments = comments.filter(c => c.entry_id === entry.id);
       const entryAttach = attachments.filter(a => a.entry_id === entry.id);
+      const cf = {};
+      for (const fd of fields) { cf[fd.label || fd.key] = (entry.custom && entry.custom[fd.key] != null) ? entry.custom[fd.key] : ''; }
       return {
         'Kategorija': cat?.name || entry.category,
         'Podkategorija': entry.sub_category || '',
@@ -231,6 +261,7 @@ export default function OddelekModule({
         'Status': status.label,
         'Rok': entry.due_date || '',
         'Opombe': entry.notes || '',
+        ...cf,
         'Št. komentarjev': entryComments.length,
         'Št. priponk': entryAttach.length,
         'Ustvaril': entry.created_by_name || '',
@@ -242,7 +273,7 @@ export default function OddelekModule({
     const allCols = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length, ...rows.map(r => String(r[k] ?? '').length)) + 2 }));
     allWs['!cols'] = allCols;
     XLSX.utils.book_append_sheet(wb, allWs, 'Izbrani');
-    Object.entries(config.categories).forEach(([key, cat]) => {
+    Object.entries(categories).forEach(([key, cat]) => {
       const catRows = rows.filter(r => r['Kategorija'] === cat.name);
       if (catRows.length === 0) return;
       const ws = XLSX.utils.json_to_sheet(catRows);
@@ -312,9 +343,9 @@ export default function OddelekModule({
             <div>
               <h1 className="text-xl font-bold text-as-gray-700">
                 {config.name}
-                {selectedCategory && config.categories[selectedCategory] && (
-                  <span className="ml-2 text-sm font-semibold" style={{color: config.categories[selectedCategory].color}}>
-                    › {config.categories[selectedCategory].name}
+                {selectedCategory && categories[selectedCategory] && (
+                  <span className="ml-2 text-sm font-semibold" style={{color: categories[selectedCategory].color}}>
+                    › {categories[selectedCategory].name}
                   </span>
                 )}
               </h1>
@@ -341,23 +372,23 @@ export default function OddelekModule({
       </div>
 
       {view === 'entry' && (
-        <EntryView enrichedEntries={enrichedEntries} filteredEntries={filteredEntries} stats={stats} loading={loading} searchQuery={searchQuery} setSearchQuery={setSearchQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} categories={config.categories} countByCategory={countByCategory} overdueByCategory={overdueByCategory} onEditEntry={(e) => setEditingEntry(e)} onDeleteEntry={deleteEntry} canEdit={canEdit} onAddComment={addComment} onUploadAttachment={uploadAttachment} onDownloadAttachment={downloadAttachment} onDeleteAttachment={deleteAttachment} currentUser={currentUser} />
+        <EntryView enrichedEntries={enrichedEntries} filteredEntries={filteredEntries} stats={stats} loading={loading} searchQuery={searchQuery} setSearchQuery={setSearchQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} categories={categories} countByCategory={countByCategory} overdueByCategory={overdueByCategory} onEditEntry={(e) => setEditingEntry(e)} onDeleteEntry={deleteEntry} canEdit={canEdit} onAddComment={addComment} onUploadAttachment={uploadAttachment} onDownloadAttachment={downloadAttachment} onDeleteAttachment={deleteAttachment} currentUser={currentUser} />
       )}
 
       {view === 'daily' && (
-        <DashboardView mode="daily" enrichedEntries={enrichedEntries} categories={config.categories} onExport={(entries, opts) => exportEntriesToExcel(entries, opts)} onJumpToEntry={(entry) => { setSelectedCategory(entry.category); setView('entry'); }} moduleName={config.name} />
+        <DashboardView mode="daily" enrichedEntries={enrichedEntries} categories={categories} onExport={(entries, opts) => exportEntriesToExcel(entries, opts)} onJumpToEntry={(entry) => { setSelectedCategory(entry.category); setView('entry'); }} moduleName={config.name} />
       )}
 
       {view === 'monthly' && (
-        <DashboardView mode="monthly" enrichedEntries={enrichedEntries} categories={config.categories} onExport={(entries, opts) => exportEntriesToExcel(entries, opts)} onJumpToEntry={(entry) => { setSelectedCategory(entry.category); setView('entry'); }} moduleName={config.name} />
+        <DashboardView mode="monthly" enrichedEntries={enrichedEntries} categories={categories} onExport={(entries, opts) => exportEntriesToExcel(entries, opts)} onJumpToEntry={(entry) => { setSelectedCategory(entry.category); setView('entry'); }} moduleName={config.name} />
       )}
 
       {(showNewModal || editingEntry) && (
-        <EntryModal entry={editingEntry} defaultCategory={selectedCategory} categories={config.categories} employees={employees} onSave={saveEntry} onClose={() => { setShowNewModal(false); setEditingEntry(null); }} />
+        <EntryModal entry={editingEntry} defaultCategory={selectedCategory} categories={categories} employees={employees} fields={fields} onSave={saveEntry} onClose={() => { setShowNewModal(false); setEditingEntry(null); }} />
       )}
 
       {showExportDialog && (
-        <ExportDialog entries={enrichedEntries} categories={config.categories} onExport={(selected, opts) => { exportEntriesToExcel(selected, opts); setShowExportDialog(false); }} onClose={() => setShowExportDialog(false)} moduleName={config.name} />
+        <ExportDialog entries={enrichedEntries} categories={categories} onExport={(selected, opts) => { exportEntriesToExcel(selected, opts); setShowExportDialog(false); }} onClose={() => setShowExportDialog(false)} moduleName={config.name} />
       )}
     </div>
   );
@@ -401,7 +432,7 @@ function EntryView({ enrichedEntries, filteredEntries, stats, loading, searchQue
       {!selectedCategory && !searchQuery && statusFilter === 'all' ? (
         <KategorijeGrid categories={categories} countByCategory={countByCategory} overdueByCategory={overdueByCategory} onSelect={setSelectedCategory} />
       ) : (
-        <EntriesList entries={filteredEntries} categories={categories} loading={loading} onEdit={onEditEntry} onDelete={onDeleteEntry} selectedCategory={selectedCategory} canEdit={canEdit} onAddComment={onAddComment} onUploadAttachment={onUploadAttachment} onDownloadAttachment={onDownloadAttachment} onDeleteAttachment={onDeleteAttachment} currentUser={currentUser} />
+        <EntriesList entries={filteredEntries} categories={categories} fields={fields} loading={loading} onEdit={onEditEntry} onDelete={onDeleteEntry} selectedCategory={selectedCategory} canEdit={canEdit} onAddComment={onAddComment} onUploadAttachment={onUploadAttachment} onDownloadAttachment={onDownloadAttachment} onDeleteAttachment={onDeleteAttachment} currentUser={currentUser} />
       )}
     </>
   );
@@ -750,7 +781,7 @@ function KategorijeGrid({ categories, countByCategory, overdueByCategory, onSele
 }
 
 
-function EntriesList({ entries, categories, loading, onEdit, onDelete, selectedCategory, canEdit, onAddComment, onUploadAttachment, onDownloadAttachment, onDeleteAttachment, currentUser }) {
+function EntriesList({ entries, categories, fields = [], loading, onEdit, onDelete, selectedCategory, canEdit, onAddComment, onUploadAttachment, onDownloadAttachment, onDeleteAttachment, currentUser }) {
   if (loading) return (<div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center"><Loader2 className="w-8 h-8 text-as-gray-400 mx-auto animate-spin mb-2" /><p className="text-as-gray-500 text-sm">Nalagam vnose ...</p></div>);
   if (entries.length === 0) return (<div className="bg-white border border-as-gray-200 rounded-xl p-12 text-center"><FileText className="w-12 h-12 text-as-gray-300 mx-auto mb-3" /><p className="text-as-gray-600 font-semibold">Ni vnosov</p><p className="text-as-gray-400 text-sm mt-1">Klikni "Nov vnos" za dodajanje prvega vnosa.</p></div>);
   return (
@@ -766,13 +797,13 @@ function EntriesList({ entries, categories, loading, onEdit, onDelete, selectedC
         </div>
       )}
       {entries.map(entry => (
-        <EntryRow key={entry.id} entry={entry} categories={categories} onEdit={() => onEdit(entry)} onDelete={() => onDelete(entry.id)} canEdit={canEdit} onAddComment={onAddComment} onUploadAttachment={onUploadAttachment} onDownloadAttachment={onDownloadAttachment} onDeleteAttachment={onDeleteAttachment} currentUser={currentUser} />
+        <EntryRow key={entry.id} entry={entry} categories={categories} fields={fields} onEdit={() => onEdit(entry)} onDelete={() => onDelete(entry.id)} canEdit={canEdit} onAddComment={onAddComment} onUploadAttachment={onUploadAttachment} onDownloadAttachment={onDownloadAttachment} onDeleteAttachment={onDeleteAttachment} currentUser={currentUser} />
       ))}
     </div>
   );
 }
 
-function EntryRow({ entry, categories, onEdit, onDelete, canEdit, onAddComment, onUploadAttachment, onDownloadAttachment, onDeleteAttachment, currentUser }) {
+function EntryRow({ entry, categories, fields = [], onEdit, onDelete, canEdit, onAddComment, onUploadAttachment, onDownloadAttachment, onDeleteAttachment, currentUser }) {
   const [expanded, setExpanded] = useState(false);
   const [commentText, setCommentText] = useState('');
   const fileInputRef = useRef(null);
@@ -815,6 +846,16 @@ function EntryRow({ entry, categories, onEdit, onDelete, canEdit, onAddComment, 
         <div className="border-t border-as-gray-100 bg-as-gray-50/50 p-3 space-y-3">
           {entry.description && (<div><div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opis</div><p className="text-sm text-as-gray-700 whitespace-pre-wrap">{entry.description}</p></div>)}
           {entry.notes && (<div><div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">Opombe</div><p className="text-sm text-as-gray-700 whitespace-pre-wrap">{entry.notes}</p></div>)}
+          {fields.length > 0 && entry.custom && fields.some((f) => entry.custom[f.key] != null && entry.custom[f.key] !== '') && (
+            <div className="grid grid-cols-2 gap-2">
+              {fields.filter((f) => entry.custom[f.key] != null && entry.custom[f.key] !== '').map((f) => (
+                <div key={f.key} className="bg-white rounded-lg border border-as-gray-100 px-2.5 py-1.5">
+                  <div className="text-[10px] font-bold text-as-gray-400 uppercase tracking-wider">{f.label}</div>
+                  <div className="text-sm text-as-gray-700 break-words">{String(entry.custom[f.key])}</div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -870,7 +911,7 @@ function EntryRow({ entry, categories, onEdit, onDelete, canEdit, onAddComment, 
   );
 }
 
-function EntryModal({ entry, defaultCategory, categories, employees = [], onSave, onClose }) {
+function EntryModal({ entry, defaultCategory, categories, employees = [], fields = [], onSave, onClose }) {
   const firstKey = Object.keys(categories)[0];
   const [form, setForm] = useState({
     id: entry?.id || null,
@@ -885,6 +926,7 @@ function EntryModal({ entry, defaultCategory, categories, employees = [], onSave
     status: entry?.status || 'open',
     priority: entry?.priority || 'medium',
     notes: entry?.notes || '',
+    custom: entry?.custom || {},
   });
   const [pendingFiles, setPendingFiles] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -905,6 +947,11 @@ function EntryModal({ entry, defaultCategory, categories, employees = [], onSave
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) { alert('Naslov je obvezen.'); return; }
+    for (const fd of fields) {
+      if (fd.required && (!form.custom || form.custom[fd.key] == null || String(form.custom[fd.key]).trim() === '')) {
+        alert(`Polje "${fd.label}" je obvezno.`); return;
+      }
+    }
     setSaving(true);
     try { await onSave({ ...form, pendingFiles }); } finally { setSaving(false); }
   };
@@ -969,6 +1016,22 @@ function EntryModal({ entry, defaultCategory, categories, employees = [], onSave
             <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Opombe ..." rows={2} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
           </div>
 
+          {fields.length > 0 && fields.map((f) => (
+            <div key={f.key}>
+              <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1">{f.label}{f.required ? ' *' : ''}</label>
+              {f.type === 'textarea' ? (
+                <textarea value={form.custom?.[f.key] || ''} onChange={(e) => setForm({ ...form, custom: { ...form.custom, [f.key]: e.target.value } })} rows={2} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
+              ) : f.type === 'select' ? (
+                <select value={form.custom?.[f.key] || ''} onChange={(e) => setForm({ ...form, custom: { ...form.custom, [f.key]: e.target.value } })} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300 bg-white">
+                  <option value="">— izberi —</option>
+                  {(f.options || []).map((o) => (<option key={o} value={o}>{o}</option>))}
+                </select>
+              ) : (
+                <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} value={form.custom?.[f.key] || ''} onChange={(e) => setForm({ ...form, custom: { ...form.custom, [f.key]: e.target.value } })} className="w-full px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
+              )}
+            </div>
+          ))}
+
           {!entry?.id && (
             <div>
               <label className="block text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-1"><span className="flex items-center gap-1.5"><Paperclip className="w-3 h-3" /> Priponke (neobvezno)</span></label>
@@ -1004,4 +1067,3 @@ function EntryModal({ entry, defaultCategory, categories, employees = [], onSave
     </div>
   );
 }
-
