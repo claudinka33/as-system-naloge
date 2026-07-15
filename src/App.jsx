@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck, Home, Wallet, NotebookPen, Settings } from 'lucide-react';
 import { supabase } from './supabase.js';
 import Reports from './Reports.jsx';
@@ -26,6 +26,9 @@ import HomePage from './HomePage.jsx';
 import Notes from './Notes.jsx';
 import UserAdmin from './UserAdmin.jsx';
 import { useAppSettings } from './lib/appSettings.js';
+import OddelekModule from './OddelekModule.jsx';
+import { useDepartments } from './lib/departmentsApi.js';
+import { getIcon } from './lib/iconRegistry.jsx';
 import { getMyTaskViews, markTaskAsViewed, countUnreadComments } from './lib/taskViewsApi.js';
 import NabavaModule from './NabavaModule.jsx';
 import { canAccessNabava } from './nabavaConfig.js';
@@ -184,6 +187,17 @@ export default function App() {
   const departmentOptions = (appSettings.departments && appSettings.departments.length) ? appSettings.departments : DEPARTMENTS;
   const areaOptions = (appSettings.areas && appSettings.areas.length) ? appSettings.areas : AREA_SUGGESTIONS;
 
+  // === Delovna mesta po meri (tabela custom_departments) ===
+  const { departments: customDepartments, reload: reloadDepartments } = useDepartments();
+  const customDepConfigs = (customDepartments || []).filter((d) => d.active).map((d) => ({
+    key: d.key, name: d.name, icon: d.icon,
+    accentColor: d.accentColor, accentBg: d.accentBg, desc: d.descr,
+    categories: d.categories, fields: d.fields,
+    isShared: true, departmentKey: d.key, allowedEmails: d.allowedEmails,
+  }));
+  const departmentsRef = useRef([]);
+  useEffect(() => { departmentsRef.current = customDepartments || []; }, [customDepartments]);
+
   const loadUsersAndAccess = async () => {
     try {
       const [uRes, aRes] = await Promise.all([
@@ -247,7 +261,8 @@ export default function App() {
     // poslušaj brskalniškov gumb "nazaj"
     const handlePopState = (event) => {
       const target = event.state?.section || (window.location.hash.replace('#', '') || 'home');
-      if (['home','tasks','daily','reports','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost','notes','gradiva','prodaja-v2','crm'].includes(target)) {
+      const _customKeys = (departmentsRef.current || []).map((d) => d.key);
+      if (['home','tasks','daily','reports','assembly','racunovodstvo','nabava','prodaja','tehnolog','komerciala','kakovost','notes','gradiva','prodaja-v2','crm'].includes(target) || _customKeys.includes(target)) {
         setMainSection(target);
       } else {
         setMainSection('home');
@@ -1154,6 +1169,7 @@ mineUnseen: tasks.filter(t => {
     ...(canSeeModule('crm') ? [{ key: 'crm', name: moduleLabel('crm', 'CRM'), Icon: Briefcase }] : []),
     ...Object.entries(ODDELKI_CONFIG).filter(([key]) => canSeeModule(key)).map(([key, o]) => ({ key, name: moduleLabel(key, o.name), Icon: o.icon })),
     ...(canSeeModule('racunovodstvo') ? [{ key: 'racunovodstvo', name: moduleLabel('racunovodstvo', 'Računovodstvo'), Icon: Wallet }] : []),
+    ...customDepConfigs.filter((d) => canSeeModule(d.key) && moduleEnabled(d.key)).map((d) => ({ key: d.key, name: moduleLabel(d.key, d.name), Icon: getIcon(d.icon) })),
   ];
   const currentModuleName = (availableModules.find((m) => m.key === mainSection)?.name) || (mainSection === 'home' ? 'Domov' : 'Moduli');
 
@@ -1409,6 +1425,20 @@ mineUnseen: tasks.filter(t => {
                     )}
                   </div>
                 )}
+                {customDepConfigs.filter((d) => canSeeModule(d.key) && moduleEnabled(d.key)).map((d) => {
+                  const DIcon = getIcon(d.icon);
+                  return (
+                    <button
+                      key={d.key}
+                      onClick={() => handleModuleClick(d.key)}
+                      className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === d.key ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
+                      style={mainSection === d.key ? {backgroundColor: '#C8102E'} : {}}
+                    >
+                      <DIcon className="w-4 h-4" />
+                      <span className="hidden lg:inline">{moduleLabel(d.key, d.name)}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Stikalo Seznam / Koledar - SAMO ZA NALOGE */}
@@ -1459,6 +1489,14 @@ mineUnseen: tasks.filter(t => {
             currentUser={currentUser}
             isAdmin={isAdmin}
             onNavigate={handleHomeNavigate}
+          />
+        ) : customDepConfigs.some((d) => d.key === mainSection) ? (
+          <OddelekModule
+            config={customDepConfigs.find((d) => d.key === mainSection)}
+            currentUser={currentUser}
+            isAdmin={isAdmin}
+            employees={employees}
+            resetSignal={moduleResetCounters[mainSection] || 0}
           />
         ) : mainSection === 'nabava' ? (
               <NabavaModule user={currentUser} />
@@ -1694,7 +1732,7 @@ mineUnseen: tasks.filter(t => {
           currentUser={currentUser}
           legacyModulesFor={legacyModulesFor}
           onClose={() => setShowUserAdmin(false)}
-          onChanged={() => { loadUsersAndAccess(); reloadAppSettings(); }}
+          onChanged={() => { loadUsersAndAccess(); reloadAppSettings(); reloadDepartments(); }}
         />
       )}
 
