@@ -25,6 +25,7 @@ import { Factory, Wrench } from 'lucide-react';
 import HomePage from './HomePage.jsx';
 import Notes from './Notes.jsx';
 import UserAdmin from './UserAdmin.jsx';
+import { useAppSettings } from './lib/appSettings.js';
 import { getMyTaskViews, markTaskAsViewed, countUnreadComments } from './lib/taskViewsApi.js';
 import NabavaModule from './NabavaModule.jsx';
 import { canAccessNabava } from './nabavaConfig.js';
@@ -176,6 +177,13 @@ export default function App() {
   const [moduleAccess, setModuleAccess] = useState({});
   const [showUserAdmin, setShowUserAdmin] = useState(false);
 
+  // === Nastavitve aplikacije (tabela app_settings) ===
+  const { settings: appSettings, reload: reloadAppSettings } = useAppSettings();
+  const moduleLabel = (key, fallback) => (appSettings.module_labels && appSettings.module_labels[key]) || fallback;
+  const moduleEnabled = (key) => !((appSettings.modules_disabled || []).includes(key));
+  const departmentOptions = (appSettings.departments && appSettings.departments.length) ? appSettings.departments : DEPARTMENTS;
+  const areaOptions = (appSettings.areas && appSettings.areas.length) ? appSettings.areas : AREA_SUGGESTIONS;
+
   const loadUsersAndAccess = async () => {
     try {
       const [uRes, aRes] = await Promise.all([
@@ -210,6 +218,7 @@ export default function App() {
   };
 
   const canSeeModule = (key) => {
+    if (!moduleEnabled(key)) return false;
     if (isAdmin) return true;
     const email = currentUser?.email;
     if (email && Object.prototype.hasOwnProperty.call(moduleAccess, email)) {
@@ -1138,13 +1147,13 @@ mineUnseen: tasks.filter(t => {
 
   // Seznam vidnih modulov (za spustni meni na telefonu) — isti vrstni red kot vrstica na računalniku
   const availableModules = [
-    { key: 'tasks', name: 'Naloge', Icon: ClipboardList },
-    ...(canSeeModule('gradiva') ? [{ key: 'gradiva', name: 'Gradiva', Icon: FileText }] : []),
-    ...(canSeeModule('proizvodnja-v2') ? [{ key: 'proizvodnja-v2', name: 'Proizvodnja', Icon: Factory }] : []),
-    ...(canSeeModule('assembly') ? [{ key: 'assembly', name: 'Montaža', Icon: Wrench }] : []),
-    ...(canSeeModule('crm') ? [{ key: 'crm', name: 'CRM', Icon: Briefcase }] : []),
-    ...Object.entries(ODDELKI_CONFIG).filter(([key]) => canSeeModule(key)).map(([key, o]) => ({ key, name: o.name, Icon: o.icon })),
-    ...(canSeeModule('racunovodstvo') ? [{ key: 'racunovodstvo', name: 'Računovodstvo', Icon: Wallet }] : []),
+    ...(moduleEnabled('tasks') ? [{ key: 'tasks', name: moduleLabel('tasks', 'Naloge'), Icon: ClipboardList }] : []),
+    ...(canSeeModule('gradiva') ? [{ key: 'gradiva', name: moduleLabel('gradiva', 'Gradiva'), Icon: FileText }] : []),
+    ...(canSeeModule('proizvodnja-v2') ? [{ key: 'proizvodnja-v2', name: moduleLabel('proizvodnja-v2', 'Proizvodnja'), Icon: Factory }] : []),
+    ...(canSeeModule('assembly') ? [{ key: 'assembly', name: moduleLabel('assembly', 'Montaža'), Icon: Wrench }] : []),
+    ...(canSeeModule('crm') ? [{ key: 'crm', name: moduleLabel('crm', 'CRM'), Icon: Briefcase }] : []),
+    ...Object.entries(ODDELKI_CONFIG).filter(([key]) => canSeeModule(key)).map(([key, o]) => ({ key, name: moduleLabel(key, o.name), Icon: o.icon })),
+    ...(canSeeModule('racunovodstvo') ? [{ key: 'racunovodstvo', name: moduleLabel('racunovodstvo', 'Računovodstvo'), Icon: Wallet }] : []),
   ];
   const currentModuleName = (availableModules.find((m) => m.key === mainSection)?.name) || (mainSection === 'home' ? 'Domov' : 'Moduli');
 
@@ -1259,14 +1268,16 @@ mineUnseen: tasks.filter(t => {
               {/* RAČUNALNIK: vrstica modulov */}
               {/* GLAVNO Stikalo: Naloge / Gradiva / Poročila / Proizvodnja / Montaža / Računovodstvo */}
               <div className="bg-as-gray-100 rounded-lg p-1 hidden sm:flex border border-as-gray-200 flex-wrap">
+                {moduleEnabled('tasks') && (
                 <button
                   onClick={() => handleModuleClick('tasks')}
                   className={`px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5 ${mainSection === 'tasks' ? 'text-white shadow-sm' : 'text-as-gray-500 hover:text-as-gray-700'}`}
                   style={mainSection === 'tasks' ? {backgroundColor: '#C8102E'} : {}}
                 >
                   <ClipboardList className="w-4 h-4" />
-                  <span className="hidden sm:inline">Naloge</span>
+                  <span className="hidden sm:inline">{moduleLabel('tasks', 'Naloge')}</span>
                 </button>
+                )}
                 {canSeeModule('gradiva') && (
                   <button
                     onClick={() => handleModuleClick('gradiva')}
@@ -1274,7 +1285,7 @@ mineUnseen: tasks.filter(t => {
                     style={mainSection === 'gradiva' ? {backgroundColor: '#C8102E'} : {}}
                   >
                     <FileText className="w-4 h-4" />
-                    <span className="hidden sm:inline">Gradiva</span>
+                    <span className="hidden sm:inline">{moduleLabel('gradiva', 'Gradiva')}</span>
                   </button>
                 )}
                 {/* Beležnica in Klepet — premaknjena med floating ikone spodaj desno */}
@@ -1296,7 +1307,7 @@ mineUnseen: tasks.filter(t => {
   style={mainSection === 'proizvodnja-v2' ? {backgroundColor: '#C8102E'} : {}}
 >
   <Factory className="w-4 h-4" />
-  <span className="hidden sm:inline">Proizvodnja</span>
+  <span className="hidden sm:inline">{moduleLabel('proizvodnja-v2', 'Proizvodnja')}</span>
 </button>
             )}
                 {canSeeModule('assembly') && (
@@ -1306,7 +1317,7 @@ mineUnseen: tasks.filter(t => {
                     style={mainSection === 'assembly' ? {backgroundColor: '#C8102E'} : {}}
                   >
                     <Wrench className="w-4 h-4" />
-                    <span className="hidden sm:inline">Montaža</span>
+                    <span className="hidden sm:inline">{moduleLabel('assembly', 'Montaža')}</span>
                   </button>
                 )}
                 {canSeeModule('crm') && (
@@ -1316,7 +1327,7 @@ mineUnseen: tasks.filter(t => {
                     style={mainSection === 'crm' ? {backgroundColor: '#C8102E'} : {}}
                   >
                     <Briefcase className="w-4 h-4" />
-                    <span className="hidden sm:inline">CRM</span>
+                    <span className="hidden sm:inline">{moduleLabel('crm', 'CRM')}</span>
                   </button>
                 )}
                 {Object.entries(ODDELKI_CONFIG).map(([key, oddelek]) => {
@@ -1331,7 +1342,7 @@ mineUnseen: tasks.filter(t => {
                       style={mainSection === key ? {backgroundColor: '#C8102E'} : {}}
                     >
                       <Icon className="w-4 h-4" />
-                      <span className="hidden lg:inline">{oddelek.name}</span>
+                      <span className="hidden lg:inline">{moduleLabel(key, oddelek.name)}</span>
                     </button>
                   );
                 })}
@@ -1354,7 +1365,7 @@ mineUnseen: tasks.filter(t => {
                       style={mainSection === 'racunovodstvo' ? {backgroundColor: '#C8102E'} : {}}
                     >
                       <Wallet className="w-4 h-4" />
-                      <span className="hidden sm:inline">Računovodstvo</span>
+                      <span className="hidden sm:inline">{moduleLabel('racunovodstvo', 'Računovodstvo')}</span>
                       <ChevronDown className={`w-3 h-3 transition ${racunovodstvoMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {racunovodstvoMenuOpen && (
@@ -1572,7 +1583,7 @@ mineUnseen: tasks.filter(t => {
                   className="px-3 py-2 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 bg-white"
                 >
                   <option value="all">Vsi oddelki</option>
-                  {DEPARTMENTS.map(dept => (
+                  {departmentOptions.map(dept => (
                     <option key={dept} value={dept}>{dept}</option>
                   ))}
                 </select>
@@ -1683,7 +1694,7 @@ mineUnseen: tasks.filter(t => {
           currentUser={currentUser}
           legacyModulesFor={legacyModulesFor}
           onClose={() => setShowUserAdmin(false)}
-          onChanged={loadUsersAndAccess}
+          onChanged={() => { loadUsersAndAccess(); reloadAppSettings(); }}
         />
       )}
 
@@ -1691,7 +1702,7 @@ mineUnseen: tasks.filter(t => {
         <TaskModal
           task={editingTask}
           employees={employees}
-          areaSuggestions={AREA_SUGGESTIONS}
+          areaSuggestions={areaOptions}
           currentUser={currentUser}
           onSave={(data) => {
             if (editingTask) {
