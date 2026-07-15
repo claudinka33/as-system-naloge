@@ -3,7 +3,9 @@ import { supabase } from './supabase';
 import { MODULES } from './modulesConfig.js';
 import { DEPARTMENTS, AREA_SUGGESTIONS } from './constants.js';
 import { loadAppSettings, saveAppSetting } from './lib/appSettings.js';
-import { Users, UserPlus, Trash2, Edit2, Eye, EyeOff, X, Check, Shield, Loader2, KeyRound, Settings, Plus } from 'lucide-react';
+import DepartmentsAdmin from './DepartmentsAdmin.jsx';
+import { loadDepartments } from './lib/departmentsApi.js';
+import { Users, UserPlus, Trash2, Edit2, Eye, EyeOff, X, Check, Shield, Loader2, KeyRound, Settings, Plus, Layers } from 'lucide-react';
 
 function TagList({ list, setList, val, setVal, placeholder }) {
   const add = () => {
@@ -67,6 +69,7 @@ export default function UserAdmin({ currentUser, legacyModulesFor, onClose, onCh
   const [areas, setAreas] = useState([]);
   const [newDept, setNewDept] = useState('');
   const [newArea, setNewArea] = useState('');
+  const [customModules, setCustomModules] = useState([]); // {key,label} za dodeljevanje pravic
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState('');
 
@@ -86,6 +89,8 @@ export default function UserAdmin({ currentUser, legacyModulesFor, onClose, onCh
   };
 
   const loadSettings = async () => {
+    const deps = await loadDepartments();
+    setCustomModules(deps.filter((d) => d.active).map((d) => ({ key: d.key, label: d.name })));
     const s = await loadAppSettings();
     setLabels(s.module_labels || {});
     setDisabled(s.modules_disabled || []);
@@ -222,8 +227,8 @@ export default function UserAdmin({ currentUser, legacyModulesFor, onClose, onCh
         <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 rounded-t-lg z-10">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              {tab === 'users' ? <Users className="w-5 h-5 text-red-700" /> : <Settings className="w-5 h-5 text-red-700" />}
-              {tab === 'users' ? 'Uporabniki in pravice' : 'Nastavitve aplikacije'}
+              {tab === 'users' ? <Users className="w-5 h-5 text-red-700" /> : tab === 'departments' ? <Layers className="w-5 h-5 text-red-700" /> : <Settings className="w-5 h-5 text-red-700" />}
+              {tab === 'users' ? 'Uporabniki in pravice' : tab === 'departments' ? 'Delovna mesta' : 'Nastavitve aplikacije'}
             </h2>
             <div className="flex items-center gap-2">
               {tab === 'users' && (
@@ -241,6 +246,13 @@ export default function UserAdmin({ currentUser, legacyModulesFor, onClose, onCh
               style={tab === 'users' ? { backgroundColor: '#C8102E', color: '#fff' } : { color: '#6B7280' }}
             >
               <Users className="w-4 h-4" /> Uporabniki
+            </button>
+            <button
+              onClick={() => setTab('departments')}
+              className="px-3 py-1.5 text-sm font-semibold rounded transition flex items-center gap-1.5"
+              style={tab === 'departments' ? { backgroundColor: '#C8102E', color: '#fff' } : { color: '#6B7280' }}
+            >
+              <Layers className="w-4 h-4" /> Delovna mesta
             </button>
             <button
               onClick={() => setTab('settings')}
@@ -307,6 +319,11 @@ export default function UserAdmin({ currentUser, legacyModulesFor, onClose, onCh
               </div>
             )}
           </div>
+        )}
+
+        {/* === ZAVIHEK: DELOVNA MESTA === */}
+        {tab === 'departments' && (
+          <DepartmentsAdmin currentUser={currentUser} onChanged={onChanged} />
         )}
 
         {/* === ZAVIHEK: NASTAVITVE APLIKACIJE === */}
@@ -423,7 +440,7 @@ export default function UserAdmin({ currentUser, legacyModulesFor, onClose, onCh
                   </label>
                   {customAccess && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                      {MODULES.map(m => (
+                      {[...MODULES, ...customModules].map(m => (
                         <label key={m.key} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer text-sm">
                           <input type="checkbox" checked={modules.includes(m.key)} onChange={() => toggleModule(m.key)} className="w-4 h-4" style={{ accentColor: '#C8102E' }} />
                           <span className="text-gray-700">{labels[m.key] || m.label}</span>
