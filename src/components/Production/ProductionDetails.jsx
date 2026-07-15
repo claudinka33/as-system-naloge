@@ -11,6 +11,13 @@ const fmtDate = (d) => (d ? new Date(d + 'T12:00:00').toLocaleDateString('sl-SI'
 const pct = (kos, exp) => (exp > 0 ? Math.round((kos / exp) * 100) : null);
 const pctTxt = (p) => (p == null ? '—' : `${p}%`);
 const rowPct = (r) => pct(num(r.kosi), num(r.normativ_kos_h) * num(r.cas_ur));
+// Oznaka stroja: "št.stroja · ime" (machine_id je številka stroja); prikaži karkoli obstaja
+const machineLabel = (r) => {
+  const n = (r && r.machine_id != null && String(r.machine_id).trim() !== '') ? String(r.machine_id).trim() : '';
+  const nm = (r && r.machine_name) ? String(r.machine_name).trim() : '';
+  if (n && nm) return `${n} · ${nm}`;
+  return n || nm || '—';
+};
 
 export default function ProductionDetails({ entries, stops, mode, periodLabel }) {
   const [openWorkers, setOpenWorkers] = useState({});
@@ -47,11 +54,11 @@ export default function ProductionDetails({ entries, stops, mode, periodLabel })
   const HEAD_S = ['Šifra', 'Delavec', 'Datum', 'Nalog', 'Segment', 'Stroj', 'Kosi', 'Norm. (kos/h)', 'Čas stroja (h)', 'Doseganje'];
 
   const wCells = (r, showName) => [
-    showName ? (r.operater || '—') : '', fmtDate(r.date), r.delovni_nalog || '—', r.segment || '—', r.machine_name || '—', r.tip_vijaka || '—',
+    showName ? (r.operater || '—') : '', fmtDate(r.date), r.delovni_nalog || '—', r.segment || '—', machineLabel(r), r.tip_vijaka || '—',
     fmtNum(num(r.kosi)), num(r.normativ_kos_h) > 0 ? fmtNum(Math.round(num(r.normativ_kos_h))) : '—', h1(r.cas_ur), pctTxt(rowPct(r)),
   ];
   const sCells = (r) => [
-    '', r.operater || '—', fmtDate(r.date), r.delovni_nalog || '—', r.segment || '—', r.machine_name || '—',
+    '', r.operater || '—', fmtDate(r.date), r.delovni_nalog || '—', r.segment || '—', machineLabel(r),
     fmtNum(num(r.kosi)), num(r.normativ_kos_h) > 0 ? fmtNum(Math.round(num(r.normativ_kos_h))) : '—', h1(r.cas_ur), pctTxt(rowPct(r)),
   ];
 
@@ -144,7 +151,7 @@ export default function ProductionDetails({ entries, stops, mode, periodLabel })
             {stopRows.map((s, i) => (
               <Row key={s.id ?? i} cells={[
                 fmtDate(s.date), s.operater || '—', s.reason_category || '—', s.delovni_nalog || 'splošno',
-                s.machine_name || '—', h1(s.duration_hours), s.description || '—',
+                machineLabel(s), h1(s.duration_hours), s.description || '—',
               ]} />
             ))}
           </Table>
