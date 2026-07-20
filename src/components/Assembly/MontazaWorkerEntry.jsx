@@ -523,7 +523,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
             <div>
               <BigLabel>Vrsta</BigLabel>
               <select value={timeVrsta} onChange={(e) => setTimeVrsta(e.target.value)} className={selCls}>
-                <option value="stroj">Delo na stroju</option>
+                <option value="stroj">Delo na delovnem mestu</option>
                 <option value="ostalo">Ostalo (čiščenje, karton…)</option>
               </select>
             </div>
