@@ -553,7 +553,7 @@ export default function MontazaWorkerEntry({ currentUser }) {
                 <tbody>
                   {dayTime.map((r) => (
                     <tr key={r.id} className="border-b border-as-gray-100">
-                      <td className="p-2">{r.vrsta === 'malica' ? 'Malica' : r.vrsta === 'ostalo' ? 'Ostalo' : 'Delo na stroju'}</td>
+                      <td className="p-2">{r.vrsta === 'malica' ? 'Malica' : r.vrsta === 'ostalo' ? 'Ostalo' : 'Delo na delovnem mestu'}</td>
                       <td className="p-2">{r.opomba || '—'}</td>
                       <td className="p-2 text-right font-semibold">{hoursToHM(r.cas_ur)}</td>
                       <td className="p-2 text-right">
