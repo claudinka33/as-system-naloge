@@ -4,6 +4,7 @@
 // =====================================
 
 import React, { useEffect, useState } from 'react';
+import TodoList from './components/TodoList';
 import { 
   ClipboardList, CalendarCheck, BarChart3, Sparkles, X,
   CheckCircle2, AlertCircle, Calendar, TrendingUp, Users,
@@ -272,7 +273,10 @@ export default function HomePage({ currentUser, isAdmin, onNavigate }) {
           <HomeQuote />
         </div>
       </div>
-
+      
+      {/* MOJ TO-DO */}
+      <TodoList currentUser={currentUser} />
+      
       {/* TEDENSKI KOLEDAR - moje naloge za teden */}
       <HomeWeekCalendar currentUser={currentUser} onNavigate={onNavigate} />
 
