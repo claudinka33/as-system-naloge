@@ -3,7 +3,7 @@
 // analiza z zgodovino po posamezni stranki.
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2, TrendingUp, Target } from 'lucide-react';
+import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2, TrendingUp, Target, Camera, Pencil, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { syncTaskWebhook } from '../../webhooks.js';
 import CalendarView from '../CalendarView';
@@ -490,6 +490,114 @@ function BreakForm({ kind, currentUser, onSaved, setError }) {
 }
 
 // ─── VISIT FORM ───
+// ─── FOTOGRAFIJE OBISKA ───
+const CRM_PHOTO_BUCKET = 'crm-photos';
+
+async function uploadCrmPhotos(files, userEmail) {
+  const out = [];
+  for (const file of files) {
+    if (!file.type || !file.type.startsWith('image/')) continue;
+    if (file.size > 10 * 1024 * 1024) throw new Error(`Slika "${file.name}" je večja od 10 MB.`);
+    const safe = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const who = (userEmail || 'crm').split('@')[0];
+    const path = `${who}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${safe}`;
+    const { error } = await supabase.storage.from(CRM_PHOTO_BUCKET).upload(path, file, { cacheControl: '3600', upsert: false });
+    if (error) throw error;
+    const { data } = supabase.storage.from(CRM_PHOTO_BUCKET).getPublicUrl(path);
+    out.push({ path, url: data?.publicUrl || null, name: file.name });
+  }
+  return out;
+}
+
+async function removeCrmPhoto(photo) {
+  if (photo && photo.path) {
+    try { await supabase.storage.from(CRM_PHOTO_BUCKET).remove([photo.path]); } catch (e) { /* ignore */ }
+  }
+}
+
+function PhotoUploader({ photos, setPhotos, userEmail }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const list = Array.isArray(photos) ? photos : [];
+
+  async function handleFiles(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    setBusy(true); setErr('');
+    try {
+      const added = await uploadCrmPhotos(files, userEmail);
+      setPhotos([...list, ...added]);
+    } catch (ex) {
+      setErr(ex.message || 'Napaka pri nalaganju slike.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemove(idx) {
+    const p = list[idx];
+    setPhotos(list.filter((_, i) => i !== idx));
+    await removeCrmPhoto(p);
+  }
+
+  return (
+    <div className="border-2 border-dashed border-as-gray-200 rounded-xl p-4 space-y-3" style={{ background: '#fafafa' }}>
+      <div className="text-sm font-bold text-as-gray-700 flex items-center gap-1.5">
+        <Camera className="w-4 h-4" /> Fotografije {list.length > 0 && <span className="text-as-gray-400 font-semibold">({list.length})</span>}
+      </div>
+
+      {list.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+          {list.map((p, i) => (
+            <div key={p.path || i} className="relative group">
+              <a href={p.url} target="_blank" rel="noreferrer">
+                <img src={p.url} alt={p.name || 'foto'} className="w-full h-24 object-cover rounded-lg border border-as-gray-200" />
+              </a>
+              <button type="button" onClick={() => handleRemove(i)}
+                className="absolute top-1 right-1 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center text-as-gray-500 hover:text-red-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <label className="flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 text-sm font-semibold cursor-pointer transition"
+          style={{ borderColor: CRM_COLOR, color: CRM_COLOR, background: '#fff' }}>
+          <Camera className="w-4 h-4" /> Fotografiraj
+          <input type="file" accept="image/*" capture="environment" multiple onChange={handleFiles} className="hidden" disabled={busy} />
+        </label>
+        <label className="flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 border-as-gray-200 text-sm font-semibold text-as-gray-600 bg-white cursor-pointer transition">
+          <ImageIcon className="w-4 h-4" /> Izberi sliko
+          <input type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" disabled={busy} />
+        </label>
+      </div>
+
+      {busy && <div className="flex items-center gap-2 text-xs text-as-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Nalagam sliko...</div>}
+      {err && <div className="text-xs font-semibold text-red-600">{err}</div>}
+    </div>
+  );
+}
+
+function PhotoGallery({ photos }) {
+  const list = Array.isArray(photos) ? photos : [];
+  if (!list.length) return null;
+  return (
+    <div>
+      <div className="text-xs font-semibold text-as-gray-500 uppercase tracking-wider mb-1.5">Fotografije ({list.length})</div>
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+        {list.map((p, i) => (
+          <a key={p.path || i} href={p.url} target="_blank" rel="noreferrer">
+            <img src={p.url} alt={p.name || 'foto'} className="w-full h-24 object-cover rounded-lg border border-as-gray-200 hover:opacity-90 transition" />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function VisitForm({ currentUser, employees, onSaved, setError }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [customerName, setCustomerName] = useState('');
@@ -513,6 +621,7 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
   });
   const [notify, setNotify] = useState(false);
   const [responsibleEmail, setResponsibleEmail] = useState('');
+  const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // ŽIV IZRAČUN ČASA pri stranki
@@ -532,6 +641,7 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
     setDepartureTime('');
     setKm('');
     setNotes('');
+    setPhotos([]);
     setCreateOffer(false);
     setOfferDescription('');
     setOfferAssignedTo('');
@@ -619,6 +729,7 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
         outcome,
         visit_duration_min: computedMin,
         notes: notes || null,
+        photos: photos,
         create_offer: createOffer,
         offer_description: createOffer ? offerDescription : null,
         offer_assigned_to_email: createOffer ? offerAssignedTo : null,
@@ -702,6 +813,8 @@ function VisitForm({ currentUser, employees, onSaved, setError }) {
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={inputCls + ' resize-none'}
           placeholder="O čem ste se pogovarjali, kaj je bilo dogovorjeno, naslednji koraki..." />
       </FormField>
+
+      <PhotoUploader photos={photos} setPhotos={setPhotos} userEmail={currentUser?.email} />
 
       {/* PONUDBA */}
       <div className="border-2 border-dashed border-as-gray-200 rounded-xl p-4 space-y-3" style={{ background: createOffer ? '#FEF3C7' : '#fafafa' }}>
@@ -1214,6 +1327,7 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
                         isAdmin={isAdmin}
                         currentUser={currentUser}
                         onDelete={() => handleDelete(v)}
+                        onSaved={onReload}
                       />
                     </div>
                   );
@@ -1227,9 +1341,12 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
   );
 }
 
-function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
+function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete, onSaved }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const canDelete = isAdmin || (visit.created_by === currentUser?.email && !isLocked(visit.visit_date, visit.created_by, currentUser?.email, isAdmin));
+  const canEdit = canDelete;
+  const visitPhotos = Array.isArray(visit.photos) ? visit.photos : [];
 
   let icon, color, bg, label, timeStr;
   if (visit.entry_type === 'home_start') {
@@ -1308,9 +1425,19 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
             )}
           </div>
         </div>
-        {(!privateHidden && (visit.notes || visit.customer_address || visit.offer_description)) && (
+        {(!privateHidden && (visit.notes || visit.customer_address || visit.offer_description || visitPhotos.length > 0)) && (
           <button onClick={() => setOpen((o) => !o)} className="p-2 hover:bg-white rounded transition text-as-gray-400">
             {open ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+          </button>
+        )}
+        {visitPhotos.length > 0 && (
+          <span className="flex items-center gap-1 text-xs font-bold text-as-gray-500 px-1.5" title={`${visitPhotos.length} fotografij`}>
+            <Camera className="w-4 h-4" /> {visitPhotos.length}
+          </span>
+        )}
+        {canEdit && (
+          <button onClick={() => setEditing(true)} className="p-2 text-as-gray-400 hover:text-as-gray-700 hover:bg-white rounded transition" title="Uredi vnos">
+            <Pencil className="w-5 h-5" />
           </button>
         )}
         {canDelete && (
@@ -1342,9 +1469,141 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete }) {
               </div>
             </div>
           )}
+          {!privateHidden && <PhotoGallery photos={visitPhotos} />}
         </div>
       )}
+      {editing && (
+        <EditEntryModal
+          visit={visit}
+          currentUser={currentUser}
+          onClose={() => setEditing(false)}
+          onSaved={() => { setEditing(false); if (onSaved) onSaved(); }}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── UREJANJE OBSTOJEČEGA VNOSA ───
+function EditEntryModal({ visit, currentUser, onClose, onSaved }) {
+  const isVisitLike = visit.entry_type === 'visit' || visit.entry_type === 'call';
+  const [date, setDate] = useState(visit.visit_date || '');
+  const [customerName, setCustomerName] = useState(visit.customer_name || '');
+  const [customerAddress, setCustomerAddress] = useState(visit.customer_address || '');
+  const [arrivalTime, setArrivalTime] = useState((visit.arrival_time || '').slice(0, 5));
+  const [departureTime, setDepartureTime] = useState((visit.departure_time || '').slice(0, 5));
+  const [km, setKm] = useState(visit.odometer_km != null ? String(visit.odometer_km) : '');
+  const [outcome, setOutcome] = useState(visit.outcome || 'nic');
+  const [notes, setNotes] = useState(visit.notes || '');
+  const [photos, setPhotos] = useState(Array.isArray(visit.photos) ? visit.photos : []);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const liveDuration = diffMinutes(arrivalTime, departureTime);
+
+  async function handleSave() {
+    setSaving(true); setErr('');
+    try {
+      const payload = {
+        visit_date: date,
+        arrival_time: arrivalTime || null,
+        departure_time: departureTime || null,
+        odometer_km: km !== '' ? parseInt(km) : null,
+        notes: notes || null,
+        photos: photos,
+      };
+      if (isVisitLike) {
+        payload.customer_name = customerName.trim() || null;
+        payload.customer_address = customerAddress.trim() || null;
+        payload.outcome = outcome;
+      }
+      if (visit.entry_type === 'visit') {
+        payload.visit_duration_min = (liveDuration != null && liveDuration >= 0) ? liveDuration : null;
+      }
+      const { error } = await supabase.from('crm_visits').update(payload).eq('id', visit.id);
+      if (error) throw error;
+      onSaved();
+    } catch (e) {
+      setErr(e.message || 'Napaka pri shranjevanju.');
+      setSaving(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-3 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-as-gray-100">
+          <h3 className="font-bold text-as-gray-800 pr-4 flex items-center gap-2">
+            <Pencil className="w-4 h-4" style={{ color: CRM_COLOR }} /> Uredi vnos
+          </h3>
+          <button onClick={onClose} className="text-as-gray-400 hover:text-as-gray-700 flex-shrink-0"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {isVisitLike && (
+            <>
+              <FormField label="Stranka">
+                <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className={inputCls} />
+              </FormField>
+              <FormField label="Naslov">
+                <input type="text" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} className={inputCls} />
+              </FormField>
+            </>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Datum">
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} />
+            </FormField>
+            <FormField label="Km števec">
+              <input type="number" inputMode="numeric" min="0" value={km} onChange={(e) => setKm(e.target.value)} className={inputCls} />
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Čas prihoda">
+              <input type="time" value={arrivalTime} onChange={(e) => setArrivalTime(e.target.value)} className={inputCls} />
+            </FormField>
+            <FormField label="Čas odhoda">
+              <input type="time" value={departureTime} onChange={(e) => setDepartureTime(e.target.value)} className={inputCls} />
+            </FormField>
+          </div>
+
+          {visit.entry_type === 'visit' && departureTime && liveDuration != null && liveDuration >= 0 && (
+            <div className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold" style={{ background: '#CFFAFE', color: '#0E7490' }}>
+              <Clock className="w-5 h-5" /> Čas pri stranki: {formatMinutes(liveDuration)}
+            </div>
+          )}
+
+          {isVisitLike && (
+            <FormField label="Izid">
+              <OutcomePicker value={outcome} onChange={setOutcome} />
+            </FormField>
+          )}
+
+          <FormField label="Dogovori / opombe">
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={inputCls + ' resize-none'} />
+          </FormField>
+
+          <PhotoUploader photos={photos} setPhotos={setPhotos} userEmail={currentUser?.email} />
+
+          {err && <div className="text-sm font-semibold text-red-600">{err}</div>}
+        </div>
+
+        <div className="flex gap-2 p-4 border-t border-as-gray-100">
+          <button onClick={onClose} className="flex-1 px-4 py-3 rounded-xl border border-as-gray-200 text-sm font-semibold text-as-gray-600 hover:bg-as-gray-50 transition">
+            Prekliči
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white transition disabled:opacity-60"
+            style={{ background: CRM_COLOR }}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Shrani spremembe
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
