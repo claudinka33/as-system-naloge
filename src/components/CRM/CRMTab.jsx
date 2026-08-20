@@ -138,6 +138,12 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
   const { scopeMode, crmScope, applyScope, isTeamLead } = useCrmScope(currentUser, isAdmin);
   const [personFilter, setPersonFilter] = useState((isAdmin || isTeamLead) ? 'all' : (currentUser?.email || 'all'));
 
+  // crm_scope se naloži asinhrono — ko pride, popravi privzeti filter osebe,
+  // sicer bi uporabnik z "vidi vse" ostal filtriran samo nase.
+  useEffect(() => {
+    setPersonFilter((isAdmin || isTeamLead) ? 'all' : (currentUser?.email || 'all'));
+  }, [isAdmin, isTeamLead, currentUser?.email]);
+
   // Zelena potrditev se sama skrije
   useEffect(() => {
     if (!flash) return;
@@ -175,6 +181,20 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  // Seznam oseb v spustnem meniju — sestavljen iz dejansko vidnih vnosov + zaposlenih,
+  // da se novi komercialisti pojavijo samodejno (brez trdo kodiranih seznamov).
+  const peopleOptions = useMemo(() => {
+    const map = new Map();
+    visits.forEach((v) => {
+      if (v.created_by) map.set(v.created_by, v.created_by_name || v.created_by);
+    });
+    (employees || []).forEach((e) => { if (map.has(e.email)) map.set(e.email, e.name || e.email); });
+    if (currentUser?.email && !map.has(currentUser.email)) map.set(currentUser.email, currentUser.name || currentUser.email);
+    return [...map.entries()]
+      .map(([email, name]) => ({ email, name }))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [visits, employees, currentUser?.email, currentUser?.name]);
+
   const scopedVisits = (personFilter === 'all') ? visits : visits.filter((v) => v.created_by === personFilter);
 
   return (
@@ -196,9 +216,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
           <select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}
             className="px-3 py-2.5 border border-as-gray-200 rounded-lg bg-white text-base sm:text-sm">
             <option value="all">Vsi komercialisti</option>
-            {(employees || [])
-              .filter((e) => isAdmin ? canAccessCRM(e.email) : [currentUser?.email, CRM_TEAM_MEMBER].includes(e.email))
-              .map((e) => (
+            {peopleOptions.map((e) => (
               <option key={e.email} value={e.email}>{e.name}</option>
             ))}
           </select>
@@ -2389,7 +2407,7 @@ function PipelineView({ currentUser, isAdmin, employees }) {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [scopeMode, JSON.stringify(crmScope?.users || [])]);
 
   // KPI
   const open = deals.filter((d) => d.status === 'open');
@@ -4166,6 +4184,8 @@ function PlanningCalendar({ currentUser, isAdmin, employees }) {
 }
 
 function PlanningView({ currentUser, isAdmin, employees }) {
+  const { isTeamLead, scopeMode } = useCrmScope(currentUser, isAdmin);
+  const canSeeAll = isAdmin || isTeamLead;
   const toDayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const [day, setDay] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 1); return toDayKey(d); }); // privzeto jutri
   const [stops, setStops] = useState([]);
@@ -4220,7 +4240,7 @@ function PlanningView({ currentUser, isAdmin, employees }) {
     setLoading(true); setErr('');
     try {
       let q = supabase.from('crm_plans').select('*').eq('plan_date', day).order('sort_order', { ascending: true }).order('created_at', { ascending: true });
-      if (!(isAdmin && scope === 'all')) q = q.eq('created_by', currentUser?.email);
+      if (!(canSeeAll && scope === 'all')) q = q.eq('created_by', currentUser?.email);
       const { data, error } = await q;
       if (error) throw error;
       const rows = data || [];
@@ -4229,7 +4249,7 @@ function PlanningView({ currentUser, isAdmin, employees }) {
     } catch (e) { setErr(e.message || 'Napaka pri nalaganju.'); }
     finally { setLoading(false); }
   }
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [day, scope]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [day, scope, scopeMode]);
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(''), 2500); return () => clearTimeout(t); }, [flash]);
 
   async function addStop() {
@@ -4337,13 +4357,13 @@ function PlanningView({ currentUser, isAdmin, employees }) {
           <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 1); setDay(toDayKey(d)); }} className="text-xs font-semibold px-3 py-2 rounded-lg" style={{ background: CRM_BG, color: CRM_COLOR }}>Jutri</button>
         </div>
         <div className="mt-2 font-bold text-as-gray-800">🗺️ Pot za {dayLabel} <span className="text-sm font-normal text-as-gray-400">· {openCount} obiskov</span></div>
-        {isAdmin && (
+        {canSeeAll && (
           <div className="inline-flex rounded-lg border border-as-gray-200 overflow-hidden text-xs font-semibold mt-2">
             <button onClick={() => setScope('me')} className="px-3 py-1.5" style={scope === 'me' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>Moja pot</button>
             <button onClick={() => setScope('all')} className="px-3 py-1.5" style={scope === 'all' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>Vsi komercialisti</button>
           </div>
         )}
-        {stops.length > 0 && !(isAdmin && scope === 'all') && (
+        {stops.length > 0 && !(canSeeAll && scope === 'all') && (
           <div className="mt-3 flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold text-as-gray-500">🔁 Ponovi pot čez:</span>
             {[7, 14, 28].map((n) => (
@@ -4357,7 +4377,7 @@ function PlanningView({ currentUser, isAdmin, employees }) {
       {err && <div className="flex items-center gap-2 p-3 rounded-lg border" style={{ background: '#fee', borderColor: '#fcc', color: '#900' }}><AlertCircle className="w-4 h-4" /><span className="text-sm flex-1">{err}</span><button onClick={() => setErr('')}><X className="w-4 h-4" /></button></div>}
 
       {/* Dodaj stranko na pot */}
-      {!(isAdmin && scope === 'all') && (
+      {!(canSeeAll && scope === 'all') && (
         adding ? (
           <div className="bg-white border-2 border-dashed rounded-2xl p-4 space-y-3" style={{ borderColor: CRM_BG }}>
             <div className="text-sm font-bold text-as-gray-700">Dodaj stranko na pot</div>
@@ -4418,7 +4438,7 @@ function PlanningView({ currentUser, isAdmin, employees }) {
                       {s.customer_name}{s.poslovalnica ? <span className="text-xs font-normal text-as-gray-400"> · posl. {s.poslovalnica}</span> : ''}
                     </div>
                     {s.customer_address && <div className="text-xs text-as-gray-500">{s.customer_address}</div>}
-                    {(isAdmin && scope === 'all') && <div className="text-xs text-as-gray-400">{s.created_by_name}</div>}
+                    {(canSeeAll && scope === 'all') && <div className="text-xs text-as-gray-400">{s.created_by_name}</div>}
 
                     {/* Priprava / kaj vprašati */}
                     {editId === s.id ? (
