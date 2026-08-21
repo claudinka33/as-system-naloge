@@ -1,5 +1,41 @@
 // webhooks.js — n8n integracija za sinhronizacijo nalog z Outlook koledarji in emailom
 const N8N_WEBHOOK_URL = 'https://claudinka33.app.n8n.cloud/webhook/task-sync';
+const N8N_MENTION_URL = 'https://claudinka33.app.n8n.cloud/webhook/comment-mention';
+
+/**
+ * Pošlje email obvestilo osebam, ki so bile označene z @ v komentarju.
+ * @param {object} opts - {task, commentText, mentions:[{email,name}], authorName, authorEmail}
+ */
+export async function sendMentionWebhook({ task, commentText, mentions, authorName, authorEmail }) {
+  try {
+    const targets = (mentions || []).filter(m => m.email && m.email !== authorEmail);
+    if (!targets.length) return null;
+
+    for (const t of targets) {
+      await fetch(N8N_MENTION_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'mention',
+          task_id: task?.id ?? null,
+          task_title: task?.title || '',
+          task_priority: task?.priority || '',
+          task_due_date: task?.due_date || null,
+          comment_text: commentText,
+          author_name: authorName || 'AS system',
+          author_email: authorEmail || '',
+          mentioned_email: t.email,
+          mentioned_name: t.name || t.email,
+          app_url: 'https://app.assystem.si',
+        }),
+      });
+    }
+    return true;
+  } catch (error) {
+    console.error('[webhook] napaka pri @omembi:', error);
+    return null;
+  }
+}
 /**
  * Pošlje webhook v n8n.
  * Workflow v n8n potem: 
