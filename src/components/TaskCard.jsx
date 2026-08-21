@@ -9,13 +9,66 @@ export default function TaskCard({
   onFileUpload, onDownloadFile, onRemoveAttachment, onAddComment, onEditComment,
   getFileIcon, formatFileSize, formatDate, isOverdue,
   priorityColors, priorityLabels, currentUser, isAdmin, isAssignedToMe, assignedNames,
-  unreadCount = 0
+  unreadCount = 0, employees = []
 }) {
   const [commentText, setCommentText] = useState('');
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
   const [showAssigned, setShowAssigned] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editingText, setEditingText] = useState('');
   const isCompleted = task.status === 'completed';
+
+  // === @OMEMBE V KOMENTARJIH ===
+  const MENTION_RE = /@([\p{L} ]{0,30})$/u;
+  const mentionMatches = mentionOpen
+    ? employees.filter(e => e.name && e.name.toLowerCase().includes(mentionQuery.trim().toLowerCase())).slice(0, 6)
+    : [];
+
+  const handleCommentChange = (value) => {
+    setCommentText(value);
+    const m = value.match(MENTION_RE);
+    if (m) { setMentionOpen(true); setMentionQuery(m[1]); }
+    else { setMentionOpen(false); setMentionQuery(''); }
+  };
+
+  const pickMention = (emp) => {
+    setCommentText(commentText.replace(MENTION_RE, '@' + emp.name + ' '));
+    setMentionOpen(false);
+    setMentionQuery('');
+  };
+
+  const getMentionedEmails = (text) =>
+    employees.filter(e => e.name && text.includes('@' + e.name)).map(e => e.email);
+
+  const submitComment = () => {
+    if (!commentText.trim()) return;
+    onAddComment(commentText, getMentionedEmails(commentText));
+    setCommentText('');
+    setMentionOpen(false);
+    setMentionQuery('');
+  };
+
+  const renderCommentText = (text) => {
+    if (!text) return null;
+    const names = employees.map(e => e.name).filter(Boolean).sort((a, b) => b.length - a.length);
+    if (!names.length) return text;
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('@(' + names.map(esc).join('|') + ')', 'g');
+    const parts = [];
+    let last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) parts.push(text.slice(last, m.index));
+      parts.push(
+        <span key={m.index} className="font-semibold px-1 rounded" style={{ color: '#C8102E', backgroundColor: '#FDE8EC' }}>
+          @{m[1]}
+        </span>
+      );
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push(text.slice(last));
+    return parts;
+  };
 
   // Barve za oddelek/področje (task.area)
   const AREA_COLORS = {
@@ -318,32 +371,50 @@ export default function TaskCard({
                             </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-as-gray-600 whitespace-pre-wrap">{comment.text}</p>
+                          <p className="text-sm text-as-gray-600 whitespace-pre-wrap">{renderCommentText(comment.text)}</p>
                         )}
                       </div>
                     );
                   })}
                 </div>
               )}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      onAddComment(commentText);
-                      setCommentText('');
-                    }
-                  }}
-                  placeholder="Dodaj komentar..."
-                  className="flex-1 px-3 py-1.5 text-sm border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400"
-                />
+              <div className="flex gap-2 relative">
+                <div className="flex-1 relative">
+                  {mentionMatches.length > 0 && (
+                    <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-as-gray-200 rounded-lg shadow-lg z-30 max-h-52 overflow-y-auto">
+                      <div className="px-3 py-1.5 text-[11px] text-as-gray-400 border-b border-as-gray-100">
+                        Označi osebo (dobi email obvestilo)
+                      </div>
+                      {mentionMatches.map(emp => (
+                        <button
+                          key={emp.email}
+                          type="button"
+                          onMouseDown={(e) => { e.preventDefault(); pickMention(emp); }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-as-gray-50 flex items-center justify-between gap-2"
+                        >
+                          <span className="font-semibold text-as-gray-600">{emp.name}</span>
+                          <span className="text-xs text-as-gray-400">{emp.department || ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    value={commentText}
+                    onChange={(e) => handleCommentChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') { setMentionOpen(false); return; }
+                      if (e.key === 'Enter') {
+                        if (mentionMatches.length > 0) { e.preventDefault(); pickMention(mentionMatches[0]); return; }
+                        submitComment();
+                      }
+                    }}
+                    placeholder="Dodaj komentar... (@ za oznako osebe)"
+                    className="w-full px-3 py-1.5 text-sm border border-as-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-400"
+                  />
+                </div>
                 <button
-                  onClick={() => {
-                    onAddComment(commentText);
-                    setCommentText('');
-                  }}
+                  onClick={submitComment}
                   className="px-3 py-1.5 text-white text-sm rounded-lg transition font-semibold"
                   style={{backgroundColor: '#C8102E'}}
                 >
