@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Paperclip, Calendar, AlertCircle, Search, FileText, FileSpreadsheet, FileImage, X, MessageSquare, Trash2, Edit2, ChevronDown, User, CheckCircle2, Circle, Download, Lock, LogOut, Mail, Bell, Building, Tag, Users, Loader2, List, ChevronLeft, ChevronRight, CalendarDays, ClipboardList, BarChart3, Sparkles, CalendarCheck, Home, Wallet, NotebookPen, Settings } from 'lucide-react';
 import { supabase } from './supabase.js';
 import Reports from './Reports.jsx';
-import { syncTaskWebhook } from './webhooks.js';
+import { syncTaskWebhook, sendMentionWebhook } from './webhooks.js';
 import DailyReports from './DailyReports.jsx';
 import { getTodayQuote } from './quotes.js';
 import Chat from './Chat.jsx';
@@ -848,7 +848,7 @@ export default function App() {
     }
   };
 
-  const addComment = async (taskId, commentText) => {
+  const addComment = async (taskId, commentText, mentionedEmails = [], task = null) => {
     if (!commentText.trim()) return;
     
     try {
@@ -862,6 +862,22 @@ export default function App() {
         });
 
       if (error) throw error;
+
+      // @omembe → email obvestilo označenim osebam
+      if (mentionedEmails && mentionedEmails.length > 0) {
+        const targets = mentionedEmails.map(em => {
+          const emp = employees.find(e => e.email === em);
+          return { email: em, name: emp ? emp.name : em };
+        });
+        sendMentionWebhook({
+          task: task || { id: taskId },
+          commentText,
+          mentions: targets,
+          authorName: currentUser.name,
+          authorEmail: currentUser.email,
+        });
+      }
+
       loadTasks();
     } catch (e) {
       console.error('Napaka pri dodajanju komentarja:', e);
@@ -1138,7 +1154,8 @@ mineUnseen: tasks.filter(t => {
       onDownloadFile={downloadFile}
       onRemoveAttachment={removeAttachment}
       onEditComment={(commentId, newText) => editComment(task.id, commentId, newText)}
-      onAddComment={(text) => addComment(task.id, text)}
+      onAddComment={(text, mentions) => addComment(task.id, text, mentions, task)}
+      employees={employees}
       getFileIcon={getFileIcon}
       formatFileSize={formatFileSize}
       formatDate={formatDate}
