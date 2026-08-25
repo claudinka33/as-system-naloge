@@ -1,10 +1,11 @@
 // AssemblyTab.jsx — Glavni zavihek "Montaža" (struktura kot Proizvodnja)
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Calendar, BarChart3, Settings, Wrench } from 'lucide-react';
 import MontazaWorkerEntry from './MontazaWorkerEntry.jsx';
 import AssemblyWorkAnalysis from './AssemblyWorkAnalysis.jsx';
 import AssemblyAdmin from './AssemblyAdmin.jsx';
 import { ADMIN_EMAILS } from '../../constants.js';
+import { supabase } from '../../supabase.js';
 
 // Dostop: vsi admini (is_admin v bazi ali ADMIN_EMAILS) + Milena
 const ASSEMBLY_USERS = [
@@ -18,13 +19,49 @@ export function canAccessAssembly(email, isAdmin = false) {
 export default function AssemblyTab({ currentUser }) {
   const [view, setView] = useState('vnos');
 
-  if (!canAccessAssembly(currentUser?.email, currentUser?.is_admin)) {
+  // Legacy dostop (admini + Milena)
+  const legacyAllowed = canAccessAssembly(currentUser?.email, currentUser?.is_admin);
+
+  // Dostop iz UserAdmin (tabela module_access) — null = se še nalaga
+  const [dbAllowed, setDbAllowed] = useState(legacyAllowed ? true : null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (legacyAllowed) { setDbAllowed(true); return; }
+    const email = currentUser?.email;
+    if (!email) { setDbAllowed(false); return; }
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('module_access')
+          .select('modules')
+          .eq('user_email', email)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error || !data) { setDbAllowed(false); return; }
+        setDbAllowed(Array.isArray(data.modules) && data.modules.includes('assembly'));
+      } catch (e) {
+        if (!cancelled) setDbAllowed(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.email, legacyAllowed]);
+
+  if (dbAllowed === null) {
+    return (
+      <div className="bg-white border border-as-gray-200 rounded-xl p-8 text-center">
+        <p className="text-sm text-as-gray-500">Preverjam dostop…</p>
+      </div>
+    );
+  }
+
+  if (dbAllowed !== true) {
     return (
       <div className="bg-white border border-as-gray-200 rounded-xl p-8 text-center">
         <div className="text-4xl mb-3">🔒</div>
         <h3 className="font-bold text-as-gray-700 mb-2">Ni dostopa</h3>
         <p className="text-sm text-as-gray-500">
-          Do modula Montaža imajo dostop administratorji in Milena Jančič.
+          Do modula Montaža imajo dostop administratorji in uporabniki z dodeljenim dovoljenjem.
         </p>
       </div>
     );
