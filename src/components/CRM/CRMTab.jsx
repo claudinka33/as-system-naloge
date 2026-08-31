@@ -244,7 +244,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
 
       {view === 'entry' && <EntryView currentUser={currentUser} employees={employees} onSaved={handleSaved} setError={setError} />}
       {view === 'pipeline' && <PipelineView currentUser={currentUser} isAdmin={isAdmin} employees={employees} />}
-      {view === 'daily' && <DailyView visits={scopedVisits} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
+      {view === 'daily' && <DailyView visits={scopedVisits} isAdmin={isAdmin} currentUser={currentUser} employees={employees} onReload={loadAll} loading={loading} />}
       {view === 'monthly' && <MonthlyView visits={scopedVisits} loading={loading} />}
       {view === 'reports' && <ReportsView visits={scopedVisits} loading={loading} />}
       {view === 'analysis' && <StrankeView visits={scopedVisits} loading={loading} isAdmin={isAdmin} />}
@@ -1203,7 +1203,7 @@ function CallForm({ currentUser, employees, onSaved, setError }) {
 }
 
 // ─── DAILY VIEW ───
-function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
+function DailyView({ visits, isAdmin, currentUser, employees, onReload, loading }) {
   const [filterDate, setFilterDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [filterUser, setFilterUser] = useState('all');
   const [slotEl, setSlotEl] = useState(null);
@@ -1344,6 +1344,7 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
                         visit={v}
                         isAdmin={isAdmin}
                         currentUser={currentUser}
+                        employees={employees}
                         onDelete={() => handleDelete(v)}
                         onSaved={onReload}
                       />
@@ -1359,7 +1360,7 @@ function DailyView({ visits, isAdmin, currentUser, onReload, loading }) {
   );
 }
 
-function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete, onSaved }) {
+function VisitTimelineCard({ visit, isAdmin, currentUser, employees, onDelete, onSaved }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const canDelete = isAdmin || (visit.created_by === currentUser?.email && !isLocked(visit.visit_date, visit.created_by, currentUser?.email, isAdmin));
@@ -1494,6 +1495,7 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete, onSaved }) {
         <EditEntryModal
           visit={visit}
           currentUser={currentUser}
+          employees={employees}
           onClose={() => setEditing(false)}
           onSaved={() => { setEditing(false); if (onSaved) onSaved(); }}
         />
@@ -1503,7 +1505,7 @@ function VisitTimelineCard({ visit, isAdmin, currentUser, onDelete, onSaved }) {
 }
 
 // ─── UREJANJE OBSTOJEČEGA VNOSA ───
-function EditEntryModal({ visit, currentUser, onClose, onSaved }) {
+function EditEntryModal({ visit, currentUser, employees, onClose, onSaved }) {
   const isVisitLike = visit.entry_type === 'visit' || visit.entry_type === 'call';
   const [date, setDate] = useState(visit.visit_date || '');
   const [customerName, setCustomerName] = useState(visit.customer_name || '');
@@ -1517,11 +1519,80 @@ function EditEntryModal({ visit, currentUser, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
+  // Ponudba + obvestilo (enako kot pri vnosu)
+  const hasOfferTask = !!visit.offer_task_id;
+  const [createOffer, setCreateOffer] = useState(false);
+  const [offerDescription, setOfferDescription] = useState(visit.offer_description || '');
+  const [offerAssignedTo, setOfferAssignedTo] = useState(visit.offer_assigned_to_email || '');
+  const [offerDueDate, setOfferDueDate] = useState(() => {
+    if (visit.offer_due_date) return String(visit.offer_due_date).slice(0, 10);
+    const d = new Date(); d.setDate(d.getDate() + 3);
+    return d.toISOString().slice(0, 10);
+  });
+  const [notify, setNotify] = useState(false);
+  const [responsibleEmail, setResponsibleEmail] = useState(visit.responsible_email || '');
+
   const liveDuration = diffMinutes(arrivalTime, departureTime);
 
   async function handleSave() {
+    if (createOffer && !hasOfferTask) {
+      if (!offerDescription.trim()) { setErr('Vnesi opis ponudbe.'); return; }
+      if (!offerAssignedTo) { setErr('Izberi komu dodeliš pripravo ponudbe.'); return; }
+    }
+    if (notify && !responsibleEmail) { setErr('Izberi odgovorno osebo za obvestilo.'); return; }
     setSaving(true); setErr('');
     try {
+      const nameForTask = (isVisitLike ? customerName.trim() : (visit.customer_name || '')) || 'stranka';
+
+      // Nova naloga za ponudbo (samo če je še ni)
+      let newOfferTaskId = null;
+      if (createOffer && !hasOfferTask) {
+        const assignedEmp = (employees || []).find((emp) => emp.email === offerAssignedTo);
+        const { data: taskData, error: taskError } = await supabase
+          .from('tasks')
+          .insert([{
+            title: `Pripravi ponudbo: ${nameForTask}`,
+            description: `Iz vnosa ${formatDate(date)}.\n\nOpis ponudbe:\n${offerDescription}\n\nDogovor s stranko:\n${notes || '—'}`,
+            assigned_to_emails: [offerAssignedTo],
+            responsible_email: offerAssignedTo,
+            responsible_name: assignedEmp?.name || null,
+            department: assignedEmp?.department || 'Komerciala',
+            company: nameForTask,
+            area: 'Ponudba',
+            priority: 'medium',
+            due_date: new Date(offerDueDate).toISOString(),
+            status: 'pending',
+            recurring_type: 'none',
+            created_by_email: currentUser?.email,
+            created_by_name: currentUser?.name,
+          }])
+          .select()
+          .single();
+        if (taskError) throw taskError;
+        newOfferTaskId = taskData.id;
+      }
+
+      // Obvestilo odgovorni osebi (email + Outlook)
+      let newOutlookEventId = null;
+      const respEmp = (employees || []).find((emp) => emp.email === responsibleEmail);
+      if (notify && responsibleEmail) {
+        newOutlookEventId = await crmNotifyResponsible({
+          kind: visit.entry_type === 'call' ? 'call' : 'visit',
+          customerName: nameForTask,
+          dateTimeISO: new Date(`${date}T${arrivalTime || '09:00'}:00`).toISOString(),
+          descLines: [
+            customerAddress ? `Lokacija: ${customerAddress}` : '',
+            notes ? `Dogovor: ${notes}` : '',
+            (createOffer && !hasOfferTask) ? `Ponudba: ${offerDescription} (rok ${formatDate(offerDueDate)})` : '',
+            `Popravljeno v CRM (${currentUser?.name || ''}).`,
+          ],
+          responsibleEmail,
+          responsibleName: respEmp?.name || responsibleEmail,
+          createdByName: currentUser?.name,
+          employees,
+        });
+      }
+
       const payload = {
         visit_date: date,
         arrival_time: arrivalTime || null,
@@ -1537,6 +1608,21 @@ function EditEntryModal({ visit, currentUser, onClose, onSaved }) {
       }
       if (visit.entry_type === 'visit') {
         payload.visit_duration_min = (liveDuration != null && liveDuration >= 0) ? liveDuration : null;
+      }
+      if (createOffer && !hasOfferTask) {
+        payload.create_offer = true;
+        payload.offer_description = offerDescription;
+        payload.offer_assigned_to_email = offerAssignedTo;
+        payload.offer_due_date = offerDueDate;
+        payload.offer_task_id = newOfferTaskId;
+        if (isVisitLike) payload.outcome = 'ponudba';
+      }
+      if (notify && responsibleEmail) {
+        payload.notify_responsible = true;
+        payload.responsible_email = responsibleEmail;
+        payload.responsible_name = respEmp?.name || null;
+        payload.add_to_calendar = true;
+        if (newOutlookEventId) payload.outlook_event_id = newOutlookEventId;
       }
       const { error } = await supabase.from('crm_visits').update(payload).eq('id', visit.id);
       if (error) throw error;
@@ -1604,6 +1690,53 @@ function EditEntryModal({ visit, currentUser, onClose, onSaved }) {
           </FormField>
 
           <PhotoUploader photos={photos} setPhotos={setPhotos} userEmail={currentUser?.email} />
+
+          {hasOfferTask ? (
+            <div className="rounded-xl px-4 py-3 text-sm font-semibold flex items-center gap-2" style={{ background: '#FEF3C7', color: '#92400E' }}>
+              <Briefcase className="w-4 h-4" /> Naloga za ponudbo je že ustvarjena.
+            </div>
+          ) : (
+            <div className="border-2 border-dashed border-as-gray-200 rounded-xl p-4 space-y-3" style={{ background: createOffer ? '#FEF3C7' : '#fafafa' }}>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={createOffer} onChange={(e) => setCreateOffer(e.target.checked)}
+                  className="w-6 h-6 rounded border-as-gray-300 cursor-pointer flex-shrink-0" style={{ accentColor: CRM_COLOR }} />
+                <div className="flex-1">
+                  <div className="text-sm font-bold text-as-gray-700 flex items-center gap-1.5">
+                    <Briefcase className="w-4 h-4" /> Naredi ponudbo za to stranko
+                  </div>
+                  <p className="text-xs text-as-gray-500 mt-0.5">Avtomatsko ustvari nalogo "Pripravi ponudbo" za izbrano osebo.</p>
+                </div>
+              </label>
+              {createOffer && (
+                <div className="space-y-3 pt-2 border-t border-as-gray-200">
+                  <FormField label="Opis ponudbe *">
+                    <textarea value={offerDescription} onChange={(e) => setOfferDescription(e.target.value)} rows={2} className={inputCls + ' resize-none'}
+                      placeholder="Kaj naj se ponudi? Količine, izdelki, posebnosti..." />
+                  </FormField>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <FormField label="Komu dodeli pripravo *">
+                      <select value={offerAssignedTo} onChange={(e) => setOfferAssignedTo(e.target.value)} className={inputCls}>
+                        <option value="">-- izberi osebo --</option>
+                        {(employees || []).map((emp) => (
+                          <option key={emp.email} value={emp.email}>{emp.name} ({emp.department})</option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField label="Rok za ponudbo *">
+                      <input type="date" value={offerDueDate} onChange={(e) => setOfferDueDate(e.target.value)} className={inputCls} />
+                    </FormField>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {visit.notify_responsible && visit.responsible_email && (
+            <div className="rounded-xl px-4 py-2 text-xs font-semibold flex items-center gap-2" style={{ background: '#EFF6FF', color: '#1E40AF' }}>
+              <Mail className="w-3.5 h-3.5" /> Že obveščen: {visit.responsible_name || visit.responsible_email}
+            </div>
+          )}
+          <NotifyBlock notify={notify} setNotify={setNotify} responsibleEmail={responsibleEmail} setResponsibleEmail={setResponsibleEmail} employees={employees} />
 
           {err && <div className="text-sm font-semibold text-red-600">{err}</div>}
         </div>
