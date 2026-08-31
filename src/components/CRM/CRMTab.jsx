@@ -3,7 +3,7 @@
 // analiza z zgodovino po posamezni stranki.
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2, TrendingUp, Target, Camera, Pencil, Image as ImageIcon } from 'lucide-react';
+import { Plus, Calendar, BarChart3, Loader2, Download, Trash2, ChevronDown, ChevronRight, ChevronLeft, Save, X, AlertCircle, Home, MapPin, Clock, Car, FileText, User, Briefcase, Phone, Mail, CheckCircle2, TrendingUp, Target, Camera, Pencil, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { syncTaskWebhook } from '../../webhooks.js';
 import CalendarView from '../CalendarView';
@@ -31,6 +31,19 @@ async function crmNotifyResponsible({ kind, customerName, dateTimeISO, descLines
     console.error('[crm] obvestilo napaka:', e);
     return null;
   }
+}
+
+// Premakne datum (YYYY-MM-DD) za n dni — lokalno, brez UTC zamika
+function shiftDay(dateStr, n) {
+  const [y, m, d] = String(dateStr || '').split('-').map(Number);
+  if (!y || !m || !d) return dateStr;
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 const AS_RED = '#C8102E';
@@ -1262,10 +1275,24 @@ function DailyView({ visits, isAdmin, currentUser, employees, onReload, loading 
 
   const controls = (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <Calendar className="w-5 h-5 text-as-gray-400" />
+        <button type="button" onClick={() => setFilterDate((d) => shiftDay(d, -1))} title="Prejšnji dan"
+          className="p-2 border border-as-gray-200 rounded-lg bg-white hover:bg-as-gray-100 text-as-gray-600 transition">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
         <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
           className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-base sm:text-sm" />
+        <button type="button" onClick={() => setFilterDate((d) => shiftDay(d, 1))} title="Naslednji dan"
+          className="p-2 border border-as-gray-200 rounded-lg bg-white hover:bg-as-gray-100 text-as-gray-600 transition">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+        {filterDate !== todayStr() && (
+          <button type="button" onClick={() => setFilterDate(todayStr())}
+            className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white hover:bg-as-gray-100 text-xs font-bold text-as-gray-600 transition">
+            Danes
+          </button>
+        )}
       </div>
       {isAdmin && uniqueUsers.length > 1 && (
         <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)}
