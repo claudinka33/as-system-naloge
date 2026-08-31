@@ -44,6 +44,10 @@ export default function Notes({ currentUser, employees }) {
   const [draggedNoteId, setDraggedNoteId] = useState(null);
   const [dragOverFolderId, setDragOverFolderId] = useState(null);
   const [showSymbols, setShowSymbols] = useState(false);
+  const [shareNote, setShareNote] = useState(null);
+  const [shareVisibleToAll, setShareVisibleToAll] = useState(false);
+  const [shareEmails, setShareEmails] = useState([]);
+  const [savingShare, setSavingShare] = useState(false);
   const [seenMap, setSeenMap] = useState(() => { try { return JSON.parse(localStorage.getItem('note_seen') || '{}'); } catch { return {}; } });
   const editorRef = useRef(null);
   const saveTimeoutRef = useRef(null);
@@ -55,6 +59,16 @@ export default function Notes({ currentUser, employees }) {
     return (f.allowed_emails || []).includes(currentUser?.email);
   };
   const canEditFolder = (f) => !!f && ((f.created_by_email && f.created_by_email === currentUser?.email) || f.user_email === currentUser?.email);
+
+  // Dostop do POSAMEZNEGA dokumenta (neodvisno od mape)
+  const noteSharedWithMe = (n) => !!n && (n.visible_to_all === true || (n.allowed_emails || []).includes(currentUser?.email));
+  const noteIsShared = (n) => !!n && (n.visible_to_all === true || (n.allowed_emails || []).length > 0);
+  const canShareNote = (n) => {
+    if (!n) return false;
+    if (n.user_email === currentUser?.email) return true;
+    const f = folders.find(x => x.id === n.folder_id);
+    return !!f && canEditFolder(f);
+  };
 
   // "Novo" sledenje (lokalno, brez baze)
   const markSeen = (note) => {
@@ -91,6 +105,8 @@ export default function Notes({ currentUser, employees }) {
   // Barva uporabnika (vsak svojo barvo pri pisanju)
   const USER_COLORS = ['#C8102E', '#2563eb', '#16a34a', '#9333ea', '#ca8a04', '#0891b2', '#db2777', '#ea580c', '#4f46e5', '#0d9488', '#65a30d', '#7c3aed', '#dc2626'];
   const colorForEmail = (email) => { let h = 0; const s = email || ''; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return USER_COLORS[h % USER_COLORS.length]; };
+  const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const formatAuthorDate = (key) => { if (!key) return ''; const p = String(key).split('-'); if (p.length !== 3) return String(key); return `${parseInt(p[2], 10)}. ${parseInt(p[1], 10)}. ${p[0]}`; };
   const myColor = colorForEmail(currentUser?.email);
   const FOLDER_COLORS = ['#C8102E', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#2563eb', '#9333ea', '#db2777', '#6b7280', '#0d9488'];
 
@@ -108,7 +124,7 @@ export default function Notes({ currentUser, employees }) {
     setFolders(myFolders);
     setExpandedFolders({}); // mape ZAPRTE ob vstopu — poljubno odpiraš
     const allNotes = (!notesRes.error && notesRes.data) ? notesRes.data : [];
-    const myNotes = allNotes.filter(n => n.user_email === currentUser.email || (n.folder_id && visibleFolderIds.has(n.folder_id)));
+    const myNotes = allNotes.filter(n => n.user_email === currentUser.email || (n.folder_id && visibleFolderIds.has(n.folder_id)) || n.visible_to_all === true || (n.allowed_emails || []).includes(currentUser.email));
     setNotes(myNotes);
     // baseline za "novo": kar že obstaja ob prvem nalaganju ni "novo"
     setSeenMap(prev => {
@@ -261,6 +277,27 @@ export default function Notes({ currentUser, employees }) {
     }
   };
 
+  // --- Deljenje posameznega dokumenta ---
+  const openShareNote = (n) => {
+    setShareNote(n);
+    setShareVisibleToAll(!!n.visible_to_all);
+    setShareEmails(n.allowed_emails || []);
+  };
+  const closeShareNote = () => { setShareNote(null); setShareVisibleToAll(false); setShareEmails([]); };
+  const toggleShareEmail = (email) => setShareEmails(prev => prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]);
+  const saveShareNote = async () => {
+    if (!shareNote) return;
+    setSavingShare(true);
+    const payload = { visible_to_all: shareVisibleToAll, allowed_emails: shareVisibleToAll ? [] : shareEmails };
+    const { data, error } = await supabase.from('notes').update(payload).eq('id', shareNote.id).select().single();
+    if (!error && data) {
+      setNotes(notes.map(n => n.id === data.id ? data : n));
+      if (selectedNote?.id === data.id) setSelectedNote(data);
+      closeShareNote();
+    }
+    setSavingShare(false);
+  };
+
   const toggleFolder = (folderId) => {
     setExpandedFolders({ ...expandedFolders, [folderId]: !expandedFolders[folderId] });
   };
@@ -299,14 +336,16 @@ export default function Notes({ currentUser, employees }) {
     while (el && el.parentElement && el.parentElement !== editor) el = el.parentElement;
     if (el && el !== editor && el.parentElement === editor) {
       const name = currentUser?.name || currentUser?.email || '';
+      const prevAuthor = el.getAttribute('data-author');
       el.setAttribute('data-author', name);
       el.setAttribute('data-author-color', colorForEmail(currentUser?.email));
+      if (prevAuthor !== name || !el.getAttribute('data-author-date')) el.setAttribute('data-author-date', todayKey());
     }
   };
   const handleEditorInput = () => { tagCurrentBlock(); recomputeAuthorRuns(); handleContentChange(); };
 
   // Vidna oznaka avtorja (klikljiva, z ✕)
-  const ensureAuthorTagSpan = (block, name, color) => {
+  const ensureAuthorTagSpan = (block, name, color, date) => {
     let tag = block.querySelector(':scope > .author-tag');
     if (!tag) {
       tag = document.createElement('span');
@@ -316,11 +355,15 @@ export default function Notes({ currentUser, employees }) {
     }
     tag.style.setProperty('--author-color', color || '#9ca3af');
     const curName = tag.querySelector('.author-name');
-    if (!curName || curName.textContent !== name) {
+    const curDate = tag.querySelector('.author-date');
+    const wantDate = formatAuthorDate(date);
+    if (!curName || curName.textContent !== name || (curDate ? curDate.getAttribute('data-key') : '') !== (date || '')) {
       tag.textContent = '';
       const ns = document.createElement('span'); ns.className = 'author-name'; ns.textContent = name;
       const del = document.createElement('button'); del.type = 'button'; del.className = 'author-del'; del.setAttribute('contenteditable', 'false'); del.setAttribute('title', 'Odstrani oznako'); del.textContent = '✕';
-      tag.appendChild(ns); tag.appendChild(del);
+      tag.appendChild(ns);
+      if (wantDate) { const ds = document.createElement('span'); ds.className = 'author-date'; ds.setAttribute('data-key', date || ''); ds.textContent = ' • ' + wantDate; tag.appendChild(ds); }
+      tag.appendChild(del);
     }
   };
   const removeAuthorTagSpan = (block) => { const t = block.querySelector(':scope > .author-tag'); if (t) t.remove(); };
@@ -333,9 +376,11 @@ export default function Notes({ currentUser, employees }) {
       if (!el.getAttribute) return;
       const a = el.getAttribute('data-author');
       if (a) {
-        if (a === last) removeAuthorTagSpan(el);
-        else ensureAuthorTagSpan(el, a, el.getAttribute('data-author-color'));
-        last = a;
+        const dt = el.getAttribute('data-author-date') || '';
+        const key = a + '|' + dt;
+        if (key === last) removeAuthorTagSpan(el);
+        else ensureAuthorTagSpan(el, a, el.getAttribute('data-author-color'), dt);
+        last = key;
       } else { removeAuthorTagSpan(el); last = null; }
     });
   };
@@ -352,6 +397,7 @@ export default function Notes({ currentUser, employees }) {
     if (block && block.parentElement === editor) {
       block.removeAttribute('data-author');
       block.removeAttribute('data-author-color');
+      block.removeAttribute('data-author-date');
       removeAuthorTagSpan(block);
       recomputeAuthorRuns();
       handleContentChange();
@@ -365,7 +411,7 @@ export default function Notes({ currentUser, employees }) {
       el = el.nodeType === 3 ? el.parentElement : el;
       while (el && el.parentElement && el.parentElement !== editor) el = el.parentElement;
       if (el && el !== editor && el.parentElement === editor && el.hasAttribute('data-author')) {
-        el.removeAttribute('data-author'); el.removeAttribute('data-author-color');
+        el.removeAttribute('data-author'); el.removeAttribute('data-author-color'); el.removeAttribute('data-author-date');
         removeAuthorTagSpan(el); recomputeAuthorRuns(); handleContentChange(); editor.focus(); return;
       }
     }
@@ -373,7 +419,7 @@ export default function Notes({ currentUser, employees }) {
   };
   const clearAllAuthors = () => {
     const editor = editorRef.current; if (!editor) return;
-    editor.querySelectorAll('[data-author]').forEach(n => { n.removeAttribute('data-author'); n.removeAttribute('data-author-color'); });
+    editor.querySelectorAll('[data-author]').forEach(n => { n.removeAttribute('data-author'); n.removeAttribute('data-author-color'); n.removeAttribute('data-author-date'); });
     editor.querySelectorAll('.author-tag').forEach(t => t.remove());
     handleContentChange();
     editor.focus();
@@ -447,6 +493,8 @@ export default function Notes({ currentUser, employees }) {
 
   const notesInFolder = (folderId) => notes.filter(n => n.folder_id === folderId);
   const unfiledNotes = notes.filter(n => !n.folder_id);
+  const visibleFolderIdSet = new Set(folders.map(f => f.id));
+  const sharedOnlyNotes = notes.filter(n => n.folder_id && !visibleFolderIdSet.has(n.folder_id));
   const childFolders = (parentId) => folders.filter(f => (f.parent_id || null) === parentId);
   const rootFolders = folders.filter(f => !f.parent_id || !folders.some(p => p.id === f.parent_id));
 
@@ -523,9 +571,17 @@ export default function Notes({ currentUser, employees }) {
             {isNoteNew(note) && <span className="w-2 h-2 rounded-full bg-red-600 flex-shrink-0" title="Novo / posodobljeno" />}
             <div className={`text-sm truncate ${isNoteNew(note) ? 'font-bold text-gray-900' : 'font-medium text-gray-900'}`}>{note.title || 'Brez naslova'}</div>
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">{formatTimeAgo(note.updated_at)}</div>
+          <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1 flex-wrap">
+            <span>{formatTimeAgo(note.updated_at)}</span>
+            {noteIsShared(note) && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 bg-blue-50 rounded px-1 py-0.5" title={note.visible_to_all ? 'Dokument vidijo vsi' : `Dostop do dokumenta: ${(note.allowed_emails || []).map(personName).join(', ')}`}>
+                <Users className="w-2.5 h-2.5" />{note.visible_to_all ? 'vsi' : (note.allowed_emails || []).length}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-0.5 relative">
+          {canShareNote(note) && <button onClick={(e) => { e.stopPropagation(); openShareNote(note); }} className={`p-1 ${noteIsShared(note) ? 'text-blue-600' : 'text-gray-400'} hover:text-green-600`} title="Dostop do tega dokumenta"><Users className="w-3.5 h-3.5" /></button>}
           <button onClick={(e) => { e.stopPropagation(); setShowMoveMenu(showMoveMenu === note.id ? null : note.id); }} className="text-gray-400 hover:text-blue-600 p-1" title="Premakni"><Move className="w-3.5 h-3.5" /></button>
           <button onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }} className="text-gray-400 hover:text-red-600 p-1" title="Izbriši"><Trash2 className="w-3.5 h-3.5" /></button>
           {showMoveMenu === note.id && (
@@ -571,6 +627,12 @@ export default function Notes({ currentUser, employees }) {
                   >
                     <div className={`flex items-center gap-1 p-2 border-b border-gray-100 transition-colors ${dragOverFolderId === 'unfiled' ? 'bg-red-100 border-2 border-red-500' : 'bg-gray-50'}`}><FolderOpen className="w-4 h-4 text-gray-400" /><span className="text-sm font-medium text-gray-600 flex-1">Brez mape</span><span className="text-xs text-gray-400">{unfiledNotes.length}</span></div>
                     {unfiledNotes.map(n => renderNoteItem(n, true))}
+                  </div>
+                )}
+                {sharedOnlyNotes.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1 p-2 border-b border-gray-100 bg-blue-50"><Users className="w-4 h-4 text-blue-600 flex-shrink-0" /><span className="text-sm font-medium text-blue-800 flex-1">Deljeno z mano</span><span className="text-xs text-blue-500">{sharedOnlyNotes.length}</span></div>
+                    {sharedOnlyNotes.map(n => renderNoteItem(n, true))}
                   </div>
                 )}
                 {notes.length === 0 && folders.length === 0 && (<div className="p-4 text-center text-gray-500 text-sm">Še nimaš dokumentov.<br />Klikni "Nov dokument".</div>)}
@@ -785,6 +847,48 @@ export default function Notes({ currentUser, employees }) {
         </div>
       )}
 
+      {shareNote && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={closeShareNote}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
+              <Users className="w-5 h-5 text-red-700" />
+              <h3 className="text-lg font-bold text-gray-900">Dostop do dokumenta</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-3 truncate">{shareNote.title || 'Brez naslova'}</p>
+
+            <div className="flex gap-2 mb-2">
+              <button type="button" onClick={() => setShareVisibleToAll(false)} className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border flex items-center justify-center gap-2 ${!shareVisibleToAll ? 'text-white border-transparent bg-red-700' : 'bg-white text-gray-600 border-gray-200'}`}>
+                <Lock className="w-4 h-4" /> Samo izbrani
+              </button>
+              <button type="button" onClick={() => setShareVisibleToAll(true)} className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border flex items-center justify-center gap-2 ${shareVisibleToAll ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200'}`} style={shareVisibleToAll ? { backgroundColor: '#059669' } : {}}>
+                <Users className="w-4 h-4" /> Vsi
+              </button>
+            </div>
+
+            {!shareVisibleToAll && (
+              <div className="border border-gray-200 rounded-lg p-2 max-h-60 overflow-y-auto space-y-1">
+                {(employees || []).filter(emp => emp.email !== shareNote.user_email).map(emp => {
+                  const checked = shareEmails.includes(emp.email);
+                  return (
+                    <label key={emp.email} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer text-sm">
+                      <input type="checkbox" checked={checked} onChange={() => toggleShareEmail(emp.email)} className="w-4 h-4" style={{ accentColor: '#C8102E' }} />
+                      <span className="text-gray-700 flex-1">{emp.name}</span>
+                      <span className="text-xs text-gray-400">{emp.department}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-xs text-gray-400 mt-2">Izbrani vidijo SAMO ta dokument — ne pa cele mape. Če je dokument v mapi, ga vidijo tudi vsi člani mape.</p>
+
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button onClick={closeShareNote} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">Prekliči</button>
+              <button onClick={saveShareNote} disabled={savingShare} className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 disabled:opacity-50 transition-colors">{savingShare ? 'Shranjujem...' : 'Shrani dostop'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         [contenteditable] h1 { font-size: 1.875rem; font-weight: 700; margin: 1rem 0 0.5rem; color: #C8102E; }
         [contenteditable] h2 { font-size: 1.5rem; font-weight: 600; margin: 0.875rem 0 0.5rem; color: #1f2937; }
@@ -798,6 +902,7 @@ export default function Notes({ currentUser, employees }) {
         [contenteditable] li { margin: 0.25rem 0; }
         [contenteditable] blockquote { margin: 0.5rem 0 0.5rem 1.5rem; padding-left: 0.75rem; border-left: 3px solid #e5e7eb; color: #374151; }
         [contenteditable] .author-tag { display: block; font-size: 10px; line-height: 1.4; font-weight: 700; letter-spacing: 0.02em; color: var(--author-color, #9ca3af); opacity: 0.95; margin-bottom: 2px; user-select: none; }
+        [contenteditable] .author-tag .author-date { font-weight: 600; opacity: 0.7; }
         [contenteditable] .author-tag .author-del { margin-left: 6px; border: none; background: transparent; color: #9ca3af; cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 6px; border-radius: 6px; opacity: 0; vertical-align: middle; }
         [contenteditable] .author-tag:hover .author-del { opacity: 1; }
         [contenteditable] .author-del:hover { background: #fee2e2; color: #dc2626; }
