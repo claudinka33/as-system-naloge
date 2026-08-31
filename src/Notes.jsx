@@ -51,6 +51,7 @@ export default function Notes({ currentUser, employees }) {
   const [seenMap, setSeenMap] = useState(() => { try { return JSON.parse(localStorage.getItem('note_seen') || '{}'); } catch { return {}; } });
   const editorRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+  const oldBlocksRef = useRef(new WeakSet()); // odstavki, ki so že bili v shranjenem dokumentu
 
   const canSeeFolder = (f) => {
     if (!f) return false;
@@ -143,7 +144,12 @@ export default function Notes({ currentUser, employees }) {
     setLastSaved(null);
     markSeen(note);
     setTimeout(() => {
-      if (editorRef.current) { editorRef.current.innerHTML = note.content || '<div><br></div>'; recomputeAuthorRuns(); }
+      if (editorRef.current) {
+        editorRef.current.innerHTML = note.content || '<div><br></div>';
+        oldBlocksRef.current = new WeakSet();
+        Array.from(editorRef.current.children).forEach(el => oldBlocksRef.current.add(el));
+        recomputeAuthorRuns();
+      }
     }, 0);
   };
 
@@ -336,10 +342,12 @@ export default function Notes({ currentUser, employees }) {
     while (el && el.parentElement && el.parentElement !== editor) el = el.parentElement;
     if (el && el !== editor && el.parentElement === editor) {
       const name = currentUser?.name || currentUser?.email || '';
-      const prevAuthor = el.getAttribute('data-author');
+      const prevDate = el.getAttribute('data-author-date');
+      const isOldBlock = oldBlocksRef.current && oldBlocksRef.current.has(el);
       el.setAttribute('data-author', name);
       el.setAttribute('data-author-color', colorForEmail(currentUser?.email));
-      if (prevAuthor !== name || !el.getAttribute('data-author-date')) el.setAttribute('data-author-date', todayKey());
+      // star odstavek OBDRŽI svoj prvotni datum; nov odstavek dobi današnji datum
+      if (!isOldBlock || !prevDate) el.setAttribute('data-author-date', todayKey());
     }
   };
   const handleEditorInput = () => { tagCurrentBlock(); recomputeAuthorRuns(); handleContentChange(); };
