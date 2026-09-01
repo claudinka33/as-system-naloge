@@ -264,6 +264,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
   const [formTime, setFormTime] = useState('');
   const [formShift, setFormShift] = useState(1);
   const [formTipVijaka, setFormTipVijaka] = useState('');
+  const [formDelovniNalog, setFormDelovniNalog] = useState('');
   const [formOperater, setFormOperater] = useState('');
   const [formOpombe, setFormOpombe] = useState('');
   const [loading, setLoading] = useState(false);
@@ -281,6 +282,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
     setFormPieces('');
     setFormTime('');
     setFormTipVijaka('');
+    setFormDelovniNalog('');
     setFormOpombe('');
   }
 
@@ -306,6 +308,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
         delavec_ur: null,
         shift: Number(formShift) || 1,
         tip_vijaka: formTipVijaka || null, operater: formOperater,
+        delovni_nalog: (formDelovniNalog || '').trim() || null,
         opombe: formOpombe || null, ucinkovitost_pct: efficiency,
         created_by: currentUser?.email || null,
       }]);
@@ -393,9 +396,14 @@ function ProductionForm({ currentUser, onSaved, setError }) {
             </FormField>
           </div>
 
-          <FormField label="Tip vijaka / izdelka">
-            <input type="text" value={formTipVijaka} onChange={(e) => setFormTipVijaka(e.target.value)} className={inputCls} placeholder={machineInfo.tipi || ''} />
-          </FormField>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <FormField label="Št. delovnega naloga">
+              <input type="text" value={formDelovniNalog} onChange={(e) => setFormDelovniNalog(e.target.value)} className={inputCls} placeholder="npr. 01667" />
+            </FormField>
+            <FormField label="Tip vijaka / izdelka">
+              <input type="text" value={formTipVijaka} onChange={(e) => setFormTipVijaka(e.target.value)} className={inputCls} placeholder={machineInfo.tipi || ''} />
+            </FormField>
+          </div>
 
           <FormField label="Opombe">
             <textarea value={formOpombe} onChange={(e) => setFormOpombe(e.target.value)} rows={2} className={inputCls} />
@@ -441,6 +449,7 @@ function StopForm({ currentUser, onSaved, setError }) {
   const [formFrequency, setFormFrequency] = useState('1');
   const [formFixedBy, setFormFixedBy] = useState('');
   const [formOperater, setFormOperater] = useState('');
+  const [formDelovniNalog, setFormDelovniNalog] = useState('');
   const [loading, setLoading] = useState(false);
 
   const machineInfo = useMemo(() => (selectedMachine ? findMachine(selectedMachine) : null), [selectedMachine]);
@@ -464,6 +473,7 @@ function StopForm({ currentUser, onSaved, setError }) {
         reason_category: formReason || null, description: formDescription || null,
         repair_done: formRepair || null, frequency: parseInt(formFrequency) || 1,
         fixed_by: formFixedBy || null, operater: formOperater,
+        delovni_nalog: (formDelovniNalog || '').trim() || null,
         created_by: currentUser?.email || null,
       }]);
       if (error) throw error;
@@ -1129,6 +1139,7 @@ function EntryTable({ entries, isAdmin, currentUser, onReload }) {
           <tr>
             <th className="text-left p-2">Stroj</th>
             <th className="text-left p-2">Operacija</th>
+            <th className="text-left p-2">Nalog</th>
             <th className="text-center p-2">Smena</th>
             <th className="text-right p-2">Kosi</th>
             <th className="text-right p-2">Mašina</th>
@@ -1148,6 +1159,7 @@ function EntryTable({ entries, isAdmin, currentUser, onReload }) {
               <tr key={e.id} className="border-t border-as-gray-100 hover:bg-as-gray-50">
                 <td className="p-2"><strong>{e.machine_id}</strong><div className="text-xs text-as-gray-500">{e.machine_name}</div></td>
                 <td className="p-2 text-xs text-as-gray-500">{e.operacija}</td>
+                <td className="p-2 text-xs font-semibold">{e.delovni_nalog || '—'}</td>
                 <td className="p-2 text-center">{shiftLabel(e.shift)}</td>
                 <td className="p-2 text-right font-semibold">{formatNumber(e.kosi)}</td>
                 <td className="p-2 text-right">{hoursToTimeString(e.cas_ur)}</td>
@@ -1183,6 +1195,7 @@ function StopsTable({ rows, isAdmin, currentUser, onReload }) {
         <thead className="bg-as-gray-50 text-as-gray-500 text-xs uppercase">
           <tr>
             <th className="text-left p-2">Stroj</th>
+            <th className="text-left p-2">Nalog</th>
             <th className="text-center p-2">Smena</th>
             <th className="text-right p-2">Trajanje</th>
             <th className="text-left p-2">Razlog</th>
@@ -1200,6 +1213,7 @@ function StopsTable({ rows, isAdmin, currentUser, onReload }) {
             return (
               <tr key={e.id} className="border-t border-as-gray-100 hover:bg-as-gray-50">
                 <td className="p-2"><strong>{e.machine_id}</strong><div className="text-xs text-as-gray-500">{e.machine_name}</div></td>
+                <td className="p-2 text-xs font-semibold">{e.delovni_nalog || '—'}</td>
                 <td className="p-2 text-center">{shiftLabel(e.shift)}</td>
                 <td className="p-2 text-right">{hoursToTimeString(e.duration_hours)}</td>
                 <td className="p-2">{e.reason_category || '—'}</td>
@@ -1440,21 +1454,21 @@ function exportDailyExcel(date, entries, stops, wastes, times) {
   const wb = XLSX.utils.book_new();
 
   XLSX.utils.book_append_sheet(wb, xSheet(
-    ['Stroj', 'Naziv', 'Operacija', 'Smena', 'Kosi', 'Čas na stroju (h)', 'Doseganje (%)', 'Ime delavca', 'Tip', 'Opombe'],
+    ['Stroj', 'Naziv', 'Operacija', 'Delovni nalog', 'Smena', 'Kosi', 'Čas na stroju (h)', 'Doseganje (%)', 'Ime delavca', 'Tip', 'Opombe'],
     (entries || []).map((e) => [
-      xText(e.machine_id), xText(e.machine_name), xText(e.operacija), shiftLabel(e.shift),
+      xText(e.machine_id), xText(e.machine_name), xText(e.operacija), xText(e.delovni_nalog), shiftLabel(e.shift),
       xNum(e.kosi), xNum(e.cas_ur), xNum(e.ucinkovitost_pct), xText(e.operater), xText(e.tip_vijaka), xText(e.opombe),
     ]),
-    [10, 26, 20, 14, 10, 16, 14, 20, 18, 30], [5]
+    [10, 26, 20, 16, 14, 10, 16, 14, 20, 18, 30], [6]
   ), 'Proizvodnja');
 
   XLSX.utils.book_append_sheet(wb, xSheet(
-    ['Stroj', 'Smena', 'Trajanje (h)', 'Razlog', 'Opis', 'Popravilo', 'Pogostost', 'Odpravil', 'Delavec'],
+    ['Stroj', 'Delovni nalog', 'Smena', 'Trajanje (h)', 'Razlog', 'Opis', 'Popravilo', 'Pogostost', 'Odpravil', 'Delavec'],
     (stops || []).map((s) => [
-      xText(s.machine_id), shiftLabel(s.shift), xNum(s.duration_hours), xText(s.reason_category),
+      xText(s.machine_id), xText(s.delovni_nalog), shiftLabel(s.shift), xNum(s.duration_hours), xText(s.reason_category),
       xText(s.description), xText(s.repair_done), xNum(s.frequency) ?? 1, xText(s.fixed_by), xText(s.operater),
     ]),
-    [10, 14, 14, 22, 40, 30, 12, 20, 20], [2]
+    [10, 16, 14, 14, 22, 40, 30, 12, 20, 20], [3]
   ), 'Zastoji');
 
   XLSX.utils.book_append_sheet(wb, xSheet(
