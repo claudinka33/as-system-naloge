@@ -1411,29 +1411,40 @@ function LoadingBox() {
 const inputCls = "w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:border-as-red-600";
 
 // ─── EXCEL EXPORT ───
+// Excel SI: decimalna vejica; sifre/oznake prisilimo v besedilo z ="..." da jih Excel ne pretvori v stevilke
+const csvDec = (v, d = 2) => (v == null || v === '' || isNaN(Number(v)) ? Number(0).toFixed(d).replace('.', ',') : Number(v).toFixed(d).replace('.', ','));
+const csvPlain = (v) => (v == null ? '' : String(v).replace(/[;\r\n]/g, ' ').trim());
+const csvTxt = (v) => {
+  const s = csvPlain(v);
+  return s === '' ? '' : `="${s.replace(/"/g, "'")}"`;
+};
+
 function exportDailyCSV(date, entries, stops, wastes) {
   const lines = [];
   lines.push(`Dnevno poročilo PROIZVODNJA v2 - ${date}`);
   lines.push('');
 
   lines.push('PROIZVODNJA');
-  lines.push('Stroj;Naziv;Operacija;Smena;Kosi;Mašina (h);Delavec (h);Doseganje (%);Delavec;Tip;Opombe');
+  lines.push('Stroj;Naziv;Operacija;Smena;Kosi;Čas na stroju (h);Ure delavca (h);Doseganje (%);Ime delavca;Tip;Opombe');
+  if (!entries.length) lines.push('Ni zapisov');
   entries.forEach((e) => {
-    lines.push([e.machine_id, e.machine_name, e.operacija, shiftLabel(e.shift), e.kosi, Number(e.cas_ur).toFixed(2), e.delavec_ur != null ? Number(e.delavec_ur).toFixed(2) : '', e.ucinkovitost_pct ?? '', e.operater || '', e.tip_vijaka || '', e.opombe || ''].join(';'));
+    lines.push([csvTxt(e.machine_id), csvPlain(e.machine_name), csvPlain(e.operacija), shiftLabel(e.shift), csvPlain(e.kosi), csvDec(e.cas_ur), csvDec(e.delavec_ur), csvPlain(e.ucinkovitost_pct), csvPlain(e.operater), csvTxt(e.tip_vijaka), csvPlain(e.opombe)].join(';'));
   });
   lines.push('');
 
   lines.push('ZASTOJI');
   lines.push('Stroj;Smena;Trajanje (h);Razlog;Opis;Popravilo;Pogostost;Odpravil;Delavec');
+  if (!stops.length) lines.push('Ni zapisov');
   stops.forEach((s) => {
-    lines.push([s.machine_id, shiftLabel(s.shift), Number(s.duration_hours).toFixed(2), s.reason_category || '', s.description || '', s.repair_done || '', s.frequency || 1, s.fixed_by || '', s.operater || ''].join(';'));
+    lines.push([csvTxt(s.machine_id), shiftLabel(s.shift), csvDec(s.duration_hours), csvPlain(s.reason_category), csvPlain(s.description), csvPlain(s.repair_done), csvPlain(s.frequency || 1), csvPlain(s.fixed_by), csvPlain(s.operater)].join(';'));
   });
   lines.push('');
 
   lines.push('ODPADEK');
   lines.push('Stroj;Teža (kg);Izdelek;Žica;Razlog;LOT;Nalog;Delavec;Opombe');
+  if (!wastes.length) lines.push('Ni zapisov');
   wastes.forEach((w) => {
-    lines.push([w.machine_id, w.weight_kg, w.product || '', w.wire_type || '', w.reason_category || '', w.lot_zice || '', w.nalog || '', w.operater || '', w.notes || ''].join(';'));
+    lines.push([csvTxt(w.machine_id), csvDec(w.weight_kg), csvPlain(w.product), csvPlain(w.wire_type), csvPlain(w.reason_category), csvTxt(w.lot_zice), csvTxt(w.nalog), csvPlain(w.operater), csvPlain(w.notes)].join(';'));
   });
 
   const csv = '\uFEFF' + lines.join('\n');
@@ -1454,24 +1465,24 @@ function exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason, m
   lines.push('');
 
   lines.push('PO STROJIH');
-  lines.push('Stroj;Naziv;Operacija;Kosov;Ur;Doseganje (%);Zastoji (h);Odpadek (kg);Vnosov');
+  lines.push('Stroj;Naziv;Operacija;Kosov;Čas na stroju (h);Doseganje (%);Zastoji (h);Odpadek (kg);Vnosov');
   byMachine.forEach((r) => {
-    lines.push([r.machine_id, r.machine_name, r.operacija, r.kosi, r.ur.toFixed(1), r.ucinkovitost ?? '', r.zastoj_ur.toFixed(1), r.odpadek_kg, r.vnosov].join(';'));
+    lines.push([csvTxt(r.machine_id), csvPlain(r.machine_name), csvPlain(r.operacija), csvPlain(r.kosi), csvDec(r.ur, 1), csvPlain(r.ucinkovitost), csvDec(r.zastoj_ur, 1), csvDec(r.odpadek_kg, 1), csvPlain(r.vnosov)].join(';'));
   });
   lines.push('');
 
   lines.push('ZASTOJI PO RAZLOGIH');
   lines.push('Razlog;Ur');
-  byStopReason.filter((r) => r.hours > 0).forEach((r) => lines.push(`${r.reason};${r.hours.toFixed(1)}`));
+  byStopReason.filter((r) => r.hours > 0).forEach((r) => lines.push(`${csvPlain(r.reason)};${csvDec(r.hours, 1)}`));
   lines.push('');
 
   lines.push('ODPADEK PO RAZLOGIH');
   lines.push('Razlog;Kg');
-  byWasteReason.filter((r) => r.kg > 0).forEach((r) => lines.push(`${r.reason};${r.kg}`));
+  byWasteReason.filter((r) => r.kg > 0).forEach((r) => lines.push(`${csvPlain(r.reason)};${csvDec(r.kg, 1)}`));
   lines.push('');
 
   lines.push('ANALIZA PO SMENAH');
-  lines.push('Smena;Proizvedeno (kos);Mašina (h);Delavec (h);Zastoj (h)');
+  lines.push('Smena;Proizvedeno (kos);Čas na stroju (h);Ure delavca (h);Zastoj (h)');
   [1, 2].forEach((sh) => {
     const ents = (monthEntries || []).filter((e) => (Number(e.shift) === 2 ? 2 : 1) === sh);
     const stps = (monthStops || []).filter((s) => (Number(s.shift) === 2 ? 2 : 1) === sh);
@@ -1479,7 +1490,7 @@ function exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason, m
     const masina = ents.reduce((a, e) => a + Number(e.cas_ur || 0), 0);
     const delavec = ents.reduce((a, e) => a + Number(e.delavec_ur || 0), 0);
     const zastoj = stps.reduce((a, s) => a + Number(s.duration_hours || 0), 0);
-    lines.push([shiftLabel(sh), kosi, masina.toFixed(2), delavec.toFixed(2), zastoj.toFixed(2)].join(';'));
+    lines.push([shiftLabel(sh), kosi, csvDec(masina), csvDec(delavec), csvDec(zastoj)].join(';'));
   });
 
   const csv = '\uFEFF' + lines.join('\n');
