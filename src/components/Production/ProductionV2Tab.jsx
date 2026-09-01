@@ -6,6 +6,7 @@ import { Plus, Calendar, BarChart3, Package, AlertTriangle, Trash, Loader2, Down
 import { supabase } from '../../supabase';
 import { calculateEfficiency, SEGMENTS_META, loadMachines, buildSegments, makeFindMachine } from './productionV2Config';
 import ProductionAdmin from './ProductionAdmin';
+import DayStepper from '../DayStepper';
 import ProductionDetails from './ProductionDetails.jsx';
 import WorkerHours from '../WorkerHours.jsx';
 
@@ -700,8 +701,7 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
     <>
       <div className="flex items-center gap-2">
         <Calendar className="w-5 h-5 text-as-gray-400" />
-        <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)}
-          className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm" />
+        <DayStepper value={filterDate} onChange={setFilterDate} className="px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm" />
         <span className="text-sm text-as-gray-500 hidden sm:inline">{formatDate(filterDate)}</span>
       </div>
       <button
