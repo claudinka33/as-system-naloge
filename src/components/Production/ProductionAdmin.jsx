@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Save, X, Trash2, Loader2 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { calculateEfficiency } from './productionV2Config';
+import DayStepper from '../DayStepper';
 
 const AS_RED = '#C8102E';
 const inputCls = "w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:border-as-red-600";
@@ -332,7 +333,7 @@ function ProductionLogEditor() {
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm font-semibold text-as-gray-600">Datum:</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls + ' w-auto'} />
+          <DayStepper value={date} onChange={setDate} className={inputCls + ' w-auto'} />
           <button onClick={() => {
             if (tab === 'nalogi') setEdit({ _kind: 'log', date, operater: '', shift: 1, machine_id: '', tip_vijaka: '', delovni_nalog: '', kosi: '', cas_ur: '' });
             else if (tab === 'zastoji') setEdit({ _kind: 'stop', date, operater: '', shift: 1, reason_category: '', machine_id: '', delovni_nalog: '', duration_hours: '', description: '' });
