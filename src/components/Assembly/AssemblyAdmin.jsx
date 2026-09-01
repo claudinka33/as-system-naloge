@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Save, X, Trash2, Loader2 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import AssemblyCatalogAdmin from './AssemblyCatalogAdmin.jsx';
+import DayStepper from '../DayStepper';
 import {
   getAssemblyWorkLog, getAssemblyWorkStops,
   deleteAssemblyWorkLog, deleteAssemblyWorkStop, updateAssemblyWorkLog, formatNumber,
@@ -404,7 +405,7 @@ function WorkLogEditor() {
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm font-semibold text-as-gray-600">Datum:</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls + ' w-auto'} />
+          <DayStepper value={date} onChange={setDate} className={inputCls + ' w-auto'} />
           <button onClick={() => {
             if (tab === 'nalogi') setEdit({ _kind: 'log', date, worker_id: '', segment: 'avtomat', faza: 'vijacenje', machine_name: '', artikel: '', dimenzija: '', sifra: '', opis: '', delovni_nalog: '', kolicina: '', cas_dela_ur: '', cas_stroja_ur: '' });
             else if (tab === 'zastoji') setEdit({ _kind: 'stop', date, worker_id: '', reason: '', machine_name: '', delovni_nalog: '', cas_ur: '', opomba: '' });
