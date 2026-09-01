@@ -114,7 +114,7 @@ function shiftLabel(n) {
 }
 
 export default function ProductionV2Tab({ currentUser, isAdmin }) {
-  const [view, setView] = useState('monthly');
+  const [view, setView] = useState('daily');
 
   // Data state
   const [entries, setEntries] = useState([]);
@@ -220,7 +220,7 @@ function EntryView({ currentUser, onSaved, setError }) {
   const [section, setSection] = useState('proizvodnja');
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex flex-wrap items-center gap-2">
         <SectionPill active={section === 'proizvodnja'} onClick={() => setSection('proizvodnja')}
           icon={<Package className="w-4 h-4" />} label="Proizvodnja" color="#0E7490" bgColor="#CFFAFE" />
@@ -713,7 +713,7 @@ function DailyView({ entries, stops, wastes, times, isAdmin, currentUser, onRelo
   );
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6">
       {slotEl && createPortal(controls, slotEl)}
 
       {loading ? (
@@ -1006,7 +1006,7 @@ function MonthlyView({ entries, stops, wastes, loading }) {
   );
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6">
       {slotEl && createPortal(controls, slotEl)}
 
       {loading ? (
