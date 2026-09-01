@@ -6,6 +6,7 @@ import { Plus, Calendar, BarChart3, Package, AlertTriangle, Trash, Loader2, Down
 import { supabase } from '../../supabase';
 import { calculateEfficiency, SEGMENTS_META, loadMachines, buildSegments, makeFindMachine } from './productionV2Config';
 import ProductionAdmin from './ProductionAdmin';
+import * as XLSX from 'xlsx';
 import DayStepper from '../DayStepper';
 import ProductionDetails from './ProductionDetails.jsx';
 import WorkerHours from '../WorkerHours.jsx';
@@ -261,7 +262,6 @@ function ProductionForm({ currentUser, onSaved, setError }) {
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formPieces, setFormPieces] = useState('');
   const [formTime, setFormTime] = useState('');
-  const [formDelavec, setFormDelavec] = useState('');
   const [formShift, setFormShift] = useState(1);
   const [formTipVijaka, setFormTipVijaka] = useState('');
   const [formOperater, setFormOperater] = useState('');
@@ -280,7 +280,6 @@ function ProductionForm({ currentUser, onSaved, setError }) {
     setSelectedMachine('');
     setFormPieces('');
     setFormTime('');
-    setFormDelavec('');
     setFormTipVijaka('');
     setFormOpombe('');
   }
@@ -304,7 +303,7 @@ function ProductionForm({ currentUser, onSaved, setError }) {
         date: formDate, segment: selectedSegment, machine_id: selectedMachine,
         machine_name: machineInfo.stroj, operacija: machineInfo.operacija,
         normativ_kos_h: machineInfo.normativ_h, kosi: pieces, cas_ur: hours,
-        delavec_ur: formDelavec ? timeStringToHours(formDelavec) : null,
+        delavec_ur: null,
         shift: Number(formShift) || 1,
         tip_vijaka: formTipVijaka || null, operater: formOperater,
         opombe: formOpombe || null, ucinkovitost_pct: efficiency,
@@ -393,10 +392,6 @@ function ProductionForm({ currentUser, onSaved, setError }) {
               <input type="text" value={formTime} onChange={(e) => setFormTime(e.target.value)} required className={inputCls} placeholder="npr. 7:30" pattern="[0-9]+:[0-5][0-9]" />
             </FormField>
           </div>
-
-          <FormField label="Delavec delal (HH:MM)">
-            <input type="text" value={formDelavec} onChange={(e) => setFormDelavec(e.target.value)} className={inputCls} placeholder="npr. 7:30" pattern="[0-9]+:[0-5][0-9]" />
-          </FormField>
 
           <FormField label="Tip vijaka / izdelka">
             <input type="text" value={formTipVijaka} onChange={(e) => setFormTipVijaka(e.target.value)} className={inputCls} placeholder={machineInfo.tipi || ''} />
@@ -709,7 +704,7 @@ function DailyView({ entries, stops, wastes, times, isAdmin, currentUser, onRelo
         <span className="text-sm text-as-gray-500 hidden sm:inline">{formatDate(filterDate)}</span>
       </div>
       <button
-        onClick={() => exportDailyCSV(filterDate, dayEntries, dayStops, dayWastes, dayTimes)}
+        onClick={() => exportDailyExcel(filterDate, dayEntries, dayStops, dayWastes, dayTimes)}
         className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
       >
         <Download className="w-4 h-4" /> Izvoz v Excel
@@ -1002,7 +997,7 @@ function MonthlyView({ entries, stops, wastes, loading }) {
         </select>
       </div>
       <button
-        onClick={() => exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason, monthEntries, monthStops)}
+        onClick={() => exportMonthlyExcel(year, month, byMachine, byStopReason, byWasteReason, monthEntries, monthStops)}
         className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
       >
         <Download className="w-4 h-4" /> Izvoz v Excel
@@ -1137,7 +1132,6 @@ function EntryTable({ entries, isAdmin, currentUser, onReload }) {
             <th className="text-center p-2">Smena</th>
             <th className="text-right p-2">Kosi</th>
             <th className="text-right p-2">Mašina</th>
-            <th className="text-right p-2">Delavec ur</th>
             <th className="text-right p-2">Doseganje</th>
             <th className="text-left p-2">Delavec</th>
             <th className="text-left p-2">Tip</th>
@@ -1157,7 +1151,6 @@ function EntryTable({ entries, isAdmin, currentUser, onReload }) {
                 <td className="p-2 text-center">{shiftLabel(e.shift)}</td>
                 <td className="p-2 text-right font-semibold">{formatNumber(e.kosi)}</td>
                 <td className="p-2 text-right">{hoursToTimeString(e.cas_ur)}</td>
-                <td className="p-2 text-right text-as-gray-500">{e.delavec_ur ? hoursToTimeString(e.delavec_ur) : '—'}</td>
                 <td className="p-2 text-right font-bold" style={{ color }}>{pct === null || pct === undefined ? '—' : `${pct}%`}</td>
                 <td className="p-2">{e.operater || '—'}</td>
                 <td className="p-2 text-xs text-as-gray-500">{e.tip_vijaka || '—'}</td>
@@ -1303,13 +1296,12 @@ function ShiftAnalysis({ entries, stops }) {
     { key: 1, label: 'Dopoldanska', emoji: '🌅', color: '#B45309' },
     { key: 2, label: 'Popoldanska', emoji: '🌙', color: '#3730A3' },
   ];
-  const data = { 1: { kosi: 0, masina: 0, delavec: 0, zastoj: 0, vnosov: 0, expected: 0 },
-                 2: { kosi: 0, masina: 0, delavec: 0, zastoj: 0, vnosov: 0, expected: 0 } };
+  const data = { 1: { kosi: 0, masina: 0, zastoj: 0, vnosov: 0, expected: 0 },
+                 2: { kosi: 0, masina: 0, zastoj: 0, vnosov: 0, expected: 0 } };
   (entries || []).forEach((e) => {
     const k = Number(e.shift) === 2 ? 2 : 1;
     data[k].kosi += Number(e.kosi || 0);
     data[k].masina += Number(e.cas_ur || 0);
-    data[k].delavec += Number(e.delavec_ur || 0);
     data[k].expected += Number(e.normativ_kos_h || 0) * Number(e.cas_ur || 0);
     data[k].vnosov += 1;
   });
@@ -1337,7 +1329,6 @@ function ShiftAnalysis({ entries, stops }) {
                 <div className="space-y-1.5 text-sm">
                   <ShiftRow label="📦 Proizvedeno" value={`${formatNumber(d.kosi)} kos`} />
                   <ShiftRow label="⚙️ Mašina delala" value={hoursToTimeString(d.masina)} />
-                  <ShiftRow label="👷 Delavec delal" value={hoursToTimeString(d.delavec)} />
                   <ShiftRow label="⚠️ Zastoj" value={hoursToTimeString(d.zastoj)} />
                   {eff !== null && (
                     <div className="flex justify-between pt-1">
@@ -1414,126 +1405,138 @@ function LoadingBox() {
 
 const inputCls = "w-full px-3 py-2 border border-as-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:border-as-red-600";
 
-// ─── EXCEL EXPORT ───
-// Excel SI: decimalna vejica; sifre/oznake prisilimo v besedilo z ="..." da jih Excel ne pretvori v stevilke
-const csvDec = (v, d = 2) => (v == null || v === '' || isNaN(Number(v)) ? Number(0).toFixed(d).replace('.', ',') : Number(v).toFixed(d).replace('.', ','));
-const csvPlain = (v) => (v == null ? '' : String(v).replace(/[;\r\n]/g, ' ').trim());
-const csvTxt = (v) => {
-  const s = csvPlain(v);
-  return s === '' ? '' : `="${s.replace(/"/g, "'")}"`;
-};
+// ─── EXCEL EXPORT (.xlsx, več listov) ───
+// Vsak razdelek gre na svoj list. Številke se zapišejo kot prave številke,
+// zato Excel sam uporabi slovensko decimalno vejico in seštevanje deluje.
 
-function exportDailyCSV(date, entries, stops, wastes, times) {
-  const lines = [];
-  lines.push(`Dnevno poročilo PROIZVODNJA v2 - ${date}`);
-  lines.push('');
+// Vrne število ali null (prazna celica) — nikoli besedila, ki bi ga Excel narobe razumel.
+function xNum(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+function xText(v) {
+  return v === null || v === undefined ? '' : String(v);
+}
 
-  lines.push('PROIZVODNJA');
-  lines.push('Stroj;Naziv;Operacija;Smena;Kosi;Čas na stroju (h);Ure delavca (h);Doseganje (%);Ime delavca;Tip;Opombe');
-  if (!entries.length) lines.push('Ni zapisov');
-  entries.forEach((e) => {
-    lines.push([csvTxt(e.machine_id), csvPlain(e.machine_name), csvPlain(e.operacija), shiftLabel(e.shift), csvPlain(e.kosi), csvDec(e.cas_ur), csvDec(e.delavec_ur), csvPlain(e.ucinkovitost_pct), csvPlain(e.operater), csvTxt(e.tip_vijaka), csvPlain(e.opombe)].join(';'));
-  });
-  lines.push('');
+// Ustvari list iz glave + vrstic. numCols = indeksi stolpcev s formatom '0,00'.
+function xSheet(header, rows, widths, numCols = []) {
+  const data = rows.length ? rows : [['Ni zapisov']];
+  const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+  ws['!cols'] = (widths || header.map(() => 16)).map((w) => ({ wch: w }));
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: header.length - 1 } }) };
+  if (rows.length) {
+    numCols.forEach((c) => {
+      for (let r = 1; r <= rows.length; r++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })];
+        if (cell && cell.t === 'n') cell.z = '0.00';
+      }
+    });
+  }
+  return ws;
+}
 
-  lines.push('ZASTOJI');
-  lines.push('Stroj;Smena;Trajanje (h);Razlog;Opis;Popravilo;Pogostost;Odpravil;Delavec');
-  if (!stops.length) lines.push('Ni zapisov');
-  stops.forEach((s) => {
-    lines.push([csvTxt(s.machine_id), shiftLabel(s.shift), csvDec(s.duration_hours), csvPlain(s.reason_category), csvPlain(s.description), csvPlain(s.repair_done), csvPlain(s.frequency || 1), csvPlain(s.fixed_by), csvPlain(s.operater)].join(';'));
-  });
-  lines.push('');
+function exportDailyExcel(date, entries, stops, wastes, times) {
+  const wb = XLSX.utils.book_new();
 
-  lines.push('ODPADEK');
-  lines.push('Stroj;Teža (kg);Izdelek;Žica;Razlog;LOT;Nalog;Delavec;Opombe');
-  if (!wastes.length) lines.push('Ni zapisov');
-  wastes.forEach((w) => {
-    lines.push([csvTxt(w.machine_id), csvDec(w.weight_kg), csvPlain(w.product), csvPlain(w.wire_type), csvPlain(w.reason_category), csvTxt(w.lot_zice), csvTxt(w.nalog), csvPlain(w.operater), csvPlain(w.notes)].join(';'));
-  });
-  lines.push('');
+  XLSX.utils.book_append_sheet(wb, xSheet(
+    ['Stroj', 'Naziv', 'Operacija', 'Smena', 'Kosi', 'Čas na stroju (h)', 'Doseganje (%)', 'Ime delavca', 'Tip', 'Opombe'],
+    (entries || []).map((e) => [
+      xText(e.machine_id), xText(e.machine_name), xText(e.operacija), shiftLabel(e.shift),
+      xNum(e.kosi), xNum(e.cas_ur), xNum(e.ucinkovitost_pct), xText(e.operater), xText(e.tip_vijaka), xText(e.opombe),
+    ]),
+    [10, 26, 20, 14, 10, 16, 14, 20, 18, 30], [5]
+  ), 'Proizvodnja');
 
-  // Delovni cas delavcev iz "Moj delovni dan" (production_daily_time). Malica 0:30 avtomatsko, ce je dela vec kot 4 h.
-  lines.push('DELOVNI ČAS DELAVCEV');
-  lines.push('Delavec;Delo na stroju (h);Ostalo (h);Malica (h);Skupaj (h);Opombe');
+  XLSX.utils.book_append_sheet(wb, xSheet(
+    ['Stroj', 'Smena', 'Trajanje (h)', 'Razlog', 'Opis', 'Popravilo', 'Pogostost', 'Odpravil', 'Delavec'],
+    (stops || []).map((s) => [
+      xText(s.machine_id), shiftLabel(s.shift), xNum(s.duration_hours), xText(s.reason_category),
+      xText(s.description), xText(s.repair_done), xNum(s.frequency) ?? 1, xText(s.fixed_by), xText(s.operater),
+    ]),
+    [10, 14, 14, 22, 40, 30, 12, 20, 20], [2]
+  ), 'Zastoji');
+
+  XLSX.utils.book_append_sheet(wb, xSheet(
+    ['Stroj', 'Teža (kg)', 'Izdelek', 'Žica', 'Razlog', 'LOT', 'Nalog', 'Delavec', 'Opombe'],
+    (wastes || []).map((w) => [
+      xText(w.machine_id), xNum(w.weight_kg), xText(w.product), xText(w.wire_type),
+      xText(w.reason_category), xText(w.lot_zice), xText(w.nalog), xText(w.operater), xText(w.notes),
+    ]),
+    [10, 12, 22, 18, 22, 16, 16, 20, 30], [1]
+  ), 'Odpadek');
+
+  // Delovni čas delavcev iz "Moj delovni dan" (production_daily_time).
+  // Malica 0:30 avtomatsko, če je dela več kot 4 h — enaka logika kot v aplikaciji.
   const byOperater = {};
   (times || []).forEach((t) => {
     if (t.vrsta === 'malica') return;
-    const op = csvPlain(t.operater) || '(brez imena)';
+    const op = xText(t.operater).trim() || '(brez imena)';
     if (!byOperater[op]) byOperater[op] = { stroj: 0, ostalo: 0, opombe: [] };
     const h = Number(t.cas_ur) || 0;
     if (t.vrsta === 'ostalo') {
       byOperater[op].ostalo += h;
-      if (t.opomba) byOperater[op].opombe.push(csvPlain(t.opomba));
+      if (t.opomba) byOperater[op].opombe.push(xText(t.opomba));
     } else {
       byOperater[op].stroj += h;
     }
   });
-  const operaterji = Object.keys(byOperater).sort((a, b) => a.localeCompare(b, 'sl'));
-  if (!operaterji.length) lines.push('Ni zapisov');
-  operaterji.forEach((op) => {
+  const timeRows = Object.keys(byOperater).sort((a, b) => a.localeCompare(b, 'sl')).map((op) => {
     const r = byOperater[op];
     const delo = r.stroj + r.ostalo;
     const malica = delo > 4 ? 0.5 : 0;
-    lines.push([op, csvDec(r.stroj), csvDec(r.ostalo), csvDec(malica), csvDec(delo + malica), csvPlain(r.opombe.join(' | '))].join(';'));
+    return [op, r.stroj, r.ostalo, malica, delo + malica, r.opombe.join(' | ')];
   });
+  XLSX.utils.book_append_sheet(wb, xSheet(
+    ['Delavec', 'Delo na stroju (h)', 'Ostalo (h)', 'Malica (h)', 'Skupaj (h)', 'Opombe'],
+    timeRows, [24, 18, 14, 14, 14, 40], [1, 2, 3, 4]
+  ), 'Delovni čas');
 
-  const csv = '\uFEFF' + lines.join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `proizvodnja-v2-${date}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  XLSX.writeFile(wb, `proizvodnja-v2-${date}.xlsx`);
 }
 
-function exportMonthlyCSV(year, month, byMachine, byStopReason, byWasteReason, monthEntries, monthStops) {
-  const lines = [];
-  lines.push(`Mesečno poročilo PROIZVODNJA v2 - ${SLOVENIAN_MONTHS[month - 1]} ${year}`);
-  lines.push('');
+function exportMonthlyExcel(year, month, byMachine, byStopReason, byWasteReason, monthEntries, monthStops) {
+  const wb = XLSX.utils.book_new();
 
-  lines.push('PO STROJIH');
-  lines.push('Stroj;Naziv;Operacija;Kosov;Čas na stroju (h);Doseganje (%);Zastoji (h);Odpadek (kg);Vnosov');
-  byMachine.forEach((r) => {
-    lines.push([csvTxt(r.machine_id), csvPlain(r.machine_name), csvPlain(r.operacija), csvPlain(r.kosi), csvDec(r.ur, 1), csvPlain(r.ucinkovitost), csvDec(r.zastoj_ur, 1), csvDec(r.odpadek_kg, 1), csvPlain(r.vnosov)].join(';'));
-  });
-  lines.push('');
+  XLSX.utils.book_append_sheet(wb, xSheet(
+    ['Stroj', 'Naziv', 'Operacija', 'Kosov', 'Čas na stroju (h)', 'Doseganje (%)', 'Zastoji (h)', 'Odpadek (kg)', 'Vnosov'],
+    (byMachine || []).map((r) => [
+      xText(r.machine_id), xText(r.machine_name), xText(r.operacija), xNum(r.kosi),
+      xNum(r.ur), xNum(r.ucinkovitost), xNum(r.zastoj_ur), xNum(r.odpadek_kg), xNum(r.vnosov),
+    ]),
+    [10, 26, 20, 12, 16, 14, 14, 14, 10], [4, 6, 7]
+  ), 'Po strojih');
 
-  lines.push('ZASTOJI PO RAZLOGIH');
-  lines.push('Razlog;Ur');
-  byStopReason.filter((r) => r.hours > 0).forEach((r) => lines.push(`${csvPlain(r.reason)};${csvDec(r.hours, 1)}`));
-  lines.push('');
+  XLSX.utils.book_append_sheet(wb, xSheet(
+    ['Razlog', 'Ur'],
+    (byStopReason || []).filter((r) => r.hours > 0).map((r) => [xText(r.reason), xNum(r.hours)]),
+    [34, 12], [1]
+  ), 'Zastoji po razlogih');
 
-  lines.push('ODPADEK PO RAZLOGIH');
-  lines.push('Razlog;Kg');
-  byWasteReason.filter((r) => r.kg > 0).forEach((r) => lines.push(`${csvPlain(r.reason)};${csvDec(r.kg, 1)}`));
-  lines.push('');
+  XLSX.utils.book_append_sheet(wb, xSheet(
+    ['Razlog', 'Kg'],
+    (byWasteReason || []).filter((r) => r.kg > 0).map((r) => [xText(r.reason), xNum(r.kg)]),
+    [34, 12], [1]
+  ), 'Odpadek po razlogih');
 
-  lines.push('ANALIZA PO SMENAH');
-  lines.push('Smena;Proizvedeno (kos);Čas na stroju (h);Ure delavca (h);Zastoj (h)');
-  [1, 2].forEach((sh) => {
+  const shiftRows = [1, 2].map((sh) => {
     const ents = (monthEntries || []).filter((e) => (Number(e.shift) === 2 ? 2 : 1) === sh);
     const stps = (monthStops || []).filter((s) => (Number(s.shift) === 2 ? 2 : 1) === sh);
-    const kosi = ents.reduce((a, e) => a + Number(e.kosi || 0), 0);
-    const masina = ents.reduce((a, e) => a + Number(e.cas_ur || 0), 0);
-    const delavec = ents.reduce((a, e) => a + Number(e.delavec_ur || 0), 0);
-    const zastoj = stps.reduce((a, s) => a + Number(s.duration_hours || 0), 0);
-    lines.push([shiftLabel(sh), kosi, csvDec(masina), csvDec(delavec), csvDec(zastoj)].join(';'));
+    return [
+      shiftLabel(sh),
+      ents.reduce((a, e) => a + Number(e.kosi || 0), 0),
+      ents.reduce((a, e) => a + Number(e.cas_ur || 0), 0),
+      stps.reduce((a, s) => a + Number(s.duration_hours || 0), 0),
+    ];
   });
+  XLSX.utils.book_append_sheet(wb, xSheet(
+    ['Smena', 'Proizvedeno (kos)', 'Čas na stroju (h)', 'Zastoj (h)'],
+    shiftRows, [16, 18, 18, 14], [2, 3]
+  ), 'Analiza po smenah');
 
-  const csv = '\uFEFF' + lines.join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `proizvodnja-v2-${year}-${String(month).padStart(2, '0')}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  XLSX.writeFile(wb, `proizvodnja-v2-${year}-${String(month).padStart(2, '0')}.xlsx`);
 }
+
 
 // ─── STROJI (admin/Boris): dodajanje, urejanje, "v okvari" ───
 function MachinesAdmin({ rows, onReload, setError, isAdmin }) {
