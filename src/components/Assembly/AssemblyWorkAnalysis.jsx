@@ -8,6 +8,7 @@ import { getAssemblyWorkLog, getAssemblyWorkStops, formatNumber, SLOVENIAN_MONTH
 import { supabase } from '../../supabase';
 import DayStepper from '../DayStepper';
 import WorkerHours from '../WorkerHours.jsx';
+import * as XLSX from 'xlsx';
 
 const AS_RED = '#C8102E';
 const num = (v) => Number(v) || 0;
@@ -30,6 +31,25 @@ const normTimeOf = (r) => (r.segment === 'avtomat' ? num(r.cas_stroja_ur) : num(
 const rowPct = (r) => pct(num(r.kolicina), num(r.normativ_kos_h) * normTimeOf(r));
 const pctTxt = (p) => (p == null ? '—' : `${p}%`);
 
+const xText = (v) => (v === null || v === undefined ? '' : String(v));
+
+// Ustvari list iz glave + vrstic. numCols = indeksi stolpcev s formatom '0,00'.
+function xSheet(header, rows, widths, numCols = []) {
+  const data = rows.length ? rows : [['Ni zapisov']];
+  const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+  ws['!cols'] = (widths || header.map(() => 16)).map((w) => ({ wch: w }));
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: header.length - 1 } }) };
+  if (rows.length) {
+    numCols.forEach((c) => {
+      for (let r = 1; r <= rows.length; r++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })];
+        if (cell && cell.t === 'n') cell.z = '0.00';
+      }
+    });
+  }
+  return ws;
+}
+
 function addDays(dateStr, n) { const d = new Date(dateStr); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
 function monthRange(y, m) {
   const start = `${y}-${String(m).padStart(2, '0')}-01`;
@@ -48,6 +68,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
   const [logs, setLogs] = useState([]);
   const [stops, setStops] = useState([]);
   const [oldEntries, setOldEntries] = useState([]);
+  const [times, setTimes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openWorkers, setOpenWorkers] = useState({});
   const [openSifre, setOpenSifre] = useState({});
@@ -61,16 +82,19 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
         let start, end;
         if (mode === 'day') { start = date; end = addDays(date, 1); }
         else { [start, end] = monthRange(year, month); }
-        const [lg, st, oe] = await Promise.all([
+        const [lg, st, oe, dt] = await Promise.all([
           getAssemblyWorkLog(start, end),
           getAssemblyWorkStops(start, end),
           supabase.from('assembly_entries')
             .select('id,date,total_hours,total_kos,normativ,breakdowns,machine_quantities,activity_data,assembly_workers(name)')
             .gte('date', start).lt('date', end),
+          supabase.from('assembly_daily_time')
+            .select('date,worker_name,vrsta,cas_ur,opomba')
+            .gte('date', start).lt('date', end),
         ]);
-        if (!cancelled) { setLogs(lg); setStops(st); setOldEntries(oe.data || []); setOpenWorkers({}); setOpenSifre({}); }
+        if (!cancelled) { setLogs(lg); setStops(st); setOldEntries(oe.data || []); setTimes(dt.error ? [] : (dt.data || [])); setOpenWorkers({}); setOpenSifre({}); }
       } catch (e) {
-        if (!cancelled) { setLogs([]); setStops([]); setOldEntries([]); }
+        if (!cancelled) { setLogs([]); setStops([]); setOldEntries([]); setTimes([]); }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -153,37 +177,107 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
   const toggleWorker = (k) => setOpenWorkers((p) => ({ ...p, [k]: !p[k] }));
   const toggleSifra = (k) => setOpenSifre((p) => ({ ...p, [k]: !p[k] }));
 
-  function exportCSV() {
-    const lines = [];
-    const naslov = mode === 'day' ? `Dnevno poročilo MONTAŽA - ${date}` : `Mesečno poročilo MONTAŽA - ${monthLabel}`;
-    lines.push(naslov);
-    lines.push('');
-    lines.push('VNOSI');
-    lines.push('Delavka;Datum;Nalog;Segment;Faza;Stroj;Artikel;Dimenzija;Šifra;Količina;Normativ (kos/h);Čas dela (h);Čas stroja (h);Doseganje (%)');
-    for (const r of logs) {
-      lines.push([
-        r.worker_name || '', r.date || '', r.delovni_nalog || '', SEG_LABELS[r.segment] || r.segment || '',
-        r.faza === 'vijacenje' ? 'vijačenje' : (r.faza || ''), r.machine_name || '', r.artikel || '', r.dimenzija || '', r.sifra || '',
-        num(r.kolicina), num(r.normativ_kos_h) || '', Number(num(r.cas_dela_ur)).toFixed(2), Number(num(r.cas_stroja_ur)).toFixed(2),
-        rowPct(r) ?? '',
-      ].join(';'));
-    }
-    lines.push('');
-    lines.push('ZASTOJI');
-    lines.push('Datum;Delavka;Razlog;Stroj;Nalog;Čas (h);Opomba');
-    for (const st of stops) {
-      lines.push([st.date || '', st.worker_name || '', st.reason || '', st.machine_name || '', st.delovni_nalog || '', Number(num(st.cas_ur)).toFixed(2), st.opomba || ''].join(';'));
-    }
-    const csv = '\uFEFF' + lines.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a2 = document.createElement('a');
-    a2.href = url;
-    a2.download = mode === 'day' ? `montaza-${date}.csv` : `montaza-${year}-${String(month).padStart(2, '0')}.csv`;
-    document.body.appendChild(a2);
-    a2.click();
-    document.body.removeChild(a2);
-    URL.revokeObjectURL(url);
+  // ─── EXCEL EXPORT (.xlsx, več listov) ───
+  // Številke se zapišejo kot prave številke, zato Excel sam uporabi slovensko vejico.
+  function exportExcel() {
+    const wb = XLSX.utils.book_new();
+
+    // 1) VNOSI (line-item) — novi zapisi + stari (assembly_entries)
+    const vnosiRows = [
+      ...logs.map((r) => [
+        xText(r.worker_name), xText(r.date), xText(r.delovni_nalog),
+        SEG_LABELS[r.segment] || xText(r.segment),
+        r.faza === 'vijacenje' ? 'vijačenje' : xText(r.faza),
+        xText(r.machine_name), xText(r.artikel), xText(r.dimenzija), xText(r.sifra),
+        num(r.kolicina), num(r.normativ_kos_h) || null,
+        num(r.cas_dela_ur), num(r.cas_stroja_ur), rowPct(r),
+      ]),
+      ...oldEntries
+        .filter((e) => oldKosOf(e) || sn(num(e.total_hours)) || oldExpOf(e))
+        .map((e) => [
+          xText(e.assembly_workers?.name) || '(staro)', xText(e.date), '(staro)', '', '', '', '', '', '(staro)',
+          oldKosOf(e), null, sn(num(e.total_hours)), 0,
+          pct(oldKosOf(e), oldExpOf(e)),
+        ]),
+    ];
+    XLSX.utils.book_append_sheet(wb, xSheet(
+      ['Delavka', 'Datum', 'Nalog', 'Segment', 'Faza', 'Stroj', 'Artikel', 'Dimenzija', 'Šifra',
+       'Količina', 'Normativ (kos/h)', 'Čas dela (h)', 'Čas stroja (h)', 'Doseganje (%)'],
+      vnosiRows, [22, 12, 16, 16, 14, 20, 24, 16, 16, 12, 16, 14, 14, 14], [11, 12]
+    ), 'Vnosi');
+
+    // 2) ZASTOJI
+    XLSX.utils.book_append_sheet(wb, xSheet(
+      ['Datum', 'Delavka', 'Razlog', 'Stroj', 'Nalog', 'Čas (h)', 'Opomba'],
+      a.stopRows.map((st) => [
+        xText(st.date), xText(st.worker_name), xText(st.reason), xText(st.machine_name),
+        xText(st.delovni_nalog), num(st.cas_ur), xText(st.opomba),
+      ]),
+      [12, 22, 24, 20, 16, 12, 34], [5]
+    ), 'Zastoji');
+
+    // 3) PO DELAVKAH
+    XLSX.utils.book_append_sheet(wb, xSheet(
+      ['Delavka', 'Nalogov', 'Količina', 'Čas dela (h)', 'Čas stroja (h)', 'Pričakovano (kos)', 'Doseganje (%)'],
+      a.workers.map((w) => [
+        xText(w.name), w.nalogi, w.kos, w.dela, w.stroja, Math.round(w.exp), pct(w.kosN, w.exp),
+      ]),
+      [24, 12, 14, 14, 14, 18, 14], [3, 4]
+    ), 'Po delavkah');
+
+    // 4) PO ŠIFRAH
+    XLSX.utils.book_append_sheet(wb, xSheet(
+      ['Šifra', 'Artikel', 'Dimenzija', 'Normativ (kos/h)', 'Nalogov', 'Količina', 'Čas dela (h)', 'Čas stroja (h)', 'Doseganje (%)'],
+      a.sifre.map((sf) => [
+        xText(sf.sifra), xText(sf.artikel), xText(sf.dimenzija), sf.nh || null,
+        sf.nalogi, sf.kos, sf.dela, sf.stroja, pct(sf.kosN, sf.exp),
+      ]),
+      [16, 26, 16, 16, 12, 14, 14, 14, 14], [6, 7]
+    ), 'Po šifrah');
+
+    // 5) ZASTOJI PO RAZLOGIH
+    XLSX.utils.book_append_sheet(wb, xSheet(
+      ['Razlog', 'Število', 'Ur'],
+      a.reasons.filter((r) => r.hours > 0).map((r) => [xText(r.reason), r.count, r.hours]),
+      [34, 12, 12], [2]
+    ), 'Zastoji po razlogih');
+
+    // 6) DELOVNI ČAS DELAVK (assembly_daily_time) — malica 0:30 avtomatsko, če je dela več kot 4 h
+    const byDay = {};
+    (times || []).forEach((t) => {
+      if (t.vrsta === 'malica') return;
+      const name = xText(t.worker_name).trim() || '(brez imena)';
+      const key = `${name}|${t.date}`;
+      if (!byDay[key]) byDay[key] = { name, date: t.date, stroj: 0, ostalo: 0, opombe: [] };
+      const c = Number(t.cas_ur) || 0;
+      if (t.vrsta === 'ostalo') {
+        byDay[key].ostalo += c;
+        if (t.opomba) byDay[key].opombe.push(xText(t.opomba));
+      } else {
+        byDay[key].stroj += c;
+      }
+    });
+    const byName = {};
+    Object.values(byDay).forEach((d) => {
+      const delo = d.stroj + d.ostalo;
+      const malica = delo > 4 ? 0.5 : 0;
+      if (!byName[d.name]) byName[d.name] = { name: d.name, dni: 0, stroj: 0, ostalo: 0, malica: 0, skupaj: 0, opombe: [] };
+      const w = byName[d.name];
+      w.dni += 1; w.stroj += d.stroj; w.ostalo += d.ostalo; w.malica += malica; w.skupaj += delo + malica;
+      w.opombe.push(...d.opombe);
+    });
+    XLSX.utils.book_append_sheet(wb, xSheet(
+      ['Delavka', 'Dni', 'Delo na stroju (h)', 'Ostalo (h)', 'Malica (h)', 'Skupaj (h)', 'Cilj (h)', 'Razlika (h)', 'Opombe'],
+      Object.values(byName).sort((x, y) => x.name.localeCompare(y.name, 'sl')).map((w) => [
+        w.name, w.dni, w.stroj, w.ostalo, w.malica, w.skupaj, w.dni * 8,
+        Math.round((w.skupaj - w.dni * 8) * 100) / 100, w.opombe.join(' | '),
+      ]),
+      [24, 8, 18, 14, 14, 14, 12, 14, 40], [2, 3, 4, 5, 6, 7]
+    ), 'Delovni čas');
+
+    XLSX.writeFile(wb, mode === 'day'
+      ? `montaza-${date}.xlsx`
+      : `montaza-${year}-${String(month).padStart(2, '0')}.xlsx`);
   }
 
   // Stolpci — POVSOD ISTI
@@ -215,11 +309,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
         </div>
         )}
         {mode === 'day' ? (
-          <div className="flex items-center gap-2">
-            <button onClick={() => setDate(addDays(date, -1))} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronLeft className="w-4 h-4" /></button>
-            <DayStepper value={date} onChange={setDate} className="px-3 py-2 border border-as-gray-200 rounded-lg text-sm" />
-            <button onClick={() => setDate(addDays(date, 1))} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronRight className="w-4 h-4" /></button>
-          </div>
+          <DayStepper value={date} onChange={setDate} className="px-3 py-2 border border-as-gray-200 rounded-lg text-sm" />
         ) : (
           <div className="flex items-center gap-2">
             <button onClick={prevMonth} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronLeft className="w-4 h-4" /></button>
@@ -227,7 +317,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
             <button onClick={nextMonth} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronRight className="w-4 h-4" /></button>
           </div>
         )}
-        <button onClick={exportCSV}
+        <button onClick={exportExcel}
           className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition">
           <Download className="w-4 h-4" /> Izvoz v Excel
         </button>
