@@ -6,6 +6,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, BarChart3, ChevronLeft, ChevronRight, ChevronDown, Loader2, Download } from 'lucide-react';
 import { getAssemblyWorkLog, getAssemblyWorkStops, formatNumber, SLOVENIAN_MONTHS } from '../../lib/assemblyApi.js';
 import { supabase } from '../../supabase';
+import DayStepper from '../DayStepper';
 import WorkerHours from '../WorkerHours.jsx';
 
 const AS_RED = '#C8102E';
@@ -216,7 +217,7 @@ export default function AssemblyWorkAnalysis({ lockMode = null }) {
         {mode === 'day' ? (
           <div className="flex items-center gap-2">
             <button onClick={() => setDate(addDays(date, -1))} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronLeft className="w-4 h-4" /></button>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="px-3 py-2 border border-as-gray-200 rounded-lg text-sm" />
+            <DayStepper value={date} onChange={setDate} className="px-3 py-2 border border-as-gray-200 rounded-lg text-sm" />
             <button onClick={() => setDate(addDays(date, 1))} className="p-2 rounded-lg border border-as-gray-200 hover:bg-as-gray-50"><ChevronRight className="w-4 h-4" /></button>
           </div>
         ) : (
