@@ -17,7 +17,7 @@ export function canAccessAssembly(email, isAdmin = false) {
 }
 
 export default function AssemblyTab({ currentUser }) {
-  const [view, setView] = useState('vnos');
+  const [view, setView] = useState('day');
 
   // Legacy dostop (admini + Milena)
   const legacyAllowed = canAccessAssembly(currentUser?.email, currentUser?.is_admin);
