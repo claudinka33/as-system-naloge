@@ -6,6 +6,7 @@
 // =====================================
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import DayStepper from './components/DayStepper';
 import * as XLSX from 'xlsx';
 import {
   Plus, Trash2, Edit2, X, Wallet, FileText, Calendar,
@@ -642,7 +643,7 @@ function DashboardView({ mode, enrichedEntries, comments, attachments, onExport,
         <div className="flex items-center gap-3">
           <Calendar className="w-5 h-5 text-as-gray-400" />
           {mode === 'daily' ? (
-            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="px-3 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
+            <DayStepper value={selectedDate} onChange={setSelectedDate} className="px-3 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
           ) : (
             <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="px-3 py-1.5 border border-as-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-as-red-100 focus:border-as-red-300" />
           )}
