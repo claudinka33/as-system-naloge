@@ -119,6 +119,7 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
   const [entries, setEntries] = useState([]);
   const [stops, setStops] = useState([]);
   const [wastes, setWastes] = useState([]);
+  const [times, setTimes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [machineRows, setMachineRows] = useState([]);
@@ -127,10 +128,11 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
     setLoading(true);
     setError('');
     try {
-      const [e, s, w] = await Promise.all([
+      const [e, s, w, t] = await Promise.all([
         supabase.from('production_v2_entries').select('*').order('date', { ascending: false }).limit(1000),
         supabase.from('production_v2_stops').select('*').order('date', { ascending: false }).limit(1000),
         supabase.from('production_v2_waste').select('*').order('date', { ascending: false }).limit(1000),
+        supabase.from('production_daily_time').select('*').order('date', { ascending: false }).limit(2000),
       ]);
       if (e.error) throw e.error;
       if (s.error) throw s.error;
@@ -138,6 +140,7 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
       setEntries(e.data || []);
       setStops(s.data || []);
       setWastes(w.data || []);
+      setTimes(t.error ? [] : (t.data || []));
     } catch (e) {
       setError(e.message || 'Napaka pri nalaganju.');
     } finally {
@@ -183,7 +186,7 @@ export default function ProductionV2Tab({ currentUser, isAdmin }) {
       )}
 
       {view === 'entry' && <EntryView currentUser={currentUser} onSaved={loadAll} setError={setError} />}
-      {view === 'daily' && <DailyView entries={entries} stops={stops} wastes={wastes} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
+      {view === 'daily' && <DailyView entries={entries} stops={stops} wastes={wastes} times={times} isAdmin={isAdmin} currentUser={currentUser} onReload={loadAll} loading={loading} />}
       {view === 'monthly' && <MonthlyView entries={entries} stops={stops} wastes={wastes} loading={loading} />}
       {view === 'machines' && canManageMachines && (
         <MachinesAdmin rows={machineRows} onReload={reloadMachines} setError={setError} isAdmin={isAdmin} />
@@ -676,7 +679,7 @@ function WasteForm({ currentUser, onSaved, setError }) {
 }
 
 // ─── DAILY VIEW ───
-function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loading }) {
+function DailyView({ entries, stops, wastes, times, isAdmin, currentUser, onReload, loading }) {
   const { segments: SEGMENTS, findMachine } = useMachines();
   const [filterDate, setFilterDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [slotEl, setSlotEl] = useState(null);
@@ -688,6 +691,7 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
   const dayEntries = entries.filter((e) => e.date === filterDate);
   const dayStops = stops.filter((e) => e.date === filterDate);
   const dayWastes = wastes.filter((e) => e.date === filterDate);
+  const dayTimes = (times || []).filter((e) => e.date === filterDate);
 
   const totalPieces = dayEntries.reduce((s, e) => s + Number(e.kosi || 0), 0);
   const totalHours = dayEntries.reduce((s, e) => s + Number(e.cas_ur || 0), 0);
@@ -705,7 +709,7 @@ function DailyView({ entries, stops, wastes, isAdmin, currentUser, onReload, loa
         <span className="text-sm text-as-gray-500 hidden sm:inline">{formatDate(filterDate)}</span>
       </div>
       <button
-        onClick={() => exportDailyCSV(filterDate, dayEntries, dayStops, dayWastes)}
+        onClick={() => exportDailyCSV(filterDate, dayEntries, dayStops, dayWastes, dayTimes)}
         className="flex items-center gap-2 px-4 py-2 bg-as-gray-100 hover:bg-as-gray-200 rounded-lg text-sm font-semibold text-as-gray-700 transition"
       >
         <Download className="w-4 h-4" /> Izvoz v Excel
@@ -1419,7 +1423,7 @@ const csvTxt = (v) => {
   return s === '' ? '' : `="${s.replace(/"/g, "'")}"`;
 };
 
-function exportDailyCSV(date, entries, stops, wastes) {
+function exportDailyCSV(date, entries, stops, wastes, times) {
   const lines = [];
   lines.push(`Dnevno poročilo PROIZVODNJA v2 - ${date}`);
   lines.push('');
@@ -1445,6 +1449,32 @@ function exportDailyCSV(date, entries, stops, wastes) {
   if (!wastes.length) lines.push('Ni zapisov');
   wastes.forEach((w) => {
     lines.push([csvTxt(w.machine_id), csvDec(w.weight_kg), csvPlain(w.product), csvPlain(w.wire_type), csvPlain(w.reason_category), csvTxt(w.lot_zice), csvTxt(w.nalog), csvPlain(w.operater), csvPlain(w.notes)].join(';'));
+  });
+  lines.push('');
+
+  // Delovni cas delavcev iz "Moj delovni dan" (production_daily_time). Malica 0:30 avtomatsko, ce je dela vec kot 4 h.
+  lines.push('DELOVNI ČAS DELAVCEV');
+  lines.push('Delavec;Delo na stroju (h);Ostalo (h);Malica (h);Skupaj (h);Opombe');
+  const byOperater = {};
+  (times || []).forEach((t) => {
+    if (t.vrsta === 'malica') return;
+    const op = csvPlain(t.operater) || '(brez imena)';
+    if (!byOperater[op]) byOperater[op] = { stroj: 0, ostalo: 0, opombe: [] };
+    const h = Number(t.cas_ur) || 0;
+    if (t.vrsta === 'ostalo') {
+      byOperater[op].ostalo += h;
+      if (t.opomba) byOperater[op].opombe.push(csvPlain(t.opomba));
+    } else {
+      byOperater[op].stroj += h;
+    }
+  });
+  const operaterji = Object.keys(byOperater).sort((a, b) => a.localeCompare(b, 'sl'));
+  if (!operaterji.length) lines.push('Ni zapisov');
+  operaterji.forEach((op) => {
+    const r = byOperater[op];
+    const delo = r.stroj + r.ostalo;
+    const malica = delo > 4 ? 0.5 : 0;
+    lines.push([op, csvDec(r.stroj), csvDec(r.ostalo), csvDec(malica), csvDec(delo + malica), csvPlain(r.opombe.join(' | '))].join(';'));
   });
 
   const csv = '\uFEFF' + lines.join('\n');
