@@ -7,9 +7,9 @@ import { Search, Plus, X, Save, Trash2, Loader2, Calculator, Pencil } from 'luci
 const CRM_COLOR = '#7C2D12';
 const AS_RED = '#C8102E';
 const DDV = 0.22;
-const UNIT_LABEL = { '100kos': '/ 100 kos', '1kos': '/ kos', '1grt': '/ garnituro', 'kg': '/ kg' };
-const UNIT_QTY = { '100kos': '× 100 kos', '1kos': 'kos', '1grt': 'garnitur', 'kg': 'kg' };
-const ENOTA_OPTS = [['100kos', '/ 100 kos'], ['1kos', '/ kos'], ['1grt', '/ garnituro'], ['kg', '/ kg']];
+const UNIT_LABEL = { '100kos': '/ 100 kos', '1kos': '/ kos', '1grt': '/ garnituro', 'kg': '/ kg', '1pak': '/ paket' };
+const UNIT_QTY = { '100kos': '× 100 kos', '1kos': 'kos', '1grt': 'garnitur', 'kg': 'kg', '1pak': 'paketov' };
+const ENOTA_OPTS = [['100kos', '/ 100 kos'], ['1kos', '/ kos'], ['1grt', '/ garnituro'], ['kg', '/ kg'], ['1pak', '/ paket']];
 const inputCls = "w-full px-3 py-2.5 border border-as-gray-200 rounded-xl bg-white text-base focus:outline-none focus:border-as-red-600 focus:ring-2 focus:ring-red-100 disabled:bg-as-gray-50 disabled:text-as-gray-400";
 
 const round4 = (n) => Math.round(n * 10000) / 10000;
