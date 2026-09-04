@@ -54,7 +54,7 @@ function ArticlePicker({ onPick, placeholder }) {
       const toks = term.replace(/[,%()*]/g, ' ').split(/\s+/).filter(Boolean);
       let qb = supabase.from('cenik')
         .select('sifra,ean,naziv,naziv2,cena_neto,enota,na_povprasevanje,skupina,vir');
-      toks.forEach((tok) => { qb = qb.or(`sifra.ilike.%${tok}%,naziv.ilike.%${tok}%,naziv2.ilike.%${tok}%`); });
+      toks.forEach((tok) => { qb = qb.or(`sifra.ilike.%${tok}%,naziv.ilike.%${tok}%,naziv2.ilike.%${tok}%,ean.ilike.%${tok}%`); });
       const { data, error } = await qb.order('vir', { ascending: true }).limit(500);
       if (!error) { setRes((data || []).slice().sort(cmpArticle)); setOpenList(true); }
       setLoading(false);
@@ -77,13 +77,13 @@ function ArticlePicker({ onPick, placeholder }) {
             <button type="button" key={a.sifra} onClick={() => { onPick(a); setOpenList(false); setQ(''); setRes([]); }}
               className="w-full text-left px-3 py-2 hover:bg-as-gray-50 border-b border-as-gray-100 last:border-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-as-gray-800 truncate">{a.naziv2 || a.naziv}</span>
+                <span className="text-sm font-semibold text-as-gray-800 truncate">{a.naziv}</span>
                 <span className="text-[11px] text-as-gray-400 whitespace-nowrap">{a.sifra}</span>
                 <span className="ml-auto text-sm font-bold whitespace-nowrap" style={{ color: CRM_COLOR }}>
                   {a.na_povprasevanje ? 'na povpr.' : `${fmt(a.cena_neto)} €`}
                 </span>
               </div>
-              <div className="text-xs text-as-gray-500 truncate">{a.naziv} · {unitLabel(a.enota)}</div>
+              <div className="text-xs text-as-gray-500 truncate">{[a.naziv2, a.ean ? `EAN ${a.ean}` : null].filter(Boolean).join(' · ')}{a.naziv2 || a.ean ? ' · ' : ''}{unitLabel(a.enota)}</div>
             </button>
           ))}
         </div>
@@ -128,8 +128,8 @@ function CalcCard({ article, onAdd, addLabel, onClear }) {
     <div className="border border-as-gray-200 rounded-xl p-3 bg-white shadow-sm space-y-3">
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-as-gray-800">{article.naziv2 || article.naziv}</div>
-          <div className="text-xs text-as-gray-500 truncate">{article.naziv} · šifra {article.sifra}</div>
+          <div className="text-sm font-bold text-as-gray-800">{article.naziv}</div>
+          <div className="text-xs text-as-gray-500 truncate">{article.naziv2 ? `${article.naziv2} · ` : ''}šifra {article.sifra}{article.ean ? ` · EAN ${article.ean}` : ''}</div>
           <div className="text-[11px] text-as-gray-400">enota cene: {unitLabel(article.enota)}{article.vir ? ' · ' + article.vir : ''}</div>
         </div>
         {onClear && <button type="button" onClick={onClear} className="p-1 text-as-gray-400 hover:text-red-600"><X className="w-4 h-4" /></button>}
@@ -223,7 +223,7 @@ function CenikEditor() {
     setLoading(true); setMsg('');
     const toks = q.trim().replace(/[,%()*]/g, ' ').split(/\s+/).filter(Boolean);
     let qy = supabase.from('cenik').select('*').order('skupina').order('naziv2').limit(600);
-    toks.forEach((tok) => { qy = qy.or(`sifra.ilike.%${tok}%,naziv.ilike.%${tok}%,naziv2.ilike.%${tok}%`); });
+    toks.forEach((tok) => { qy = qy.or(`sifra.ilike.%${tok}%,naziv.ilike.%${tok}%,naziv2.ilike.%${tok}%,ean.ilike.%${tok}%`); });
     const { data, error } = await qy;
     if (!error) { const s = (data || []).slice().sort(cmpArticle); setRows(s); initDrafts(s); }
     setLoading(false);
@@ -285,7 +285,7 @@ function CenikEditor() {
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             <input className={smallInput} placeholder="Šifra *" value={nu.sifra} onChange={(e) => setNu({ ...nu, sifra: e.target.value })} />
             <input className={smallInput} placeholder="Naziv" value={nu.naziv} onChange={(e) => setNu({ ...nu, naziv: e.target.value })} />
-            <input className={smallInput} placeholder="Dimenzija" value={nu.naziv2} onChange={(e) => setNu({ ...nu, naziv2: e.target.value })} />
+            <input className={smallInput} placeholder="Pakiranje / dimenzija" value={nu.naziv2} onChange={(e) => setNu({ ...nu, naziv2: e.target.value })} />
             <select className={smallInput} value={nu.enota} onChange={(e) => setNu({ ...nu, enota: e.target.value })}>
               {ENOTA_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
@@ -308,8 +308,9 @@ function CenikEditor() {
             <thead>
               <tr className="bg-as-gray-50 text-as-gray-500 text-xs uppercase">
                 <th className="text-left px-2 py-2">Šifra</th>
+                <th className="text-left px-2 py-2">EAN</th>
                 <th className="text-left px-2 py-2 min-w-40">Naziv</th>
-                <th className="text-left px-2 py-2">Dimenzija</th>
+                <th className="text-left px-2 py-2">Pakiranje / dim.</th>
                 <th className="text-left px-2 py-2">Enota</th>
                 <th className="text-right px-2 py-2">Neto cena €</th>
                 <th className="px-2 py-2"></th>
@@ -322,6 +323,7 @@ function CenikEditor() {
                 return (
                   <tr key={r.id} className="border-t border-as-gray-100 align-top">
                     <td className="px-2 py-2 text-[11px] text-as-gray-400 whitespace-nowrap">{r.sifra}</td>
+                    <td className="px-2 py-2 text-[11px] text-as-gray-500 whitespace-nowrap font-mono">{r.ean || '—'}</td>
                     <td className="px-2 py-2"><input className={smallInput} value={d.naziv ?? ''} onChange={(e) => setDraft(r.id, 'naziv', e.target.value)} /></td>
                     <td className="px-2 py-2"><input className={smallInput + ' w-28'} value={d.naziv2 ?? ''} onChange={(e) => setDraft(r.id, 'naziv2', e.target.value)} /></td>
                     <td className="px-2 py-2">
@@ -389,7 +391,7 @@ export function ArticleEditor({ items, onChange, onSetValue }) {
           {list.map((it, i) => (
             <div key={i} className="flex items-center gap-2 text-xs bg-as-gray-50 border border-as-gray-100 rounded-lg px-2.5 py-1.5">
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-as-gray-800 truncate">{it.naziv2 || it.naziv} <span className="text-as-gray-400">· {it.sifra}</span></div>
+                <div className="font-semibold text-as-gray-800 truncate">{it.naziv} <span className="text-as-gray-400">· {it.sifra}{it.naziv2 ? ` · ${it.naziv2}` : ''}</span></div>
                 <div className="text-as-gray-500">
                   {it.na_povprasevanje
                     ? 'na povpraševanje'
