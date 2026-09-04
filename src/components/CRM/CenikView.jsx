@@ -31,6 +31,50 @@ const cmpArticle = (a, b) => {
   return (da[0] - db[0]) || (da[1] - db[1]);
 };
 
+// ─── EAN-13 črtna koda (SVG, brez knjižnic) ───
+const EAN_L = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+const EAN_G = ['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
+const EAN_R = ['1110010','1100110','1101100','1000010','1011100','1001110','1010000','1000100','1001000','1110100'];
+const EAN_PARITY = ['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
+function ean13Checksum(d12) {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(d12[i]) * (i % 2 === 0 ? 1 : 3);
+  return String((10 - (sum % 10)) % 10);
+}
+function ean13Bits(code) {
+  let d = String(code || '').replace(/\D/g, '');
+  if (d.length === 12) d += ean13Checksum(d);
+  if (d.length !== 13 || ean13Checksum(d.slice(0, 12)) !== d[12]) return null;
+  const par = EAN_PARITY[Number(d[0])];
+  let bits = '101';
+  for (let i = 1; i <= 6; i++) bits += (par[i - 1] === 'L' ? EAN_L : EAN_G)[Number(d[i])];
+  bits += '01010';
+  for (let i = 7; i <= 12; i++) bits += EAN_R[Number(d[i])];
+  bits += '101';
+  return { bits, d };
+}
+function Ean13Barcode({ code }) {
+  const enc = ean13Bits(code);
+  if (!enc) return null;
+  const { bits, d } = enc;
+  const m = 2, h = 60, q = 9 * m, w = bits.length * m + 2 * q;
+  const guard = (i) => i < 3 || (i >= 45 && i < 50) || i >= 92;
+  const bars = [];
+  for (let i = 0; i < bits.length; i++) {
+    if (bits[i] === '1') bars.push(<rect key={i} x={q + i * m} y={0} width={m} height={guard(i) ? h : h - 8} fill="#000" />);
+  }
+  const fs = 11;
+  return (
+    <svg viewBox={`0 0 ${w} ${h + 14}`} width={w} height={h + 14} xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+      <rect x="0" y="0" width={w} height={h + 14} fill="#fff" />
+      {bars}
+      <text x={q - 4} y={h + 11} fontSize={fs} fontFamily="monospace" textAnchor="end">{d[0]}</text>
+      <text x={q + 3 * m + 21 * m} y={h + 11} fontSize={fs} fontFamily="monospace" textAnchor="middle" letterSpacing="2">{d.slice(1, 7)}</text>
+      <text x={q + 50 * m + 21 * m} y={h + 11} fontSize={fs} fontFamily="monospace" textAnchor="middle" letterSpacing="2">{d.slice(7, 13)}</text>
+    </svg>
+  );
+}
+
 const NETO_NOTE = (
   <div className="text-xs text-as-gray-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
     ℹ️ Vse cene so <b>neto cene, brez DDV</b>. Prikaz »z DDV« je informativen (22 %).
@@ -170,6 +214,12 @@ function CalcCard({ article, onAdd, addLabel, onClear }) {
             </div>
           </div>
         </>
+      )}
+
+      {article.ean && (
+        <div className="border-t border-as-gray-100 pt-2 flex items-center justify-center overflow-x-auto">
+          <Ean13Barcode code={article.ean} />
+        </div>
       )}
 
       {onAdd && (
