@@ -62,6 +62,115 @@ export const CRM_ALLOWED_EMAILS = [
 ];
 
 // Komercialista, ki poleg svojih vidita tudi Herminine vnose
+// ─── DANES: koga obiskati in zakaj (signali iz Vasca za stranke skrbnika) ───
+function DanesView({ currentUser, isAdmin, employees, personFilter, visits, onOpenCustomer, onGoEntry }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [brezSkrbnika, setBrezSkrbnika] = useState(0);
+  const [filter, setFilter] = useState('vsi');
+  const me = currentUser?.email;
+  const who = personFilter && personFilter !== 'all' ? personFilter : (isAdmin ? null : me);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true); setErr('');
+      try {
+        let q = supabase.from('crm_customers').select('id,naziv,posta,ulica,davcna,telefon,kontakt_oseba,panoga,skrbnik,vasco_sifra').not('vasco_sifra', 'is', null).eq('poslovalnica', 0);
+        if (who) q = q.eq('skrbnik', who);
+        const { data: custs, error } = await q.limit(3000);
+        if (error) throw error;
+        if (isAdmin) {
+          const { count } = await supabase.from('crm_customers').select('id', { count: 'exact', head: true }).not('vasco_sifra', 'is', null).eq('poslovalnica', 0).is('skrbnik', null).gt('vasco_synced_at', '2000-01-01');
+          if (active) setBrezSkrbnika(count || 0);
+        }
+        const sifre = [...new Set((custs || []).map((c) => c.vasco_sifra))];
+        const sig = {};
+        for (let i = 0; i < sifre.length; i += 300) {
+          const { data } = await supabase.from('vasco_signali').select('*').in('partner', sifre.slice(i, i + 300));
+          (data || []).forEach((x) => { sig[x.partner] = x; });
+        }
+        const out = (custs || []).map((c) => {
+          const g = sig[c.vasco_sifra] || {};
+          const reasons = [];
+          let score = 0;
+          const p12 = Number(g.promet_12m || 0), pp12 = Number(g.promet_prej_12m || 0);
+          const dni = g.dni_od_nakupa != null ? Number(g.dni_od_nakupa) : null;
+          if (Number(g.zapadlo || 0) > 0) { reasons.push({ t: `zapadlo ${formatEur(g.zapadlo)}`, c: 'red' }); score += 40; }
+          if (dni != null && dni > 60 && (p12 > 0 || pp12 > 0)) { reasons.push({ t: `zadnji nakup pred ${dni} dnevi`, c: 'amber' }); score += Math.min(60, dni / 3); }
+          if (Number(g.opuscenih || 0) > 0) { reasons.push({ t: `opustila ${g.opuscenih} art. (${formatEur(g.opusceno_vred)}/leto)`, c: 'amber' }); score += 25 + Math.min(40, Number(g.opusceno_vred || 0) / 500); }
+          if (pp12 > 0 && p12 < pp12 * 0.7) { reasons.push({ t: `promet −${Math.round((1 - p12 / pp12) * 100)} %`, c: 'red' }); score += 35; }
+          if (Number(g.dni_odprto_narocilo || 0) > 14) { reasons.push({ t: `odprto naročilo ${g.dni_odprto_narocilo} dni`, c: 'blue' }); score += 15; }
+          if (pp12 > 0 && p12 > pp12 * 1.3) reasons.push({ t: `promet +${Math.round((p12 / pp12 - 1) * 100)} %`, c: 'green' });
+          score += Math.min(30, (p12 + pp12) / 2000);
+          return { ...c, g, reasons, score, p12 };
+        }).filter((x) => x.reasons.some((r) => r.c !== 'green')).sort((a, b) => b.score - a.score);
+        if (active) setRows(out);
+      } catch (e) { if (active) setErr(e.message || 'Napaka.'); }
+      finally { if (active) setLoading(false); }
+    })();
+    return () => { active = false; };
+  }, [who, isAdmin]);
+
+  const today = todayStr();
+  const myToday = (visits || []).filter((v) => v.entry_date === today && (!who || v.created_by === who) && (v.entry_type === 'visit' || v.entry_type === 'call'));
+  const chip = { red: { background: '#FEE2E2', color: '#991B1B' }, amber: { background: '#FEF3C7', color: '#92400E' }, blue: { background: '#DBEAFE', color: '#1E40AF' }, green: { background: '#DCFCE7', color: '#166534' } };
+  const shown = rows.filter((r) => filter === 'vsi' ? true : filter === 'terjatve' ? r.reasons.some((x) => x.t.startsWith('zapadlo')) : filter === 'nakup' ? r.reasons.some((x) => x.t.startsWith('zadnji nakup')) : r.reasons.some((x) => x.t.startsWith('opustila'))).slice(0, 60);
+  const whoName = who ? ((employees || []).find((e) => e.email === who)?.name || who) : 'vsi komercialisti';
+  const fbtn = (id, label) => <button onClick={() => setFilter(id)} className="px-3 py-1.5 text-xs font-semibold rounded-lg" style={filter === id ? { background: CRM_COLOR, color: '#fff' } : { background: '#fff', color: '#6B7280', border: '1px solid #e5e7eb' }}>{label}</button>;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <div className="font-bold text-as-gray-800 text-lg">Danes · {formatLongDate(today)}</div>
+            <div className="text-xs text-as-gray-500">{whoName} · {myToday.length} vnosov danes{brezSkrbnika ? ` · ${brezSkrbnika} strank brez skrbnika` : ''}</div>
+          </div>
+          <button onClick={onGoEntry} className="px-4 py-2.5 text-white text-sm font-semibold rounded-xl inline-flex items-center gap-2" style={{ background: CRM_COLOR }}><Plus className="w-4 h-4" /> Nov vnos</button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider flex items-center gap-1.5"><Target className="w-4 h-4" /> Stranke, ki rabijo pozornost ({rows.length})</div>
+          <div className="flex gap-1.5 flex-wrap">{fbtn('vsi', 'Vse')}{fbtn('terjatve', 'Terjatve')}{fbtn('nakup', 'Ni kupila')}{fbtn('opusceni', 'Opuščeni artikli')}</div>
+        </div>
+        {err && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</div>}
+        {loading ? <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-as-gray-400" /></div>
+          : rows.length === 0 ? (
+            <div className="bg-as-gray-50 border border-as-gray-200 rounded-xl p-5 text-center text-sm text-as-gray-500">
+              {who && !isAdmin ? 'Nimaš dodeljenih strank s signali. Skrbnika stranki določi admin ali Vasco (komercialist na naročilu).' : 'Ni strank s signali.'}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {shown.map((r) => (
+                <div key={r.id} className="border border-as-gray-200 rounded-xl p-3 hover:bg-as-gray-50 transition">
+                  <div className="flex items-start gap-2">
+                    <button onClick={() => onOpenCustomer(r)} className="flex-1 min-w-0 text-left">
+                      <div className="font-semibold text-as-gray-800 text-sm truncate">{r.naziv}</div>
+                      <div className="text-xs text-as-gray-500 truncate">{[r.ulica, r.posta].filter(Boolean).join(', ')}{r.panoga ? ` · ${r.panoga}` : ''}{!who && r.skrbnik ? ` · ${(employees || []).find((e) => e.email === r.skrbnik)?.name || r.skrbnik}` : ''}</div>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {r.reasons.map((x, i) => <span key={i} className="text-[11px] font-semibold px-1.5 py-0.5 rounded" style={chip[x.c]}>{x.t}</span>)}
+                      </div>
+                    </button>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <div className="text-xs font-bold text-as-gray-700">{formatEur(r.p12)}</div>
+                      <div className="text-[10px] text-as-gray-400">12 mes.</div>
+                      {r.telefon && <a href={`tel:${r.telefon}`} className="p-1.5 rounded-lg border border-as-gray-200 text-as-gray-600 hover:text-green-700" title={r.telefon}><Phone className="w-4 h-4" /></a>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {rows.length > shown.length && <div className="text-xs text-as-gray-400 text-center pt-1">Prikazanih {shown.length} od {rows.length} — odpri Stranke za vse.</div>}
+            </div>
+          )}
+      </div>
+    </div>
+  );
+}
+
 const CRM_TEAM_LEADS = ['alen.drofenik@as-system.si', 'tjasa.mihevc@as-system.si'];
 const CRM_TEAM_MEMBER = 'hermina.leskovec@as-system.si';
 
@@ -143,7 +252,8 @@ function isLocked(entryDate, createdBy, currentUserEmail, isAdmin) {
 }
 
 export default function CRMTab({ currentUser, isAdmin, employees }) {
-  const [view, setView] = useState('entry'); // privzeto: takojšen vnos
+  const [view, setView] = useState('danes'); // privzeto: Danes (koga obiskati)
+  const [openCustomer, setOpenCustomer] = useState(null); // deep-link iz Danes v kartico stranke
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -215,6 +325,7 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
       {/* Navigacija + filtri */}
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 mb-5">
         <div className="grid grid-cols-2 sm:flex gap-1.5 bg-as-gray-100 rounded-xl p-1.5 border border-as-gray-200">
+          <SubTab active={view === 'danes'} onClick={() => setView('danes')} icon={<Target className="w-4 h-4" />} label="Danes" />
           <SubTab active={view === 'entry'} onClick={() => setView('entry')} icon={<Plus className="w-4 h-4" />} label="Vnos" />
           <SubTab active={view === 'pipeline'} onClick={() => setView('pipeline')} icon={<Target className="w-4 h-4" />} label="Pipeline" />
           <SubTab active={view === 'daily'} onClick={() => setView('daily')} icon={<Calendar className="w-4 h-4" />} label="Dnevno" />
@@ -255,12 +366,14 @@ export default function CRMTab({ currentUser, isAdmin, employees }) {
         </div>
       )}
 
+      {view === 'danes' && <DanesView currentUser={currentUser} isAdmin={isAdmin} employees={employees} personFilter={personFilter} visits={visits}
+        onOpenCustomer={(c) => { setOpenCustomer(c); setView('analysis'); }} onGoEntry={() => setView('entry')} />}
       {view === 'entry' && <EntryView currentUser={currentUser} employees={employees} onSaved={handleSaved} setError={setError} />}
       {view === 'pipeline' && <PipelineView currentUser={currentUser} isAdmin={isAdmin} employees={employees} />}
       {view === 'daily' && <DailyView visits={scopedVisits} isAdmin={isAdmin} currentUser={currentUser} employees={employees} onReload={loadAll} loading={loading} />}
       {view === 'monthly' && <MonthlyView visits={scopedVisits} loading={loading} />}
       {view === 'reports' && <ReportsView visits={scopedVisits} loading={loading} />}
-      {view === 'analysis' && <StrankeView visits={scopedVisits} loading={loading} isAdmin={isAdmin} />}
+      {view === 'analysis' && <StrankeView visits={scopedVisits} loading={loading} isAdmin={isAdmin} openCustomer={openCustomer} onOpened={() => setOpenCustomer(null)} employees={employees} currentUser={currentUser} />}
       {view === 'planning' && <PlanningView currentUser={currentUser} isAdmin={isAdmin} employees={employees} />}
       {view === 'cenik' && <CenikView isAdmin={isAdmin} />}
       {view === 'settings' && isAdmin && <SettingsView />}
@@ -3426,13 +3539,13 @@ function ProfRow({ label, value, href }) {
 }
 
 // ─── STRANKE: preklop Baza / Analiza ───
-function StrankeView({ visits, loading, isAdmin }) {
-  return <CustomerDirectory isAdmin={isAdmin} visits={visits} />;
+function StrankeView({ visits, loading, isAdmin, openCustomer, onOpened, employees, currentUser }) {
+  return <CustomerDirectory isAdmin={isAdmin} visits={visits} openCustomer={openCustomer} onOpened={onOpened} employees={employees} currentUser={currentUser} />;
 }
 
 // ─── BAZA STRANK (direktorij: vse stranke, dodaj/uredi/izbriši) ───
-function CustomerDirectory({ isAdmin, visits }) {
-  const COLS = 'id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,email,telefon,splet,opombe,tags,vasco_sifra,vasco_synced_at';
+function CustomerDirectory({ isAdmin, visits, openCustomer, onOpened, employees, currentUser }) {
+  const COLS = 'id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,email,telefon,splet,opombe,tags,vasco_sifra,vasco_synced_at,skrbnik,skrbnik_rocno';
   const PAGE = 100;
   const [vascoSync, setVascoSync] = useState(null);
   const [detailView, setDetailView] = useState('vasco');
@@ -3534,6 +3647,42 @@ function CustomerDirectory({ isAdmin, visits }) {
   function openDetail(row) { setDetail(row); setCompany(null); setEditing(false); setShowAnalysis(false); }
   function backToList() { setDetail(null); setCompany(null); setEditing(false); setShowAnalysis(false); }
 
+  // deep-link iz zavihka Danes
+  useEffect(() => {
+    if (!openCustomer) return;
+    openCompany({ naziv: openCustomer.naziv, davcna: openCustomer.davcna, rows: [openCustomer] });
+    onOpened && onOpened();
+  }, [openCustomer]);
+
+  // skrbnik (ročno) — admin ali team lead
+  const canAssign = isAdmin || CRM_TEAM_LEADS.includes(currentUser?.email);
+  async function setSkrbnik(rowsToSet, email) {
+    const ids = rowsToSet.map((r) => r.id);
+    const { error } = await supabase.from('crm_customers').update({ skrbnik: email || null, skrbnik_rocno: !!email }).in('id', ids);
+    if (error) { setErr(error.message); return; }
+    const patch = (r) => ids.includes(r.id) ? { ...r, skrbnik: email || null, skrbnik_rocno: !!email } : r;
+    setList((l) => l.map(patch)); setSiblings((l) => l.map(patch));
+    if (detail && ids.includes(detail.id)) setDetail({ ...detail, skrbnik: email || null, skrbnik_rocno: !!email });
+    if (company) setCompany({ ...company, branches: company.branches.map(patch) });
+    setFlash('Skrbnik shranjen');
+  }
+  const SkrbnikSelect = ({ rows }) => {
+    const cur = rows.find((r) => r.skrbnik)?.skrbnik || '';
+    const name = (employees || []).find((e) => e.email === cur)?.name || cur;
+    return (
+      <div className="flex items-center gap-2 text-xs mt-2">
+        <span className="text-as-gray-400 uppercase tracking-wider font-semibold">Skrbnik</span>
+        {canAssign ? (
+          <select value={cur} onChange={(e) => setSkrbnik(rows, e.target.value)} className="px-2 py-1 border border-as-gray-200 rounded-lg bg-white text-sm">
+            <option value="">— ni določen —</option>
+            {(employees || []).filter((e) => CRM_ALLOWED_EMAILS.includes(e.email)).map((e) => <option key={e.email} value={e.email}>{e.name}</option>)}
+          </select>
+        ) : <span className="font-semibold text-as-gray-700">{name || '— ni določen —'}</span>}
+        {cur && rows.some((r) => r.skrbnik_rocno) && <span className="text-as-gray-400">(ročno)</span>}
+      </div>
+    );
+  };
+
   async function handleSaveNew(values) {
     setSaving(true); setErr('');
     try {
@@ -3613,6 +3762,7 @@ function CustomerDirectory({ isAdmin, visits }) {
                 {detail.tags.map((t) => <span key={t} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: CRM_BG, color: CRM_COLOR }}>{t}</span>)}
               </div>
             )}
+            <SkrbnikSelect rows={sibList} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm mt-3">
               <ProfRow label="Kontakt" value={detail.kontakt_oseba} />
               <ProfRow label="Telefon" value={detail.telefon} href={detail.telefon ? `tel:${detail.telefon}` : null} />
@@ -3675,6 +3825,7 @@ function CustomerDirectory({ isAdmin, visits }) {
         <div>
           <div className="font-bold text-as-gray-800 text-lg">{company.naziv}</div>
           <div className="text-xs text-as-gray-500">{company.branches.length} poslovalnic · analiza vseh skupaj</div>
+          <SkrbnikSelect rows={company.branches} />
         </div>
         <div className="inline-flex rounded-xl border border-as-gray-200 overflow-hidden text-sm font-semibold">
           <button onClick={() => setDetailView('vasco')} className="px-3 sm:px-4 py-2 transition inline-flex items-center gap-1.5"
