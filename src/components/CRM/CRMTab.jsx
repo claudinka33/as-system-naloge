@@ -3435,6 +3435,7 @@ function CustomerDirectory({ isAdmin, visits }) {
   const COLS = 'id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,email,telefon,splet,opombe,tags,vasco_sifra,vasco_synced_at';
   const PAGE = 100;
   const [vascoSync, setVascoSync] = useState(null);
+  const [detailView, setDetailView] = useState('vasco');
   useEffect(() => {
     supabase.from('vasco_sync_log').select('finished_at,inserted,updated,linked,error').eq('tabela', 'crm_customers').order('id', { ascending: false }).limit(1)
       .then(({ data }) => { if (data && data[0]) setVascoSync(data[0]); });
@@ -3622,12 +3623,19 @@ function CustomerDirectory({ isAdmin, visits }) {
           </div>
         )}
 
-        {/* Analiza te stranke — privzeto VSE poslovalnice skupaj */}
+        {/* Preklop: Prodaja (Vasco) / Aktivnost (CRM) + obseg poslovalnic */}
         {!editing && (
           <div>
-            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-              <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                <TrendingUp className="w-4 h-4" /> Analiza stranke {detail.naziv}
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+              <div className="inline-flex rounded-xl border border-as-gray-200 overflow-hidden text-sm font-semibold">
+                <button onClick={() => setDetailView('vasco')} className="px-3 sm:px-4 py-2 transition inline-flex items-center gap-1.5"
+                  style={detailView === 'vasco' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>
+                  <BarChart3 className="w-4 h-4" /> Prodaja (Vasco)
+                </button>
+                <button onClick={() => setDetailView('crm')} className="px-3 sm:px-4 py-2 transition inline-flex items-center gap-1.5"
+                  style={detailView === 'crm' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>
+                  <TrendingUp className="w-4 h-4" /> Aktivnost (CRM)
+                </button>
               </div>
               {multi && (
                 <div className="inline-flex rounded-lg border border-as-gray-200 overflow-hidden text-xs font-semibold">
@@ -3642,18 +3650,12 @@ function CustomerDirectory({ isAdmin, visits }) {
                 </div>
               )}
             </div>
-            <CustomerAnalysis custVisits={scopeVisits} branches={analysisScope === 'all' && multi ? sibList : null} />
-          </div>
-        )}
-
-        {/* Vasco: prodaja, nakupi, naročila, računi, terjatve */}
-        {!editing && (
-          <div>
-            <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-              <BarChart3 className="w-4 h-4" /> Prodaja (Vasco){analysisScope === 'this' && multi ? ` — ${detail.poslovalnica ? `posl. ${detail.poslovalnica}` : 'sedež'}` : multi ? ' — vse poslovalnice' : ''}
-            </div>
-            <VascoPanel vascoSifra={detail.vasco_sifra || sibList.find((b) => b.vasco_sifra)?.vasco_sifra || null}
-              prodajalna={analysisScope === 'this' && multi ? (detail.poslovalnica || 0) : null} branches={sibList} />
+            {detailView === 'vasco' ? (
+              <VascoPanel vascoSifra={detail.vasco_sifra || sibList.find((b) => b.vasco_sifra)?.vasco_sifra || null}
+                prodajalna={analysisScope === 'this' && multi ? (detail.poslovalnica || 0) : null} branches={sibList} />
+            ) : (
+              <CustomerAnalysis custVisits={scopeVisits} branches={analysisScope === 'all' && multi ? sibList : null} />
+            )}
           </div>
         )}
       </div>
@@ -3674,11 +3676,19 @@ function CustomerDirectory({ isAdmin, visits }) {
           <div className="font-bold text-as-gray-800 text-lg">{company.naziv}</div>
           <div className="text-xs text-as-gray-500">{company.branches.length} poslovalnic · analiza vseh skupaj</div>
         </div>
-        <CustomerAnalysis custVisits={compVisits} branches={company.branches} />
-        <div>
-          <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider flex items-center gap-1.5 mb-2"><BarChart3 className="w-4 h-4" /> Prodaja (Vasco) — vse poslovalnice</div>
-          <VascoPanel vascoSifra={company.branches.find((b) => b.vasco_sifra)?.vasco_sifra || null} prodajalna={null} branches={company.branches} />
+        <div className="inline-flex rounded-xl border border-as-gray-200 overflow-hidden text-sm font-semibold">
+          <button onClick={() => setDetailView('vasco')} className="px-3 sm:px-4 py-2 transition inline-flex items-center gap-1.5"
+            style={detailView === 'vasco' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>
+            <BarChart3 className="w-4 h-4" /> Prodaja (Vasco)
+          </button>
+          <button onClick={() => setDetailView('crm')} className="px-3 sm:px-4 py-2 transition inline-flex items-center gap-1.5"
+            style={detailView === 'crm' ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff' }}>
+            <TrendingUp className="w-4 h-4" /> Aktivnost (CRM)
+          </button>
         </div>
+        {detailView === 'vasco'
+          ? <VascoPanel vascoSifra={company.branches.find((b) => b.vasco_sifra)?.vasco_sifra || null} prodajalna={null} branches={company.branches} />
+          : <CustomerAnalysis custVisits={compVisits} branches={company.branches} />}
         <div className="pt-1">
           <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2">Poslovalnice — klikni za podrobno</div>
           <div className="space-y-2">
@@ -3799,18 +3809,22 @@ function VascoPanel({ vascoSifra, prodajalna, branches }) {
       setLoading(true); setErr('');
       try {
         const since24 = new Date(); since24.setMonth(since24.getMonth() - 24);
-        const s24 = since24.toISOString().slice(0, 10);
+        const since12 = new Date(); since12.setMonth(since12.getMonth() - 12);
+        const s24 = since24.toISOString().slice(0, 10), s12 = since12.toISOString().slice(0, 10);
         const pf = (qy) => prodajalna != null ? qy.eq('prodajalna', prodajalna) : qy;
-        const [r1, r2, r3, r4, r5] = await Promise.all([
+        const PCOLS = 'datum,prodajalna,sifra,naziv,kolicina,cena,vrednost,rabat1';
+        const [r1, r2, r3a, r3b, r4, r5] = await Promise.all([
           supabase.from('vasco_prodaja_povzetek').select('*').eq('partner', vascoSifra),
           supabase.from('vasco_terjatve').select('*').eq('partner', vascoSifra).maybeSingle(),
-          pf(supabase.from('vasco_racun_postavke').select('datum,prodajalna,sifra,naziv,kolicina,cena,vrednost,rabat1').eq('partner', vascoSifra).gte('datum', s24)).order('datum', { ascending: false }).limit(8000),
+          pf(supabase.from('vasco_racun_postavke').select(PCOLS).eq('partner', vascoSifra).gte('datum', s12)).order('datum', { ascending: false }).limit(10000),
+          pf(supabase.from('vasco_racun_postavke').select(PCOLS).eq('partner', vascoSifra).gte('datum', s24).lt('datum', s12)).order('datum', { ascending: false }).limit(10000),
           supabase.from('vasco_narocila').select('*').eq('partner', vascoSifra).order('datum', { ascending: false }).limit(40),
           pf(supabase.from('vasco_racuni').select('stevilka,leto,datum,prodajalna,znesek').eq('partner', vascoSifra)).order('datum', { ascending: false }).limit(25),
         ]);
         if (!active) return;
-        const e = [r1, r3, r4, r5].find((r) => r.error);
+        const e = [r1, r3a, r3b, r4, r5].find((r) => r.error);
         if (e) throw e.error;
+        const r3 = { data: [...(r3a.data || []), ...(r3b.data || [])] };
         setSum(r1.data || []); setTer(r2.data || null); setPost(r3.data || []); setNar(r4.data || []); setRac(r5.data || []);
         const open = (r4.data || []).filter((n) => n.odprto);
         let np = [];
@@ -3898,15 +3912,15 @@ function VascoPanel({ vascoSifra, prodajalna, branches }) {
       {loading ? <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-as-gray-400" /></div> : (
         <div className="border border-as-gray-200 rounded-xl overflow-x-auto">
           {tab === 'nakupi' && (top.length === 0 ? <div className="p-4 text-xs text-as-gray-400">V zadnjih 12 mesecih ni nakupov.</div> : (
-            <table className="w-full text-xs"><thead><tr className="bg-as-gray-50 text-as-gray-500 uppercase"><th className="text-left px-2 py-2">Artikel</th><th className="text-right px-2 py-2">Kol.</th><th className="text-right px-2 py-2">Vrednost</th><th className="text-right px-2 py-2">Zadnja cena</th><th className="text-right px-2 py-2">Zadnji</th></tr></thead>
+            <table className="w-full text-xs"><thead><tr className="bg-as-gray-50 text-as-gray-500 uppercase"><th className="text-left px-2 py-2">Artikel</th><th className="text-right px-2 py-2">Kol.</th><th className="text-right px-2 py-2">Vrednost</th><th className="text-right px-2 py-2 hidden sm:table-cell">Zadnja cena</th><th className="text-right px-2 py-2 hidden sm:table-cell">Zadnji</th></tr></thead>
               <tbody>{top.slice(0, 60).map((x) => (
-                <tr key={x.sifra} className="border-t border-as-gray-100"><td className="px-2 py-1.5"><div className="font-semibold text-as-gray-800">{nz(x.sifra, x.naziv)}</div><div className="text-as-gray-400 font-mono">{x.sifra}</div></td><td className="px-2 py-1.5 text-right">{fq(x.kol)}</td><td className="px-2 py-1.5 text-right font-semibold">{fe(x.vred)}</td><td className="px-2 py-1.5 text-right">{x.zadnjaCena != null ? Number(x.zadnjaCena).toLocaleString('sl-SI', { maximumFractionDigits: 4 }) : '—'}{x.zadnjiRabat ? <span className="text-as-gray-400"> (−{x.zadnjiRabat} %)</span> : ''}</td><td className="px-2 py-1.5 text-right whitespace-nowrap">{fd(x.zadnji)}</td></tr>
+                <tr key={x.sifra} className="border-t border-as-gray-100"><td className="px-2 py-1.5"><div className="font-semibold text-as-gray-800">{nz(x.sifra, x.naziv)}</div><div className="text-as-gray-400 font-mono">{x.sifra}</div></td><td className="px-2 py-1.5 text-right">{fq(x.kol)}</td><td className="px-2 py-1.5 text-right font-semibold">{fe(x.vred)}</td><td className="px-2 py-1.5 text-right hidden sm:table-cell">{x.zadnjaCena != null ? Number(x.zadnjaCena).toLocaleString('sl-SI', { maximumFractionDigits: 4 }) : '—'}{x.zadnjiRabat ? <span className="text-as-gray-400"> (−{x.zadnjiRabat} %)</span> : ''}</td><td className="px-2 py-1.5 text-right whitespace-nowrap hidden sm:table-cell">{fd(x.zadnji)}</td></tr>
               ))}</tbody></table>
           ))}
           {tab === 'opusceni' && (opusceni.length === 0 ? <div className="p-4 text-xs text-as-gray-400">Ni opuščenih artiklov — vse, kar je kupovala prej, kupuje še naprej.</div> : (
-            <table className="w-full text-xs"><thead><tr className="bg-amber-50 text-amber-800 uppercase"><th className="text-left px-2 py-2">Artikel (kupovala prej, zdaj ne)</th><th className="text-right px-2 py-2">Kol. prej</th><th className="text-right px-2 py-2">Vrednost prej</th><th className="text-right px-2 py-2">Zadnji nakup</th></tr></thead>
+            <table className="w-full text-xs"><thead><tr className="bg-amber-50 text-amber-800 uppercase"><th className="text-left px-2 py-2">Artikel (kupovala prej, zdaj ne)</th><th className="text-right px-2 py-2 hidden sm:table-cell">Kol. prej</th><th className="text-right px-2 py-2">Vrednost prej</th><th className="text-right px-2 py-2">Zadnji nakup</th></tr></thead>
               <tbody>{opusceni.slice(0, 60).map((x) => (
-                <tr key={x.sifra} className="border-t border-as-gray-100"><td className="px-2 py-1.5"><div className="font-semibold text-as-gray-800">{nz(x.sifra, x.naziv)}</div><div className="text-as-gray-400 font-mono">{x.sifra}</div></td><td className="px-2 py-1.5 text-right">{fq(x.kol)}</td><td className="px-2 py-1.5 text-right font-semibold">{fe(x.vred)}</td><td className="px-2 py-1.5 text-right whitespace-nowrap">{fd(x.zadnji)}</td></tr>
+                <tr key={x.sifra} className="border-t border-as-gray-100"><td className="px-2 py-1.5"><div className="font-semibold text-as-gray-800">{nz(x.sifra, x.naziv)}</div><div className="text-as-gray-400 font-mono">{x.sifra}</div></td><td className="px-2 py-1.5 text-right hidden sm:table-cell">{fq(x.kol)}</td><td className="px-2 py-1.5 text-right font-semibold">{fe(x.vred)}</td><td className="px-2 py-1.5 text-right whitespace-nowrap">{fd(x.zadnji)}</td></tr>
               ))}</tbody></table>
           ))}
           {tab === 'narocila' && (nar.length === 0 ? <div className="p-4 text-xs text-as-gray-400">Ni naročil od 2024.</div> : (
@@ -3928,10 +3942,10 @@ function VascoPanel({ vascoSifra, prodajalna, branches }) {
               ))}</tbody></table>
           ))}
           {tab === 'posl' && (
-            <table className="w-full text-xs"><thead><tr className="bg-as-gray-50 text-as-gray-500 uppercase"><th className="text-left px-2 py-2">Poslovalnica</th><th className="text-right px-2 py-2">Promet 12 mes.</th><th className="text-right px-2 py-2">Prejšnjih 12</th><th className="text-right px-2 py-2">Zadnji nakup</th></tr></thead>
+            <table className="w-full text-xs"><thead><tr className="bg-as-gray-50 text-as-gray-500 uppercase"><th className="text-left px-2 py-2">Poslovalnica</th><th className="text-right px-2 py-2">Promet 12 mes.</th><th className="text-right px-2 py-2 hidden sm:table-cell">Prejšnjih 12</th><th className="text-right px-2 py-2">Zadnji nakup</th></tr></thead>
               <tbody>{sum.slice().sort((a, b) => Number(b.promet_12m || 0) - Number(a.promet_12m || 0)).map((x) => {
                 const b = (branches || []).find((y) => (y.poslovalnica || 0) === (x.prodajalna || 0));
-                return <tr key={x.prodajalna} className="border-t border-as-gray-100"><td className="px-2 py-1.5"><div className="font-semibold text-as-gray-800">{branchName(x.prodajalna)}</div>{b && <div className="text-as-gray-400">{[b.ulica, b.posta].filter(Boolean).join(', ')}</div>}</td><td className="px-2 py-1.5 text-right font-semibold">{fe(x.promet_12m)}</td><td className="px-2 py-1.5 text-right text-as-gray-500">{fe(x.promet_prej_12m)}</td><td className="px-2 py-1.5 text-right whitespace-nowrap">{fd(x.zadnji_nakup)}</td></tr>;
+                return <tr key={x.prodajalna} className="border-t border-as-gray-100"><td className="px-2 py-1.5"><div className="font-semibold text-as-gray-800">{branchName(x.prodajalna)}</div>{b && <div className="text-as-gray-400">{[b.ulica, b.posta].filter(Boolean).join(', ')}</div>}</td><td className="px-2 py-1.5 text-right font-semibold">{fe(x.promet_12m)}</td><td className="px-2 py-1.5 text-right text-as-gray-500 hidden sm:table-cell">{fe(x.promet_prej_12m)}</td><td className="px-2 py-1.5 text-right whitespace-nowrap">{fd(x.zadnji_nakup)}</td></tr>;
               })}</tbody></table>
           )}
         </div>
