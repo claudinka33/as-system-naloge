@@ -3432,8 +3432,13 @@ function StrankeView({ visits, loading, isAdmin }) {
 
 // ─── BAZA STRANK (direktorij: vse stranke, dodaj/uredi/izbriši) ───
 function CustomerDirectory({ isAdmin, visits }) {
-  const COLS = 'id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,email,telefon,splet,opombe,tags';
+  const COLS = 'id,naziv,ulica,posta,davcna,panoga,poslovalnica,kontakt_oseba,email,telefon,splet,opombe,tags,vasco_sifra,vasco_synced_at';
   const PAGE = 100;
+  const [vascoSync, setVascoSync] = useState(null);
+  useEffect(() => {
+    supabase.from('vasco_sync_log').select('finished_at,inserted,updated,linked,error').eq('tabela', 'crm_customers').order('id', { ascending: false }).limit(1)
+      .then(({ data }) => { if (data && data[0]) setVascoSync(data[0]); });
+  }, []);
   const [q, setQ] = useState('');
   const [tagFilter, setTagFilter] = useState(null);
   const [list, setList] = useState([]);
@@ -3500,9 +3505,10 @@ function CustomerDirectory({ isAdmin, visits }) {
     const map = {};
     list.forEach((c) => {
       const key = (c.davcna && String(c.davcna).trim()) ? `d:${c.davcna}` : `id:${c.id}`;
-      if (!map[key]) map[key] = { key, naziv: c.naziv, davcna: c.davcna, panoga: c.panoga, tags: c.tags || [], rows: [] };
+      if (!map[key]) map[key] = { key, naziv: c.naziv, davcna: c.davcna, panoga: c.panoga, tags: c.tags || [], vasco: c.vasco_sifra || null, rows: [] };
       map[key].rows.push(c);
-      if (c.poslovalnica === 0) { map[key].naziv = c.naziv; map[key].tags = c.tags || []; map[key].panoga = c.panoga; }
+      if (c.vasco_sifra && !map[key].vasco) map[key].vasco = c.vasco_sifra;
+      if (c.poslovalnica === 0) { map[key].naziv = c.naziv; map[key].tags = c.tags || []; map[key].panoga = c.panoga; if (c.vasco_sifra) map[key].vasco = c.vasco_sifra; }
     });
     return Object.values(map).sort((a, b) => a.naziv.localeCompare(b.naziv));
   }, [list]);
@@ -3594,7 +3600,7 @@ function CustomerDirectory({ isAdmin, visits }) {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-as-gray-800 text-lg">{detail.naziv}{detail.poslovalnica ? <span className="text-sm text-as-gray-400 font-normal"> · posl. {detail.poslovalnica}</span> : ''}</div>
-                <div className="text-sm text-as-gray-500 mt-0.5">{[detail.ulica, detail.posta].filter(Boolean).join(', ') || '—'}{detail.davcna ? ` · DŠ ${detail.davcna}` : ''}{detail.panoga ? ` · ${detail.panoga}` : ''}</div>
+                <div className="text-sm text-as-gray-500 mt-0.5">{[detail.ulica, detail.posta].filter(Boolean).join(', ') || '—'}{detail.davcna ? ` · DŠ ${detail.davcna}` : ''}{detail.panoga ? ` · ${detail.panoga}` : ''}{detail.vasco_sifra ? <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-as-gray-100 text-as-gray-600 text-xs font-mono">Vasco #{detail.vasco_sifra}</span> : ''}</div>
               </div>
               <div className="flex flex-col gap-1.5 flex-shrink-0">
                 <button onClick={() => setEditing(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: CRM_BG, color: CRM_COLOR }}>Uredi</button>
@@ -3639,6 +3645,17 @@ function CustomerDirectory({ isAdmin, visits }) {
             <CustomerAnalysis custVisits={scopeVisits} branches={analysisScope === 'all' && multi ? sibList : null} />
           </div>
         )}
+
+        {/* Vasco: prodaja, nakupi, naročila, računi, terjatve */}
+        {!editing && (
+          <div>
+            <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+              <BarChart3 className="w-4 h-4" /> Prodaja (Vasco){analysisScope === 'this' && multi ? ` — ${detail.poslovalnica ? `posl. ${detail.poslovalnica}` : 'sedež'}` : multi ? ' — vse poslovalnice' : ''}
+            </div>
+            <VascoPanel vascoSifra={detail.vasco_sifra || sibList.find((b) => b.vasco_sifra)?.vasco_sifra || null}
+              prodajalna={analysisScope === 'this' && multi ? (detail.poslovalnica || 0) : null} branches={sibList} />
+          </div>
+        )}
       </div>
     );
   }
@@ -3658,6 +3675,10 @@ function CustomerDirectory({ isAdmin, visits }) {
           <div className="text-xs text-as-gray-500">{company.branches.length} poslovalnic · analiza vseh skupaj</div>
         </div>
         <CustomerAnalysis custVisits={compVisits} branches={company.branches} />
+        <div>
+          <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider flex items-center gap-1.5 mb-2"><BarChart3 className="w-4 h-4" /> Prodaja (Vasco) — vse poslovalnice</div>
+          <VascoPanel vascoSifra={company.branches.find((b) => b.vasco_sifra)?.vasco_sifra || null} prodajalna={null} branches={company.branches} />
+        </div>
         <div className="pt-1">
           <div className="text-xs font-bold text-as-gray-500 uppercase tracking-wider mb-2">Poslovalnice — klikni za podrobno</div>
           <div className="space-y-2">
@@ -3685,7 +3706,14 @@ function CustomerDirectory({ isAdmin, visits }) {
   return (
     <div className="bg-white border border-as-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h3 className="font-bold text-as-gray-700">🗂️ Baza strank</h3>
+        <div>
+          <h3 className="font-bold text-as-gray-700">🗂️ Baza strank</h3>
+          {vascoSync && (
+            <div className="text-xs mt-0.5" style={{ color: vascoSync.error ? '#CB2026' : '#6b7280' }}>
+              {vascoSync.error ? `⚠️ Vasco sync napaka: ${String(vascoSync.error).slice(0, 80)}` : `Vasco sync: ${vascoSync.finished_at ? new Date(vascoSync.finished_at).toLocaleString('sl-SI', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'} · +${vascoSync.inserted} novih, ${vascoSync.updated} posod.`}
+            </div>
+          )}
+        </div>
         {!creating && (
           <button onClick={() => setCreating(true)}
             className="px-4 py-2.5 text-white text-sm font-semibold rounded-xl inline-flex items-center gap-2" style={{ background: CRM_COLOR }}>
@@ -3725,6 +3753,7 @@ function CustomerDirectory({ isAdmin, visits }) {
                     <div className="font-bold text-as-gray-800">{comp.naziv}</div>
                     <div className="text-xs text-as-gray-500 mt-0.5">
                       {comp.davcna ? `DŠ ${comp.davcna}` : ''}{comp.rows.length > 1 ? `${comp.davcna ? ' · ' : ''}${comp.rows.length} poslovalnic` : ''}{comp.panoga ? ` · ${comp.panoga}` : ''}
+                      {comp.vasco ? <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-as-gray-100 text-as-gray-600 font-mono">Vasco #{comp.vasco}</span> : <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">samo CRM</span>}
                     </div>
                     {(comp.tags && comp.tags.length > 0) && (
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -3750,6 +3779,167 @@ function CustomerDirectory({ isAdmin, visits }) {
 }
 
 // ── Analiza ENE stranke (zgodovina + statistika) ──
+// ─── VASCO: prodaja, nakupi, naročila, računi, terjatve za eno stranko (partner = vasco_sifra) ───
+function VascoPanel({ vascoSifra, prodajalna, branches }) {
+  const [tab, setTab] = useState('nakupi');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [sum, setSum] = useState([]);        // vasco_prodaja_povzetek po prodajalnah
+  const [ter, setTer] = useState(null);      // vasco_terjatve
+  const [post, setPost] = useState([]);      // postavke računov 24 mes.
+  const [nar, setNar] = useState([]);        // naročila
+  const [narPost, setNarPost] = useState([]);// postavke odprtih naročil
+  const [rac, setRac] = useState([]);        // zadnji računi
+  const [nazivi, setNazivi] = useState({});  // sifra -> naziv iz cenika
+
+  useEffect(() => {
+    if (!vascoSifra) return;
+    let active = true;
+    (async () => {
+      setLoading(true); setErr('');
+      try {
+        const since24 = new Date(); since24.setMonth(since24.getMonth() - 24);
+        const s24 = since24.toISOString().slice(0, 10);
+        const pf = (qy) => prodajalna != null ? qy.eq('prodajalna', prodajalna) : qy;
+        const [r1, r2, r3, r4, r5] = await Promise.all([
+          supabase.from('vasco_prodaja_povzetek').select('*').eq('partner', vascoSifra),
+          supabase.from('vasco_terjatve').select('*').eq('partner', vascoSifra).maybeSingle(),
+          pf(supabase.from('vasco_racun_postavke').select('datum,prodajalna,sifra,naziv,kolicina,cena,vrednost,rabat1').eq('partner', vascoSifra).gte('datum', s24)).order('datum', { ascending: false }).limit(8000),
+          supabase.from('vasco_narocila').select('*').eq('partner', vascoSifra).order('datum', { ascending: false }).limit(40),
+          pf(supabase.from('vasco_racuni').select('stevilka,leto,datum,prodajalna,znesek').eq('partner', vascoSifra)).order('datum', { ascending: false }).limit(25),
+        ]);
+        if (!active) return;
+        const e = [r1, r3, r4, r5].find((r) => r.error);
+        if (e) throw e.error;
+        setSum(r1.data || []); setTer(r2.data || null); setPost(r3.data || []); setNar(r4.data || []); setRac(r5.data || []);
+        const open = (r4.data || []).filter((n) => n.odprto);
+        let np = [];
+        if (open.length) {
+          const ors = open.map((n) => `and(stevilka.eq.${n.stevilka},leto.eq.${n.leto})`).join(',');
+          const { data } = await supabase.from('vasco_narocilo_postavke').select('*').eq('partner', vascoSifra).or(ors).eq('zaprto', false);
+          np = data || [];
+        }
+        if (!active) return;
+        setNarPost(np);
+        const sifre = [...new Set([...(r3.data || []).map((x) => x.sifra), ...np.map((x) => x.sifra)].filter(Boolean))].slice(0, 400);
+        if (sifre.length) {
+          const { data } = await supabase.from('cenik').select('sifra,naziv,naziv2').in('sifra', sifre);
+          if (active && data) { const m = {}; data.forEach((c) => { m[c.sifra] = [c.naziv, c.naziv2].filter(Boolean).join(' · '); }); setNazivi(m); }
+        }
+      } catch (ex) { if (active) setErr(ex.message || 'Napaka pri branju Vasco podatkov.'); }
+      finally { if (active) setLoading(false); }
+    })();
+    return () => { active = false; };
+  }, [vascoSifra, prodajalna]);
+
+  if (!vascoSifra) {
+    return <div className="bg-as-gray-50 border border-as-gray-200 rounded-xl p-4 text-xs text-as-gray-500">Stranka ni povezana z Vascom (ni šifre partnerja). Po naslednji sinhronizaciji se poveže samodejno, če se ujema davčna številka.</div>;
+  }
+
+  // povzetek: vse prodajalne skupaj ali samo izbrana
+  const rows = prodajalna != null ? sum.filter((x) => (x.prodajalna || 0) === prodajalna) : sum;
+  const agg = rows.reduce((a, x) => ({
+    p12: a.p12 + Number(x.promet_12m || 0), pp12: a.pp12 + Number(x.promet_prej_12m || 0), letos: a.letos + Number(x.promet_letos || 0),
+    n12: a.n12 + Number(x.st_racunov_12m || 0), zadnji: (!a.zadnji || (x.zadnji_nakup && x.zadnji_nakup > a.zadnji)) ? x.zadnji_nakup : a.zadnji,
+  }), { p12: 0, pp12: 0, letos: 0, n12: 0, zadnji: null });
+  const trend = agg.pp12 > 0 ? Math.round((agg.p12 - agg.pp12) / agg.pp12 * 100) : null;
+  const dniOd = agg.zadnji ? Math.round((Date.now() - new Date(agg.zadnji).getTime()) / 86400000) : null;
+  const odprta = nar.filter((n) => n.odprto);
+  const zapadlo = Number(ter?.zapadlo_skupaj || 0);
+
+  // nakupi: zadnjih 12 mes. po artiklu + opuščeni (kupljeni v prejšnjih 12, ne v zadnjih 12)
+  const cut12 = new Date(); cut12.setMonth(cut12.getMonth() - 12); const c12 = cut12.toISOString().slice(0, 10);
+  const cur = {}, prev = {};
+  post.forEach((x) => {
+    if (!x.sifra) return;
+    const b = x.datum >= c12 ? cur : prev;
+    if (!b[x.sifra]) b[x.sifra] = { sifra: x.sifra, naziv: x.naziv, kol: 0, vred: 0, zadnjaCena: x.cena, zadnjiRabat: x.rabat1, zadnji: x.datum };
+    b[x.sifra].kol += Number(x.kolicina || 0); b[x.sifra].vred += Number(x.vrednost || 0);
+  });
+  const top = Object.values(cur).sort((a, b) => b.vred - a.vred);
+  const opusceni = Object.values(prev).filter((x) => !cur[x.sifra]).sort((a, b) => b.vred - a.vred);
+  const nz = (sf, fallback) => nazivi[sf] || fallback || sf;
+  const fd = (d) => d ? new Date(d).toLocaleDateString('sl-SI') : '—';
+  const fe = (n) => Number(n || 0).toLocaleString('sl-SI', { maximumFractionDigits: 0 }) + ' €';
+  const fq = (n) => Number(n || 0).toLocaleString('sl-SI', { maximumFractionDigits: 0 });
+  const kpi = (label, val, sub, color) => (
+    <div className="border border-as-gray-200 rounded-xl p-3">
+      <div className="text-[11px] text-as-gray-500 uppercase tracking-wider">{label}</div>
+      <div className="text-lg font-bold" style={{ color: color || '#1f2937' }}>{val}</div>
+      {sub && <div className="text-xs text-as-gray-500">{sub}</div>}
+    </div>
+  );
+  const tabBtn = (id, label, n) => (
+    <button onClick={() => setTab(id)} className="px-3 py-1.5 text-xs font-semibold rounded-lg transition"
+      style={tab === id ? { background: CRM_COLOR, color: '#fff' } : { color: '#6B7280', background: '#fff', border: '1px solid #e5e7eb' }}>
+      {label}{n != null ? ` (${n})` : ''}
+    </button>
+  );
+  const branchName = (pr) => { const b = (branches || []).find((x) => (x.poslovalnica || 0) === (pr || 0)); return b ? (b.poslovalnica ? `posl. ${b.poslovalnica}` : 'sedež') : (pr ? `posl. ${pr}` : 'sedež'); };
+
+  return (
+    <div className="space-y-3">
+      {err && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</div>}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {kpi('Promet 12 mes.', fe(agg.p12), trend == null ? `${agg.n12} računov` : `${trend >= 0 ? '▲' : '▼'} ${Math.abs(trend)} % vs. prejšnjih 12 · ${agg.n12} rač.`, trend == null ? null : (trend >= 0 ? '#15803d' : '#b91c1c'))}
+        {kpi('Zadnji nakup', fd(agg.zadnji), dniOd == null ? null : `pred ${dniOd} dnevi`, dniOd != null && dniOd > 90 ? '#b45309' : null)}
+        {kpi('Odprta naročila', String(odprta.length), odprta.length ? fe(odprta.reduce((a, n) => a + Number(n.znesek || 0), 0)) : 'nič odprtega')}
+        {kpi('Zapadle terjatve', ter ? fe(zapadlo) : '—', ter ? `skupaj odprto ${fe(ter.skupaj)}` : 'ni odprtih postavk', zapadlo > 0 ? '#b91c1c' : '#15803d')}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {tabBtn('nakupi', 'Nakupi 12 mes.', top.length)}
+        {tabBtn('opusceni', 'Opuščeni artikli', opusceni.length)}
+        {tabBtn('narocila', 'Naročila kupca', nar.length)}
+        {tabBtn('racuni', 'Računi', rac.length)}
+        {prodajalna == null && sum.length > 1 && tabBtn('posl', 'Po poslovalnicah', sum.length)}
+      </div>
+
+      {loading ? <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-as-gray-400" /></div> : (
+        <div className="border border-as-gray-200 rounded-xl overflow-x-auto">
+          {tab === 'nakupi' && (top.length === 0 ? <div className="p-4 text-xs text-as-gray-400">V zadnjih 12 mesecih ni nakupov.</div> : (
+            <table className="w-full text-xs"><thead><tr className="bg-as-gray-50 text-as-gray-500 uppercase"><th className="text-left px-2 py-2">Artikel</th><th className="text-right px-2 py-2">Kol.</th><th className="text-right px-2 py-2">Vrednost</th><th className="text-right px-2 py-2">Zadnja cena</th><th className="text-right px-2 py-2">Zadnji</th></tr></thead>
+              <tbody>{top.slice(0, 60).map((x) => (
+                <tr key={x.sifra} className="border-t border-as-gray-100"><td className="px-2 py-1.5"><div className="font-semibold text-as-gray-800">{nz(x.sifra, x.naziv)}</div><div className="text-as-gray-400 font-mono">{x.sifra}</div></td><td className="px-2 py-1.5 text-right">{fq(x.kol)}</td><td className="px-2 py-1.5 text-right font-semibold">{fe(x.vred)}</td><td className="px-2 py-1.5 text-right">{x.zadnjaCena != null ? Number(x.zadnjaCena).toLocaleString('sl-SI', { maximumFractionDigits: 4 }) : '—'}{x.zadnjiRabat ? <span className="text-as-gray-400"> (−{x.zadnjiRabat} %)</span> : ''}</td><td className="px-2 py-1.5 text-right whitespace-nowrap">{fd(x.zadnji)}</td></tr>
+              ))}</tbody></table>
+          ))}
+          {tab === 'opusceni' && (opusceni.length === 0 ? <div className="p-4 text-xs text-as-gray-400">Ni opuščenih artiklov — vse, kar je kupovala prej, kupuje še naprej.</div> : (
+            <table className="w-full text-xs"><thead><tr className="bg-amber-50 text-amber-800 uppercase"><th className="text-left px-2 py-2">Artikel (kupovala prej, zdaj ne)</th><th className="text-right px-2 py-2">Kol. prej</th><th className="text-right px-2 py-2">Vrednost prej</th><th className="text-right px-2 py-2">Zadnji nakup</th></tr></thead>
+              <tbody>{opusceni.slice(0, 60).map((x) => (
+                <tr key={x.sifra} className="border-t border-as-gray-100"><td className="px-2 py-1.5"><div className="font-semibold text-as-gray-800">{nz(x.sifra, x.naziv)}</div><div className="text-as-gray-400 font-mono">{x.sifra}</div></td><td className="px-2 py-1.5 text-right">{fq(x.kol)}</td><td className="px-2 py-1.5 text-right font-semibold">{fe(x.vred)}</td><td className="px-2 py-1.5 text-right whitespace-nowrap">{fd(x.zadnji)}</td></tr>
+              ))}</tbody></table>
+          ))}
+          {tab === 'narocila' && (nar.length === 0 ? <div className="p-4 text-xs text-as-gray-400">Ni naročil od 2024.</div> : (
+            <div className="divide-y divide-as-gray-100">{nar.map((n) => {
+              const posts = narPost.filter((p) => p.stevilka === n.stevilka && p.leto === n.leto);
+              return (
+                <div key={`${n.stevilka}-${n.leto}`} className="px-3 py-2 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-as-gray-500">{n.stevilka}/{n.leto}</span><span className="text-as-gray-700">{fd(n.datum)}</span><span className="font-semibold">{fe(n.znesek)}</span>{n.komercialist && <span className="text-as-gray-400">· {n.komercialist}</span>}<span className="ml-auto px-1.5 py-0.5 rounded font-semibold" style={n.odprto ? { background: '#FEF3C7', color: '#92400E' } : { background: '#DCFCE7', color: '#166534' }}>{n.odprto ? 'odprto' : 'zaključeno'}</span></div>
+                  {n.besedilo && <div className="text-as-gray-500 mt-0.5">{n.besedilo}</div>}
+                  {posts.length > 0 && <div className="mt-1 pl-2 border-l-2 border-amber-200 space-y-0.5">{posts.map((p) => <div key={p.zs}><span className="font-semibold text-as-gray-700">{nz(p.sifra)}</span> <span className="text-as-gray-500">· {fq(p.kolicina)} kos · še ni dobavljeno</span></div>)}</div>}
+                </div>
+              );
+            })}</div>
+          ))}
+          {tab === 'racuni' && (rac.length === 0 ? <div className="p-4 text-xs text-as-gray-400">Ni računov od 2024.</div> : (
+            <table className="w-full text-xs"><thead><tr className="bg-as-gray-50 text-as-gray-500 uppercase"><th className="text-left px-2 py-2">Račun</th><th className="text-left px-2 py-2">Datum</th>{prodajalna == null && <th className="text-left px-2 py-2">Poslov.</th>}<th className="text-right px-2 py-2">Znesek</th></tr></thead>
+              <tbody>{rac.map((r) => (
+                <tr key={`${r.stevilka}-${r.leto}`} className="border-t border-as-gray-100"><td className="px-2 py-1.5 font-mono text-as-gray-600">{r.stevilka}/{r.leto}</td><td className="px-2 py-1.5">{fd(r.datum)}</td>{prodajalna == null && <td className="px-2 py-1.5 text-as-gray-500">{branchName(r.prodajalna)}</td>}<td className="px-2 py-1.5 text-right font-semibold">{fe(r.znesek)}</td></tr>
+              ))}</tbody></table>
+          ))}
+          {tab === 'posl' && (
+            <table className="w-full text-xs"><thead><tr className="bg-as-gray-50 text-as-gray-500 uppercase"><th className="text-left px-2 py-2">Poslovalnica</th><th className="text-right px-2 py-2">Promet 12 mes.</th><th className="text-right px-2 py-2">Prejšnjih 12</th><th className="text-right px-2 py-2">Zadnji nakup</th></tr></thead>
+              <tbody>{sum.slice().sort((a, b) => Number(b.promet_12m || 0) - Number(a.promet_12m || 0)).map((x) => {
+                const b = (branches || []).find((y) => (y.poslovalnica || 0) === (x.prodajalna || 0));
+                return <tr key={x.prodajalna} className="border-t border-as-gray-100"><td className="px-2 py-1.5"><div className="font-semibold text-as-gray-800">{branchName(x.prodajalna)}</div>{b && <div className="text-as-gray-400">{[b.ulica, b.posta].filter(Boolean).join(', ')}</div>}</td><td className="px-2 py-1.5 text-right font-semibold">{fe(x.promet_12m)}</td><td className="px-2 py-1.5 text-right text-as-gray-500">{fe(x.promet_prej_12m)}</td><td className="px-2 py-1.5 text-right whitespace-nowrap">{fd(x.zadnji_nakup)}</td></tr>;
+              })}</tbody></table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomerAnalysis({ custVisits, branches }) {
   const list = (custVisits || []).filter((v) => v.entry_type === 'visit' || v.entry_type === 'call');
   if (list.length === 0) {
