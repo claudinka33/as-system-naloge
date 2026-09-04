@@ -3675,7 +3675,7 @@ function CustomerDirectory({ isAdmin, visits, openCustomer, onOpened, employees,
         {canAssign ? (
           <select value={cur} onChange={(e) => setSkrbnik(rows, e.target.value)} className="px-2 py-1 border border-as-gray-200 rounded-lg bg-white text-sm">
             <option value="">— ni določen —</option>
-            {(employees || []).filter((e) => CRM_ALLOWED_EMAILS.includes(e.email)).map((e) => <option key={e.email} value={e.email}>{e.name}</option>)}
+            {(employees || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((e) => <option key={e.email} value={e.email}>{e.name}</option>)}
           </select>
         ) : <span className="font-semibold text-as-gray-700">{name || '— ni določen —'}</span>}
         {cur && rows.some((r) => r.skrbnik_rocno) && <span className="text-as-gray-400">(ročno)</span>}
